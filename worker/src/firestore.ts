@@ -69,4 +69,20 @@ export class Firestore {
     });
     if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
   }
+
+  /** يقرأ مستنداً (الحقول النصية والرقمية فقط). يرجع null إن لم يوجد. */
+  async get(collection: string, id: string): Promise<Record<string, string | number> | null> {
+    const res = await fetch(`${this.base()}/${collection}/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
+    const doc = (await res.json()) as { fields?: Record<string, { stringValue?: string; integerValue?: string }> };
+    const out: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(doc.fields ?? {})) {
+      if (v.stringValue !== undefined) out[k] = v.stringValue;
+      else if (v.integerValue !== undefined) out[k] = Number(v.integerValue);
+    }
+    return out;
+  }
 }

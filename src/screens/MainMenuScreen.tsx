@@ -8,7 +8,7 @@ export function MainMenuScreen({ navigate, profile }: { navigate: Navigate; prof
       <header className="topbar">
         <div>
           <h1 id="menu-title" style={{ marginBottom: 2 }}>مجلسك</h1>
-          {profile?.displayName && <span style={{ color: 'var(--text-dim)' }}>أهلاً {profile.displayName}</span>}
+          {profile?.username && <span style={{ color: 'var(--text-dim)' }}>أهلاً {profile.username}</span>}
         </div>
         {/* الصفحة RTL، لذا نهاية الصف = أعلى اليسار */}
         <span className="coins" aria-label={coins === null ? 'الرصيد غير متاح بعد' : `رصيدك ${coins} عملة`}>🪙 {coins ?? '…'}</span>

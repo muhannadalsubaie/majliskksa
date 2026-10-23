@@ -3,6 +3,7 @@ import { mountAnnouncer } from './services/announcer';
 import type { ScreenName } from './state/navigation';
 import { SplashScreen } from './screens/SplashScreen';
 import { AuthScreen } from './screens/AuthScreen';
+import { ChooseUsernameScreen } from './screens/ChooseUsernameScreen';
 import { useProfile } from './services/profile';
 import { MainMenuScreen } from './screens/MainMenuScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
@@ -17,13 +18,19 @@ const TITLES: Record<ScreenName, string> = {
 export default function App() {
   const [screen, setScreen] = useState<ScreenName>('splash');
   const liveRef = useRef<HTMLDivElement>(null);
-  const { profile } = useProfile();
+  const wasSignedIn = useRef(false);
+  const { user, profile } = useProfile();
+  // أي حساب مسجّل بلا اسم مستخدم يجب أن يختار اسماً قبل أي شاشة أخرى
+  const needsUsername = Boolean(user && profile?.loaded && !profile.username && screen !== 'splash');
 
   useEffect(() => { if (liveRef.current) mountAnnouncer(liveRef.current); }, []);
+  // بعد تسجيل الخروج من أي شاشة نعود لشاشة الدخول
+  useEffect(() => { if (!user && screen !== 'splash' && screen !== 'auth' && profile === null && wasSignedIn.current) setScreen('auth'); if (user) wasSignedIn.current = true; }, [user, screen, profile]);
   useEffect(() => { document.title = `${TITLES[screen]} — مجلسك`; }, [screen]);
 
   let content;
-  switch (screen) {
+  if (needsUsername) content = <ChooseUsernameScreen />;
+  else switch (screen) {
     case 'splash': content = <SplashScreen navigate={setScreen} />; break;
     case 'auth': content = <AuthScreen navigate={setScreen} />; break;
     case 'menu': content = <MainMenuScreen navigate={setScreen} profile={profile} />; break;

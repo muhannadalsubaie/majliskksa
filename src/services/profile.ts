@@ -5,9 +5,12 @@ import { connectFirebase, isFirebaseConfigured } from './firebase';
 import { API_URL, api } from './api';
 
 export interface Profile {
-  displayName: string;
+  /** اسم المستخدم الفريد — فارغ إن لم يختره اللاعب بعد */
+  username: string;
   /** null حتى يُنشئ الخادم ملف اللاعب (مع الرصيد الترحيبي) */
   coins: number | null;
+  /** هل وُجد ملف اللاعب في قاعدة البيانات */
+  loaded: boolean;
 }
 
 /** المستخدم الحالي ورصيده — يُقرأ مباشرة من Firestore (الكتابة من الخادم فقط). */
@@ -27,12 +30,12 @@ export function useProfile(): { user: User | null; profile: Profile | null } {
         unsubDoc?.();
         unsubDoc = undefined;
         if (!u) { setProfile(null); return; }
-        setProfile({ displayName: u.displayName ?? '', coins: null });
+        setProfile({ username: '', coins: null, loaded: false });
         // الخادم ينشئ ملف اللاعب مع 15 عملة ترحيبية عند أول دخول (لا يتكرر)
         if (API_URL) void api(u, '/profile/ensure').catch(() => {});
         unsubDoc = onSnapshot(doc(db, 'users', u.uid), (snap) => {
           const data = snap.data();
-          setProfile({ displayName: data?.displayName || u.displayName || '', coins: data ? Number(data.coins) : null });
+          setProfile({ username: String(data?.username ?? ''), coins: data ? Number(data.coins) : null, loaded: snap.exists() });
         }, () => { /* قبل نشر قواعد/دوال الخادم قد تفشل القراءة — نبقي الرصيد مجهولاً */ });
       });
     }).catch(() => {});

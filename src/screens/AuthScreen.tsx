@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import {
   GoogleAuthProvider, createUserWithEmailAndPassword, sendPasswordResetEmail,
-  signInWithEmailAndPassword, signInWithPopup, updateProfile,
+  signInWithEmailAndPassword, signInWithPopup,
 } from 'firebase/auth';
+import { USERNAME_ERRORS, validateUsername } from '../../shared/username';
+import { UsernameField } from '../components/UsernameField';
 import { connectFirebase } from '../services/firebase';
 import { announce } from '../services/announcer';
-import { API_URL, api } from '../services/api';
+import { api, apiPublic } from '../services/api';
 import type { Navigate } from '../state/navigation';
 
 const ERRORS: Record<string, string> = {
@@ -17,10 +19,13 @@ const ERRORS: Record<string, string> = {
   'auth/too-many-requests': 'محاولات كثيرة، حاول بعد قليل',
   'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
-  'missing-name': 'أدخل اسمك الظاهر في اللعبة',
+  ...USERNAME_ERRORS,
 };
 
-const message = (e: unknown) => ERRORS[(e as { code?: string }).code ?? ''] ?? 'حدث خطأ، حاول مرة أخرى';
+const message = (e: unknown) => {
+  const err = e as { code?: string; message?: string };
+  return ERRORS[err.code ?? ''] ?? ERRORS[err.message ?? ''] ?? 'حدث خطأ، حاول مرة أخرى';
+};
 
 export function AuthScreen({ navigate }: { navigate: Navigate }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -49,10 +54,14 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
     void run(async () => {
       const { auth } = await connectFirebase();
       if (mode === 'signup') {
-        if (!name.trim()) throw { code: 'missing-name' };
+        const invalid = validateUsername(name);
+        if (invalid) throw { code: invalid };
+        // فحص مبدئي قبل إنشاء الحساب؛ الحجز الفعلي الذرّي يتم بعده في الخادم
+        const check = await apiPublic<{ available: boolean; error?: string }>('/username/available', { username: name });
+        if (!check.available) throw { code: check.error ?? 'taken' };
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        await updateProfile(cred.user, { displayName: name.trim() });
-        if (API_URL) await api(cred.user, '/profile/name', { displayName: name.trim() }).catch(() => {});
+        // إن فشل الحجز هنا (سباق نادر) تظهر شاشة اختيار الاسم تلقائياً
+        await api(cred.user, '/profile/username', { username: name }).catch(() => {});
         announce(`أهلاً ${name.trim()}، حصلت على 15 عملة ترحيبية`);
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -87,10 +96,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
 
       <form className="stack" onSubmit={submit} noValidate>
         {isSignup && (
-          <label className="stack" style={{ gap: 6 }}>
-            الاسم الظاهر في اللعبة
-            <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="nickname" maxLength={20} required />
-          </label>
+          <UsernameField value={name} onChange={setName} />
         )}
         <label className="stack" style={{ gap: 6 }}>
           البريد الإلكتروني
