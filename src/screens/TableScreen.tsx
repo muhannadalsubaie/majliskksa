@@ -204,8 +204,15 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               const played = g.trick.find((p) => p.seat === seat);
               return (
                 <div key={r} className={`player pos-${r}${g.turn === seat && g.phase !== 'matchOver' ? ' turn' : ''}`}>
-                  <span className="player-name">{name(seat)}{r === 2 ? ' (شريكك)' : ''}</span>
-                  <span className="note">{g.handCounts[seat]} أوراق</span>
+                  <p className="player-info">
+                    <span className="player-name">
+                      {name(seat)}
+                      {view.seats[seat]?.isBot ? ' (روبوت)' : ''}
+                      {r === 2 ? ' (شريكك)' : ''}
+                    </span>
+                    <span className="sr-only">، </span>
+                    <span className="note">{g.handCounts[seat]} أوراق</span>
+                  </p>
                   {played && <SpokenCard text={`${name(seat)} لعب ${cardLabel(played.card)}`} card={played.card} />}
                 </div>
               );

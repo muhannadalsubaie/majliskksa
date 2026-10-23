@@ -92,3 +92,4 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .seat-row button { padding: 8px 12px; }
 .table-row { display: flex; justify-content: space-between; width: 100%; text-align: start; }
 .spoken-card { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.player-info { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
