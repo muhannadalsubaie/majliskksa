@@ -28,7 +28,7 @@ export interface Contract {
 }
 
 export interface DoublingState {
-  /** 1 بدون، 2 دبل، 3 ذهب، 4 فور */
+  /** 1 بدون، 2 دبل، 3 ثري، 4 فور */
   level: 1 | 2 | 3 | 4;
   gahwa: boolean;
   locked: boolean;
@@ -178,13 +178,19 @@ export function redeal(s: GameState, rng: Rng): GameState {
 }
 
 /** خيارات الدبل المتاحة لهذا المقعد الآن. */
-export function availableDouble(s: GameState, seat: Seat): { label: 'دبل' | 'ذهب' | 'فور' | 'قهوة'; needsLockChoice: boolean } | null {
+/**
+ * سلسلة الدبل في الحكم:
+ *   دبل (الخصم، يختار مقفل/مفتوح) → ثري ×3 (المشتري، مفتوح تلقائياً)
+ *   → فور ×4 (الخصم، يختار مقفل/مفتوح) → قهوة (المشتري، مفتوح تلقائياً، تحسم اللعبة)
+ * في الصن: دبل واحد فقط بلا مقفل/مفتوح.
+ */
+export function availableDouble(s: GameState, seat: Seat): { label: 'دبل' | 'ثري' | 'فور' | 'قهوة'; needsLockChoice: boolean } | null {
   if (s.phase !== 'doubling' || s.doubling.awaitingTeam !== teamOf(seat) || s.doubling.passed.includes(seat)) return null;
   const hokm = s.contract!.mode === 'hokm';
   switch (s.doubling.level) {
     case 1: return { label: 'دبل', needsLockChoice: hokm };
-    case 2: return hokm ? { label: 'ذهب', needsLockChoice: false } : null;
-    case 3: return { label: 'فور', needsLockChoice: false };
+    case 2: return hokm ? { label: 'ثري', needsLockChoice: false } : null;
+    case 3: return { label: 'فور', needsLockChoice: true };
     case 4: return s.doubling.gahwa ? null : { label: 'قهوة', needsLockChoice: false };
   }
 }
@@ -199,10 +205,15 @@ function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
     d.level = 2;
     d.doublerTeam = teamOf(seat);
     d.locked = hokm && !!locked;
-  } else if (d.level === 4) {
-    d.gahwa = true;
+  } else if (d.level === 2) {
+    d.level = 3; // ثري: مفتوح تلقائياً
+    d.locked = false;
+  } else if (d.level === 3) {
+    d.level = 4; // فور: الخصم يختار مقفل/مفتوح من جديد
+    d.locked = !!locked;
   } else {
-    d.level = (d.level + 1) as 3 | 4;
+    d.gahwa = true; // قهوة: مفتوح تلقائياً
+    d.locked = false;
   }
   const finished = !hokm || d.gahwa;
   d.awaitingTeam = finished ? null : otherTeam(teamOf(seat));

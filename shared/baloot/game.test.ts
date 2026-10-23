@@ -80,19 +80,36 @@ describe('game flow', () => {
     expect(redeal(s, seededRng(5)).dealer).toBe(1);
   });
 
-  it('hokm double chain: دبل (with lock) → ذهب → فور → قهوة', () => {
+  it('hokm double chain: دبل (lock choice) → ثري (open) → فور (lock choice) → قهوة (open)', () => {
     let s = newMatch(seededRng(6), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     expect(() => applyAction(s, { type: 'double', seat: 0 })).toThrow(IllegalAction);
     s = applyAction(s, { type: 'double', seat: 0, locked: true });
-    expect(availableDouble(s, 1)?.label).toBe('ذهب');
+    expect(s.doubling).toMatchObject({ level: 2, locked: true });
+    expect(availableDouble(s, 1)).toEqual({ label: 'ثري', needsLockChoice: false });
     s = applyAction(s, { type: 'double', seat: 3 });
-    s = applyAction(s, { type: 'double', seat: 2 });
+    expect(s.doubling).toMatchObject({ level: 3, locked: false });
+    expect(availableDouble(s, 2)).toEqual({ label: 'فور', needsLockChoice: true });
+    expect(() => applyAction(s, { type: 'double', seat: 2 })).toThrow(IllegalAction);
+    s = applyAction(s, { type: 'double', seat: 2, locked: true });
+    expect(s.doubling).toMatchObject({ level: 4, locked: true });
     expect(availableDouble(s, 1)?.label).toBe('قهوة');
     s = applyAction(s, { type: 'double', seat: 1 });
     expect(s.phase).toBe('playing');
-    expect(s.doubling).toMatchObject({ level: 4, gahwa: true, locked: true, doublerTeam: 0 });
+    expect(s.doubling).toMatchObject({ level: 4, gahwa: true, locked: false, doublerTeam: 0 });
+  });
+
+  it('three stays open even after a locked double', () => {
+    let s = newMatch(seededRng(9), 0);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
+    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'double', seat: 2, locked: true });
+    s = applyAction(s, { type: 'double', seat: 1 });
+    s = applyAction(s, { type: 'doublePass', seat: 0 });
+    s = applyAction(s, { type: 'doublePass', seat: 2 });
+    expect(s.phase).toBe('playing');
+    expect(s.doubling).toMatchObject({ level: 3, locked: false });
   });
 
   it('sun double only when buyer team > 100 and other team < 100', () => {

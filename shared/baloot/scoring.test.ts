@@ -40,6 +40,15 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([21, 12]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([1, 16]);
   });
+  it('projects are never multiplied by the double', () => {
+    expect(scoreHand(hokm({ projectAbnat: [20, 0], multiplier: 2, doublerTeam: 1 })).points).toEqual([22, 12]);
+    expect(scoreHand(hokm({ cardAbnat: [60, 102], projectAbnat: [0, 50], multiplier: 3, doublerTeam: 1 })).points).toEqual([0, 53]);
+  });
+  it('kaboot = 25 (× double), projects added on top', () => {
+    expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0] })).points).toEqual([25, 0]);
+    expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([55, 0]);
+    expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([1, 25]);
+  });
   it('gahwa: hand winner wins the match', () => {
     expect(scoreHand(hokm({ multiplier: 4, gahwa: true, doublerTeam: 1 })).gahwaWinner).toBe(0);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], multiplier: 4, gahwa: true, doublerTeam: 1 })).gahwaWinner).toBe(1);
@@ -51,10 +60,18 @@ describe('scoreHand — sun', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [0, 0] });
     expect(r.points).toEqual([13, 13]);
   });
-  it('kaboot', () => {
+  it('kaboot = 44', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [130, 0], tricksWon: [8, 0] });
     expect(r.kaboot).toBe(0);
-    expect(r.points).toEqual([52, 0]);
+    expect(r.points).toEqual([44, 0]);
+  });
+  it('projects are not doubled in sun', () => {
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [20, 0] });
+    expect(r.points).toEqual([15, 13]);
+  });
+  it('sun kaboot with double and a project', () => {
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [130, 0], tricksWon: [8, 0], projectAbnat: [100, 0], multiplier: 2, doublerTeam: 1 });
+    expect(r.points).toEqual([98, 0]);
   });
 });
 

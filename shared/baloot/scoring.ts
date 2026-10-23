@@ -1,18 +1,19 @@
-import { type GameMode, type Team, HAND_TOTAL, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTeam } from './cards';
+import { type GameMode, type Team, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTeam } from './cards';
 import { BALOOT_ABNAT } from './projects';
 
 /**
- * قواعد قابلة للتعديل — النقاط التي لم تحسمها المواصفة بعد مُعلّمة بـ(بانتظار التأكيد).
+ * قواعد قابلة للتعديل.
+ * - المشاريع لا تتضاعف أبداً: لا بمضاعفة الصن ولا بالدبل/ثري/فور.
+ * - البلوت ثابت لصاحبه دائماً.
  */
 export const RULES = {
   /** الحكم: ينجح المشتري إذا تجاوزت أبناطه (مع مشاريعه) هذا الحد */
   hokmBuyerThreshold: 81,
   /** الصن: هل يخسر المشتري كل النقاط إن لم يتجاوز النصف؟ (بانتظار التأكيد — المواصفة الأخيرة: تُسجل للطرفين) */
   sunBuyerCanFail: false,
-  /** كبوت الصن بالأبناط (المواصفة: 520) — بانتظار التأكيد: 52 نقطة أم 520؟ */
-  sunKabootAbnat: 520,
-  /** كبوت الحكم: كل أبناط الصكة (162) — بانتظار التأكيد */
-  hokmKabootAbnat: HAND_TOTAL.hokm,
+  /** نقاط الكبوت بدون مشاريع (تُضرب في معامل الدبل) */
+  sunKabootPoints: 44,
+  hokmKabootPoints: 25,
 };
 
 /** القسمة على 10 مع جبر الكسر من 5 فما فوق. */
@@ -28,7 +29,7 @@ export interface HandScoreInput {
   projectAbnat: [number, number];
   /** الفريق الذي أعلن البلوت (حكم فقط) */
   balootTeam: Team | null;
-  /** 1 بدون دبل، 2 دبل، 3 ذهب/ثري، 4 فور */
+  /** 1 بدون دبل، 2 دبل، 3 ثري، 4 فور */
   multiplier: number;
   gahwa: boolean;
   /** الفريق الذي طلب الدبل أولاً — عليه الخسارة عند التعادل */
@@ -48,7 +49,11 @@ export function scoreHand(input: HandScoreInput): HandScore {
   const opp = otherTeam(buyerTeam);
   const factor = mode === 'sun' ? SUN_ABNAT_MULTIPLIER : 1;
   const cards: [number, number] = [input.cardAbnat[0] * factor, input.cardAbnat[1] * factor];
+  // تُستخدم لتحديد نجاح المشتري فقط (أوراقه + مشاريعه)
   const total: [number, number] = [cards[0] + projectAbnat[0], cards[1] + projectAbnat[1]];
+  // نقاط المشاريع ثابتة لا تتضاعف
+  const projectPoints: [number, number] = [abnatToPoints(projectAbnat[0]), abnatToPoints(projectAbnat[1])];
+  const allProjectPoints = projectPoints[0] + projectPoints[1];
   const points: [number, number] = [0, 0];
   let buyerFailed = false;
   let kaboot: Team | null = null;
@@ -57,8 +62,8 @@ export function scoreHand(input: HandScoreInput): HandScore {
   const kabootTeam = tricksWon[0] === 8 ? 0 : tricksWon[1] === 8 ? 1 : null;
   if (kabootTeam !== null) {
     kaboot = kabootTeam;
-    const base = mode === 'sun' ? RULES.sunKabootAbnat : RULES.hokmKabootAbnat;
-    points[kabootTeam] = abnatToPoints(base + projectAbnat[0] + projectAbnat[1]) * multiplier;
+    const base = mode === 'sun' ? RULES.sunKabootPoints : RULES.hokmKabootPoints;
+    points[kabootTeam] = base * multiplier + allProjectPoints;
     buyerFailed = kabootTeam !== buyerTeam;
     handWinner = kabootTeam;
   } else {
@@ -75,12 +80,12 @@ export function scoreHand(input: HandScoreInput): HandScore {
     }
 
     if (success) {
-      points[0] = abnatToPoints(total[0]) * multiplier;
-      points[1] = abnatToPoints(total[1]) * multiplier;
+      points[0] = abnatToPoints(cards[0]) * multiplier + projectPoints[0];
+      points[1] = abnatToPoints(cards[1]) * multiplier + projectPoints[1];
       handWinner = buyerTeam;
     } else {
       buyerFailed = true;
-      points[opp] = abnatToPoints(total[0] + total[1]) * multiplier;
+      points[opp] = abnatToPoints(cards[0] + cards[1]) * multiplier + allProjectPoints;
       handWinner = opp;
     }
   }
