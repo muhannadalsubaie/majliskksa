@@ -5,6 +5,7 @@ import { COINS } from '../../shared/economy';
 import type { GameView } from '../../shared/table';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
+import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
 import { useTable } from '../services/tables';
@@ -182,29 +183,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
 
       {/* ───── قبل بدء المباراة: المقاعد ───── */}
-      {!g && (
-        <section aria-labelledby="seats-title" className="stack">
-          <h2 id="seats-title">المقاعد</h2>
-          {view.seats.map((s, i) => (
-            <div key={i} className="seat-row">
-              <span>
-                {i === me ? 'أنت' : s ? s.username : 'مقعد فارغ'}
-                {s?.isBot && <span className="note"> (روبوت)</span>}
-                {i !== me && s && teamOf(i as Seat) === myTeam ? ' (شريكك)' : ''}
-              </span>
-              {!s && isOwner && (
-                <button className="secondary" onClick={() => send({ type: 'addBot', seat: i })}>
-                  إضافة روبوت ({COINS.addBot} 🪙)
-                </button>
-              )}
-            </div>
-          ))}
-          {view.spectators.length > 0 && <p className="note">المشاهدون: {view.spectators.map((s) => s.username).join('، ')}</p>}
-          {isOwner
-            ? <button onClick={() => send({ type: 'start' })} disabled={!view.seats.every(Boolean)}>بدء المباراة</button>
-            : <p role="status">بانتظار مالك الطاولة لبدء المباراة</p>}
-        </section>
-      )}
+      {!g && <SeatsLobby view={view} uid={uid} send={send} />}
 
       {/* ───── اللعب ───── */}
       {g && (

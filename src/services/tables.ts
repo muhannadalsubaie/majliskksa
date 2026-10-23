@@ -44,7 +44,8 @@ export type ClientMessage =
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }
-  | { type: 'replace'; seat: number; uid: string };
+  | { type: 'replace'; seat: number; uid: string }
+  | { type: 'vacate'; seat: number };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {

@@ -223,11 +223,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // دعوة صديق متصل للطاولة: عملة من المالك، والدعوة تصل للصديق فوراً
     const inviteFriendMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/inviteFriend$/);
     if (inviteFriendMatch && request.method === 'POST') {
-      const friend = String((await body()).uid ?? '');
+      const b = await body();
+      const friend = String(b.uid ?? '');
       if (!(await hub(user.uid).isFriend(friend))) return json({ error: 'not-friends' }, 400);
       if (!(await hub(friend).isOnline())) return json({ error: 'offline' }, 400);
       const tableId = inviteFriendMatch[1];
-      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid);
+      // يمكن أن تحجز الدعوة مقعداً محدداً (من شاشة المقاعد)
+      const seat = typeof b.seat === 'number' ? b.seat : undefined;
+      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid, seat);
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
       await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName: await usernameOf(user.uid), at: Date.now() });
       return json({ ok: true });

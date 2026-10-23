@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, dealAnnouncement, hasHumans, replaceSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   runAutoStep, seatOf, start, viewFor,
 } from '../../shared/table';
 import type { Env } from './env';
@@ -20,7 +20,8 @@ type ClientMessage =
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }
-  | { type: 'replace'; seat: number; uid: string };
+  | { type: 'replace'; seat: number; uid: string }
+  | { type: 'vacate'; seat: number };
 
 const rng = () => Math.random();
 
@@ -60,6 +61,7 @@ const ERRORS: Record<string, string> = {
   'not-full': 'يجب أن تكتمل المقاعد الأربعة',
   'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
   'not-a-spectator': 'هذا الشخص لم يعد في الطاولة',
+  'not-a-member': 'هذا الشخص لم يعد في الطاولة',
 };
 
 /** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
@@ -148,7 +150,7 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
-  async createInvite(uid: string): Promise<{ code: string } | { error: string }> {
+  async createInvite(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     if (t.ownerUid !== uid) return { error: 'not-owner' };
@@ -159,7 +161,7 @@ export class TableRoom extends DurableObject<Env> {
     }
     const bytes = crypto.getRandomValues(new Uint8Array(6));
     const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
-    await this.save(addInvite(t, code));
+    await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined));
     return { code };
   }
 
@@ -239,9 +241,20 @@ export class TableRoom extends DurableObject<Env> {
         if (!isOwner) throw new Error('not-owner');
         if (!isSeat(msg.seat) || typeof msg.uid !== 'string') throw new Error('bad-request');
         const before = t.seats[msg.seat];
-        const next = replaceSeat(t, msg.seat, msg.uid);
+        const next = assignSeat(t, msg.seat, msg.uid);
         await this.save(next);
-        this.broadcast([`${next.seats[msg.seat]!.username} جلس مكان ${before?.username ?? 'المقعد الفارغ'}`]);
+        const incoming = next.seats[msg.seat]!.username;
+        this.broadcast([before ? `${incoming} جلس مكان ${before.username}` : `${incoming} جلس في المقعد ${msg.seat + 1}`]);
+        await this.publish(next);
+        break;
+      }
+      case 'vacate': {
+        if (!isOwner) throw new Error('not-owner');
+        if (!isSeat(msg.seat)) throw new Error('bad-request');
+        const who = t.seats[msg.seat];
+        const next = vacateSeat(t, msg.seat);
+        await this.save(next);
+        if (who) this.broadcast([who.isBot ? `أُزيل ${who.username}` : `${who.username} أصبح مشاهداً`]);
         await this.publish(next);
         break;
       }

@@ -21,8 +21,8 @@ export interface TableData {
   paid: string[];
   game: GameState | null;
   botCount: number;
-  /** رموز دعوات صالحة (لمرة واحدة) — دعوات المالك مدفوعة مسبقاً */
-  invites?: string[];
+  /** دعوات صالحة (لمرة واحدة) — مدفوعة مسبقاً من المالك، وقد تحجز مقعداً محدداً */
+  invites?: (string | { code: string; seat?: Seat })[];
 }
 
 export function newTable(id: string, owner: { uid: string; username: string }, isPrivate: boolean, now: number): TableData {
@@ -61,7 +61,6 @@ function botName(t: TableData, rng: () => number): string {
   return free[Math.floor(rng() * free.length)] ?? `روبوت ${t.botCount + 1}`;
 }
 
-/** ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول. */
 /**
  * ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول.
  * بدعوة صالحة: لا رسوم (دفعها المالك)، ويمكن دخول الطاولة الخاصة. الدعوة تُستهلك.
@@ -69,13 +68,16 @@ function botName(t: TableData, rng: () => number): string {
 export function join(t: TableData, user: { uid: string; username: string }, invite?: string): { table: TableData; charge: boolean } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
-  const invites = t.invites ?? [];
-  const invited = !!invite && invites.includes(invite);
+  const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
+  const inv = invite ? invites.find((i) => i.code === invite) : undefined;
+  const invited = !!inv;
   if (t.isPrivate && !invited && !t.paid.includes(user.uid)) throw new TableError('private');
   const charge = !invited && !t.paid.includes(user.uid);
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
-  if (invited) t = { ...t, invites: invites.filter((c) => c !== invite) };
-  const free = t.game ? -1 : t.seats.findIndex((m) => m === null);
+  if (invited) t = { ...t, invites: invites.filter((i) => i.code !== invite) };
+  // المقعد المحجوز في الدعوة أولاً، ثم أول مقعد فارغ (قبل بدء اللعب فقط)
+  const reserved = inv?.seat !== undefined && !t.game && t.seats[inv.seat] === null ? inv.seat : -1;
+  const free = t.game ? -1 : reserved >= 0 ? reserved : t.seats.findIndex((m) => m === null);
   const member: Member = { uid: user.uid, username: user.username, isBot: false };
   if (free >= 0) {
     const seats = [...t.seats];
@@ -99,9 +101,37 @@ export function leave(t: TableData, uid: string, rng: () => number = Math.random
   return { table: { ...t, seats }, botReplaced: false };
 }
 
-/** دعوة جديدة (يدفعها المالك) */
-export function addInvite(t: TableData, code: string): TableData {
-  return { ...t, invites: [...(t.invites ?? []), code].slice(-30) };
+/** دعوة جديدة (يدفعها المالك)، ويمكن أن تحجز مقعداً */
+export function addInvite(t: TableData, code: string, seat?: Seat): TableData {
+  return { ...t, invites: [...(t.invites ?? []), { code, seat }].slice(-30) };
+}
+
+const inLobby = (t: TableData) => !t.game || t.game.phase === 'matchOver';
+
+/**
+ * المالك يضع شخصاً في مقعد:
+ * - مشاهد → يجلس (حتى أثناء اللعب)، ومن كان في المقعد يصبح مشاهداً (أو يُزال إن كان روبوتاً)
+ * - جالس في مقعد آخر → يتبادلان المقعدين (قبل بدء اللعب فقط)
+ */
+export function assignSeat(t: TableData, seat: Seat, uid: string): TableData {
+  if (t.spectators.some((m) => m.uid === uid)) return replaceSeat(t, seat, uid);
+  const from = t.seats.findIndex((m) => m?.uid === uid);
+  if (from < 0) throw new TableError('not-a-member');
+  if (!inLobby(t)) throw new TableError('game-started');
+  if (from === seat) return t;
+  const seats = [...t.seats];
+  [seats[seat], seats[from]] = [seats[from], seats[seat]];
+  return { ...t, seats };
+}
+
+/** المالك يُخلي مقعداً (قبل بدء اللعب): الإنسان يصبح مشاهداً، والروبوت يُزال */
+export function vacateSeat(t: TableData, seat: Seat): TableData {
+  if (!inLobby(t)) throw new TableError('game-started');
+  const m = t.seats[seat];
+  if (!m) return t;
+  const seats = [...t.seats];
+  seats[seat] = null;
+  return { ...t, seats, spectators: m.isBot ? t.spectators : [...t.spectators, m] };
 }
 
 /**
@@ -120,7 +150,7 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
 }
 
 export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
-  if (t.game) throw new TableError('game-started');
+  if (!inLobby(t)) throw new TableError('game-started');
   if (t.seats[seat]) throw new TableError('seat-taken');
   const n = t.botCount + 1;
   const seats = [...t.seats];
@@ -330,6 +360,8 @@ export interface TableView {
   isPrivate: boolean;
   mySeat: Seat | null;
   seats: ({ username: string; isBot: boolean } | null)[];
+  /** معرّفات الجالسين (لترتيب المقاعد من قبل المالك) — فارغ للمقعد الفارغ */
+  seatUids: string[];
   spectators: { uid: string; username: string }[];
   game: GameView | null;
 }
@@ -363,6 +395,7 @@ export function viewFor(t: TableData, uid: string): TableView {
   return {
     id: t.id, ownerUid: t.ownerUid, isPrivate: t.isPrivate, mySeat,
     seats: t.seats.map((m) => (m ? { username: m.username, isBot: m.isBot } : null)),
+    seatUids: t.seats.map((m) => m?.uid ?? ''),
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
     game,
   };

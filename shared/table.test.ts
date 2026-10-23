@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER } from './baloot/cards';
-import { BOT_NAMES, addBot, addInvite, join, leave, replaceSeat, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
+import { BOT_NAMES, addBot, addInvite, assignSeat, join, leave, replaceSeat, vacateSeat, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -67,6 +67,34 @@ describe('table', () => {
     expect(t.seats[1]?.username).toBe('خالد');
     expect(t.spectators.map((m) => m.username)).toEqual(['أحمد']);
     expect(() => replaceSeat(t, 1, 'nobody')).toThrow(TableError);
+  });
+
+  it('invite can reserve a seat', () => {
+    let t = newTable('t1', owner, false, 0);
+    t = addInvite(t, 'x', 3);
+    t = join(t, { uid: 'u2', username: 'أحمد' }, 'x').table;
+    expect(t.seats[3]?.username).toBe('أحمد');
+    expect(t.seats[1]).toBeNull();
+  });
+
+  it('owner arranges teams: swap seated players, vacate, and spectate himself', () => {
+    let t = newTable('t1', owner, false, 0);
+    t = join(t, { uid: 'u2', username: 'أحمد' }).table; // seat 1 (opponent)
+    t = join(t, { uid: 'u3', username: 'سعد' }).table; // seat 2 (partner)
+    // أحمد يصبح شريك المالك
+    t = assignSeat(t, 2, 'u2');
+    expect(t.seats[2]?.username).toBe('أحمد');
+    expect(t.seats[1]?.username).toBe('سعد');
+    // المالك يصبح مشاهداً ويضع غيره مكانه
+    t = vacateSeat(t, 0);
+    expect(t.seats[0]).toBeNull();
+    expect(t.spectators.map((m) => m.uid)).toEqual(['u1']);
+    t = join(t, { uid: 'u4', username: 'خالد' }).table; // يأخذ مقعد 0 الفارغ
+    t = addBot(t, 3, seededRng(1));
+    t = start(t, seededRng(2));
+    expect(viewFor(t, 'u1').mySeat).toBeNull(); // المالك مشاهد
+    expect(() => assignSeat(t, 1, 'u2')).toThrow(TableError); // لا تبديل أثناء اللعب
+    expect(() => vacateSeat(t, 1)).toThrow(TableError);
   });
 
   it('cannot start until 4 seats are filled', () => {
