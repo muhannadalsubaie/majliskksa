@@ -6,6 +6,7 @@ import type { GameView } from '../../shared/table';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
 import { TABLE_BACK } from '../services/backButton';
+import { isSystemReaderOn } from '../services/nativeA11y';
 import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
@@ -99,21 +100,28 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     window.addEventListener(TWO_FINGER_LEFT, onTwo);
     let two: { x: number; y: number; t: number } | null = null;
     let last = { x: 0, y: 0 };
-    const mid = (e: TouchEvent) => ({
-      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-      y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-    });
+    // متوسط مواقع الأصابع على الشاشة
+    const mid = (e: TouchEvent) => {
+      const pts = Array.from(e.touches);
+      return {
+        x: pts.reduce((a, p) => a + p.clientX, 0) / pts.length,
+        y: pts.reduce((a, p) => a + p.clientY, 0) / pts.length,
+      };
+    };
+    // مع TalkBack: النظام يستهلك إيماءات الإصبع الواحد، ويمرر سحب الإصبعين للتطبيق
+    // (أحياناً كإصبع واحد في المنتصف)، فأي سحب يصلنا وقتها هو سحب بإصبعين
+    const fingersOk = (n: number) => n === 2 || (n === 1 && isSystemReaderOn());
     const onStart = (e: TouchEvent) => {
       if (isScreenReaderOn()) return;
-      if (e.touches.length === 2) { last = mid(e); two = { ...last, t: performance.now() }; }
+      if (fingersOk(e.touches.length)) { last = mid(e); two = { ...last, t: performance.now() }; }
       else if (e.touches.length > 2) two = null;
     };
-    const onMove = (e: TouchEvent) => { if (two && e.touches.length === 2) last = mid(e); };
+    const onMove = (e: TouchEvent) => { if (two && fingersOk(e.touches.length)) last = mid(e); };
     const onEnd = (e: TouchEvent) => {
       if (!two || e.touches.length > 0) return;
       const dx = last.x - two.x;
       const dy = last.y - two.y;
-      if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6 && performance.now() - two.t < 800) readTrickRef.current();
+      if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6 && performance.now() - two.t < 1200) readTrickRef.current();
       two = null;
     };
     window.addEventListener('touchstart', onStart, { passive: true });
@@ -249,7 +257,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
           {/* أزرار المزايدة */}
           {g.actions.bids.length > 0 && (
-            <div className="action-row" role="group" aria-label="المزايدة">
+            <div className="action-row bid-row" role="group" aria-label="المزايدة">
               {g.actions.bids.map((b) => (
                 <button key={bidLabel(b)} className={b.type === 'pass' ? 'secondary' : ''} onClick={() => act({ type: 'bid', bid: b })}>
                   {bidLabel(b)}

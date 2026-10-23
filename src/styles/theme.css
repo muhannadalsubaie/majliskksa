@@ -117,6 +117,10 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .card-btn:not(:disabled) .card-face { box-shadow: 0 0 0 2px var(--gold-soft); }
 .action-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .action-row button { flex: 1 1 30%; min-width: 90px; }
+/* أزرار المزايدة (بس، صن، حكم، أشكل...) أصغر لتترك مساحة للأوراق — مع إبقاء مساحة لمس كافية */
+.bid-row button { flex: 0 1 auto; min-width: 64px; min-height: 44px; padding: 8px 14px; font-size: 15px; }
+/* أوراق اليد أكبر قليلاً من أوراق الطاولة */
+.hand .card-face { width: 54px; height: 76px; font-size: 21px; }
 .seat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--green-800); border-radius: var(--radius); padding: 10px 14px; min-height: 52px; }
 .seat-row button { padding: 8px 12px; }
 .table-row { display: flex; justify-content: space-between; width: 100%; text-align: start; }
