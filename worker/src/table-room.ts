@@ -191,9 +191,11 @@ export class TableRoom extends DurableObject<Env> {
         break;
       }
       case 'leave': {
+        const seat = seatOf(t, uid);
+        const who = seat !== null ? t.seats[seat]!.username : t.spectators.find((m) => m.uid === uid)?.username ?? 'أحد الحاضرين';
         const r = leave(t, uid);
         await this.save(r.table);
-        this.broadcast([r.botReplaced ? 'غادر لاعب وحل مكانه روبوت' : 'غادر أحد الحاضرين']);
+        this.broadcast([r.botReplaced && seat !== null ? `غادر ${who} وحلّ مكانه ${r.table.seats[seat]!.username}` : `غادر ${who}`]);
         await this.publish(r.table);
         break;
       }

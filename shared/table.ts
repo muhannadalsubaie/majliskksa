@@ -42,6 +42,21 @@ export const isFull = (t: TableData) => t.seats.every(Boolean);
 
 export class TableError extends Error {}
 
+/** أسماء عربية للروبوتات (رجال ونساء) */
+export const BOT_NAMES = [
+  'فهد', 'سلطان', 'عبدالله', 'خالد', 'ناصر', 'تركي', 'فيصل', 'سعود', 'ماجد', 'بندر',
+  'راشد', 'منصور', 'يوسف', 'عبدالرحمن', 'محمد', 'سلمان', 'نايف', 'عمر', 'حمد', 'بدر',
+  'سارة', 'نورة', 'هيا', 'العنود', 'ريم', 'لطيفة', 'منيرة', 'الجوهرة', 'شهد', 'دانة',
+  'مها', 'غادة', 'لمى', 'أمل', 'نوف', 'جواهر', 'رهف', 'وعد', 'هند', 'أسماء',
+];
+
+/** اسم عشوائي غير مستخدم على هذه الطاولة */
+function botName(t: TableData, rng: () => number): string {
+  const taken = new Set(t.seats.filter(Boolean).map((m) => m!.username));
+  const free = BOT_NAMES.filter((n) => !taken.has(n));
+  return free[Math.floor(rng() * free.length)] ?? `روبوت ${t.botCount + 1}`;
+}
+
 /** ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول. */
 export function join(t: TableData, user: { uid: string; username: string }): { table: TableData; charge: boolean } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
@@ -59,25 +74,25 @@ export function join(t: TableData, user: { uid: string; username: string }): { t
 }
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
-export function leave(t: TableData, uid: string): { table: TableData; botReplaced: boolean } {
+export function leave(t: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean } {
   const seat = seatOf(t, uid);
   if (seat === null) return { table: { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) }, botReplaced: false };
   const seats = [...t.seats];
   if (t.game && t.game.phase !== 'matchOver') {
     const n = t.botCount + 1;
-    seats[seat] = { uid: `bot-${n}`, username: `روبوت ${n.toLocaleString('ar-SA')}`, isBot: true };
+    seats[seat] = { uid: `bot-${n}`, username: botName(t, rng), isBot: true };
     return { table: { ...t, seats, botCount: n }, botReplaced: true };
   }
   seats[seat] = null;
   return { table: { ...t, seats }, botReplaced: false };
 }
 
-export function addBot(t: TableData, seat: Seat): TableData {
+export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
   if (t.game) throw new TableError('game-started');
   if (t.seats[seat]) throw new TableError('seat-taken');
   const n = t.botCount + 1;
   const seats = [...t.seats];
-  seats[seat] = { uid: `bot-${n}`, username: `روبوت ${n.toLocaleString('ar-SA')}`, isBot: true };
+  seats[seat] = { uid: `bot-${n}`, username: botName(t, rng), isBot: true };
   return { ...t, seats, botCount: n };
 }
 

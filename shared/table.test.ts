@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER } from './baloot/cards';
-import { addBot, join, leave, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
+import { BOT_NAMES, addBot, join, leave, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -28,6 +28,17 @@ describe('table', () => {
     // المشاهد يغادر ويعود: لا يُخصم مرة أخرى
     t = leave(t, 'u5').table;
     expect(join(t, { uid: 'u5', username: 'سعد' }).charge).toBe(false);
+  });
+
+  it('bots get distinct random Arabic names', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      let t = newTable('t1', owner, false, 0);
+      const rng = seededRng(seed);
+      t = addBot(t, 1, rng); t = addBot(t, 2, rng); t = addBot(t, 3, rng);
+      const names = t.seats.slice(1).map((m) => m!.username);
+      expect(new Set(names).size).toBe(3);
+      expect(names.every((n) => BOT_NAMES.includes(n))).toBe(true);
+    }
   });
 
   it('cannot start until 4 seats are filled', () => {

@@ -178,6 +178,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             <div key={i} className="seat-row">
               <span>
                 {i === me ? 'أنت' : s ? s.username : 'مقعد فارغ'}
+                {s?.isBot && <span className="note"> (روبوت)</span>}
                 {i !== me && s && teamOf(i as Seat) === myTeam ? ' (شريكك)' : ''}
               </span>
               {!s && isOwner && (
