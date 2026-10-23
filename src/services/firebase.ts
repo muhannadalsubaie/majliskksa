@@ -1,10 +1,7 @@
+import { Capacitor } from '@capacitor/core';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { type Auth, getAuth, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getFunctions, type Functions } from 'firebase/functions';
-
-// يجب أن تطابق المنطقة المستخدمة في functions/src/index.ts
-export const FUNCTIONS_REGION = 'europe-west1';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,21 +12,40 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-export interface FirebaseServices { app: FirebaseApp; auth: Auth; db: Firestore; functions: Functions }
+export interface FirebaseServices { app: FirebaseApp; auth: Auth; db: Firestore }
 
-let services: FirebaseServices | null = null;
+let pending: Promise<FirebaseServices> | null = null;
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(config.apiKey && config.projectId);
 }
 
-/** يهيّئ Firebase وينتظر جاهزية المصادقة. يرمي خطأ إن فشل، لتعرض شاشة البداية زر إعادة المحاولة. */
-export async function connectFirebase(): Promise<FirebaseServices> {
-  if (services) return services;
+/**
+ * يهيّئ Firebase مرة واحدة وينتظر جاهزية المصادقة (الاستدعاءات المتزامنة تنتظر نفس التهيئة).
+ * يرمي خطأ إن فشل، لتعرض شاشة البداية زر إعادة المحاولة.
+ */
+export function connectFirebase(): Promise<FirebaseServices> {
+  if (!pending) {
+    pending = init().catch((e) => {
+      pending = null; // نسمح بإعادة المحاولة
+      throw e;
+    });
+  }
+  return pending;
+}
+
+async function init(): Promise<FirebaseServices> {
   if (!isFirebaseConfigured()) throw new Error('not-configured');
   const app = initializeApp(config);
-  const auth = getAuth(app);
-  await auth.authStateReady();
-  services = { app, auth, db: getFirestore(app), functions: getFunctions(app, FUNCTIONS_REGION) };
-  return services;
+  // داخل تطبيق الجوال: getAuth يحاول تحميل إطار الويب الخاص بالنوافذ المنبثقة فيعلق،
+  // لذلك نهيّئ المصادقة بتخزين محلي فقط (البريد وكلمة المرور تعمل، وGoogle بإضافة أصلية)
+  const auth = Capacitor.isNativePlatform()
+    ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+    : getAuth(app);
+  await withTimeout(auth.authStateReady(), 15_000);
+  return { app, auth, db: getFirestore(app) };
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
 }

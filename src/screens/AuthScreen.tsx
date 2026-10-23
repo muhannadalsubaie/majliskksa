@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth';
 import { USERNAME_ERRORS, validateUsername } from '../../shared/username';
 import { UsernameField } from '../components/UsernameField';
+import { Capacitor } from '@capacitor/core';
 import { connectFirebase } from '../services/firebase';
 import { announce } from '../services/announcer';
 import { api, apiPublic } from '../services/api';
@@ -20,6 +21,8 @@ const ERRORS: Record<string, string> = {
   'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
   ...USERNAME_ERRORS,
+  'google-native': 'الدخول بحساب Google داخل التطبيق قيد التجهيز. ادخل بالبريد وكلمة المرور، وإن كان حسابك من Google فاضغط "نسيت كلمة المرور" لتعيين كلمة مرور له.',
+  timeout: 'تعذّر الاتصال، تحقق من الإنترنت وحاول مرة أخرى',
 };
 
 const message = (e: unknown) => {
@@ -72,6 +75,8 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
   };
 
   const google = () => run(async () => {
+    // داخل تطبيق الجوال تحتاج Google إضافة دخول أصلية (قيد التجهيز)
+    if (Capacitor.isNativePlatform()) throw { code: 'google-native' };
     const { auth } = await connectFirebase();
     // ملاحظة: داخل تطبيق الجوال (Capacitor) سنستبدل النافذة المنبثقة بإضافة دخول أصلية
     await signInWithPopup(auth, new GoogleAuthProvider());
