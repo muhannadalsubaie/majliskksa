@@ -89,7 +89,7 @@ export class Firestore {
   }
 
   /** يحدّث حقولاً محددة فقط في مستند موجود. */
-  async update(collection: string, id: string, data: Record<string, string | number | Date>): Promise<void> {
+  async update(collection: string, id: string, data: Record<string, string | number | Date | boolean>): Promise<void> {
     const mask = Object.keys(data).map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
     const res = await fetch(`${this.base()}/${collection}/${encodeURIComponent(id)}?${mask}&currentDocument.exists=true`, {
       method: 'PATCH',
@@ -125,8 +125,14 @@ export class Firestore {
         headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
       });
       if (!res.ok) throw new Error(res.status === 404 ? 'no-profile' : `firestore ${res.status}`);
-      const doc = (await res.json()) as { updateTime: string; fields?: { coins?: { integerValue?: string } } };
-      const coins = Number(doc.fields?.coins?.integerValue ?? 0) + delta;
+      const doc = (await res.json()) as {
+        updateTime: string;
+        fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean } };
+      };
+      const current = Number(doc.fields?.coins?.integerValue ?? 0);
+      // حساب المطوّر: لا يُخصم منه شيء
+      if (delta < 0 && doc.fields?.unlimited?.booleanValue === true) return current;
+      const coins = current + delta;
       if (coins < 0) throw new Error('not-enough-coins');
       const patch = await fetch(
         `${this.base()}/users/${encodeURIComponent(uid)}?updateMask.fieldPaths=coins&currentDocument.updateTime=${encodeURIComponent(doc.updateTime)}`,

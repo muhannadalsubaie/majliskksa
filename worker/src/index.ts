@@ -1,6 +1,6 @@
 import { COINS } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
-import { verifyToken, verifyUser } from './auth';
+import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore } from './firestore';
 
@@ -113,6 +113,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
         coins: COINS.signupBonus,
         createdAt: new Date(),
       });
+      // علامة حساب المطوّر تُكتب من الخادم فقط
+      if (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256)) await db.update('users', user.uid, { unlimited: true });
       return json({ created });
     }
 

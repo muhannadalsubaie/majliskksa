@@ -11,7 +11,9 @@ export function MainMenuScreen({ navigate, profile }: { navigate: Navigate; prof
           {profile?.username && <span style={{ color: 'var(--text-dim)' }}>أهلاً {profile.username}</span>}
         </div>
         {/* الصفحة RTL، لذا نهاية الصف = أعلى اليسار */}
-        <span className="coins" aria-label={coins === null ? 'الرصيد غير متاح بعد' : `رصيدك ${coins} عملة`}>🪙 {coins ?? '…'}</span>
+        {profile?.unlimited
+          ? <span className="coins" aria-label="رصيدك عملات لا محدودة، حساب المطوّر">🪙 ∞</span>
+          : <span className="coins" aria-label={coins === null ? 'الرصيد غير متاح بعد' : `رصيدك ${coins} عملة`}>🪙 {coins ?? '…'}</span>}
       </header>
       <nav className="stack" aria-label="القائمة الرئيسية">
         <button onClick={() => navigate('createTable')}>إنشاء طاولة</button>

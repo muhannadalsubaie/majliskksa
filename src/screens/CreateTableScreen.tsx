@@ -32,7 +32,7 @@ export function CreateTableScreen({ navigate, openTable, coins }: { navigate: Na
         <h1 id="create-title">إنشاء طاولة</h1>
         <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
       </header>
-      <p className="note" style={{ fontSize: 16 }}>رصيدك: {coins ?? '…'} عملة. إنشاء الطاولة بـ{COINS.createTable} عملة، وكل روبوت تضيفه بعملة.</p>
+      <p className="note" style={{ fontSize: 16 }}>رصيدك: {coins === Infinity ? 'لا محدود' : coins ?? '…'}{coins === Infinity ? '' : ' عملة'}. إنشاء الطاولة بـ{COINS.createTable} عملة، وكل روبوت تضيفه بعملة.</p>
       <Switch
         label="طاولة خاصة"
         checked={isPrivate}

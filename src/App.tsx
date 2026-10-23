@@ -43,7 +43,7 @@ export default function App() {
     case 'auth': content = <AuthScreen navigate={setScreen} />; break;
     case 'menu': content = <MainMenuScreen navigate={setScreen} profile={profile} />; break;
     case 'settings': content = <SettingsScreen navigate={setScreen} />; break;
-    case 'createTable': content = <CreateTableScreen navigate={setScreen} openTable={openTable} coins={profile?.coins ?? null} />; break;
+    case 'createTable': content = <CreateTableScreen navigate={setScreen} openTable={openTable} coins={profile?.unlimited ? Infinity : profile?.coins ?? null} />; break;
     case 'joinTable': content = <JoinTableScreen navigate={setScreen} openTable={openTable} />; break;
     case 'table': {
       const devUser = import.meta.env.DEV ? new URLSearchParams(location.search).get('devUser') : null;
