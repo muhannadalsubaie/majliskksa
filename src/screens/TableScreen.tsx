@@ -216,7 +216,14 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               );
             })}
             {/* وسط الطاولة: الأوراق تنزل من جهة لاعبها، وتُقرأ بترتيب لعبها */}
-            <div className="trick-area" role="group" aria-label="وسط الطاولة">
+            {/* مع TalkBack/VoiceOver لا تصل إيماءة الإصبعين للتطبيق: الوصول لهذه المجموعة يقرأ
+                كل الأوراق ومن لعبها، والنقر مرتين عليها يعيد قراءتها */}
+            <div
+              className="trick-area"
+              role="group"
+              aria-label={g.trick.length ? `وسط الطاولة: ${trickSummary()}` : 'وسط الطاولة: لا توجد أوراق'}
+              onClick={() => readTrickRef.current()}
+            >
               {g.phase === 'bidding' && g.qaba && (
                 <div className="trick-slot qaba-slot">
                   <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="ورقة الأرض" />
@@ -233,7 +240,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             </div>
           </section>
 
-          <p role="status" className="turn-line">
+          {/* ليس منطقة حية: "دورك" يُعلن مرة واحدة، وتحديثها مع كل ورقة كان يقطع إعلانات اللعب */}
+          <p className="turn-line">
             {g.phase === 'matchOver'
               ? (g.outcome.status === 'won' ? (g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر') : '')
               : myTurn ? 'دورك' : g.phase === 'doubling' ? 'بانتظار قرار الدبل' : `دور ${name(g.turn)}`}
