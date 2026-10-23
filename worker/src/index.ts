@@ -17,6 +17,17 @@ const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 
 export default {
+  /** تنظيف دوري: إزالة الطاولات المغلقة/المهجورة من قائمة الانضمام */
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+    const ids = await db.listIds('tables');
+    for (const id of ids) {
+      if (!/^[0-9a-f]{64}$/.test(id)) { await db.remove('tables', id); continue; }
+      const alive = await env.TABLES.get(env.TABLES.idFromString(id)).checkAlive().catch(() => false);
+      if (!alive) await db.remove('tables', id);
+    }
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       return await handle(request, env);

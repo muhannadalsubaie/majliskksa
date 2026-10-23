@@ -167,4 +167,14 @@ export class Firestore {
     });
     if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
   }
+
+  /** معرّفات مستندات مجموعة (حتى 300) */
+  async listIds(collection: string): Promise<string[]> {
+    const res = await fetch(`${this.base()}/${collection}?pageSize=300&mask.fieldPaths=status`, {
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
+    });
+    if (!res.ok) throw new Error(`firestore ${res.status}`);
+    const data = (await res.json()) as { documents?: { name: string }[] };
+    return (data.documents ?? []).map((d) => d.name.split('/').pop()!);
+  }
 }

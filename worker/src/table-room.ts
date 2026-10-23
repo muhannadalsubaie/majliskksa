@@ -131,6 +131,20 @@ export class TableRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * فحص دوري من التنظيف: هل الطاولة ما زالت حية؟
+   * إن لم يكن فيها أحد متصل نبدأ مهلة الإغلاق (إن لم تكن بدأت).
+   */
+  async checkAlive(): Promise<boolean> {
+    const t = await this.load();
+    if (!t) return false;
+    if (this.connectedCount() === 0 && !(await this.ctx.storage.get<number>('emptySince'))) {
+      await this.ctx.storage.put('emptySince', Date.now());
+      await this.ctx.storage.setAlarm(Date.now() + this.grace());
+    }
+    return true;
+  }
+
   async isMember(uid: string): Promise<boolean> {
     const t = await this.load();
     return !!t && (seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid));
