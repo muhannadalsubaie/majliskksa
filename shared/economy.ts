@@ -9,4 +9,5 @@ export const COINS = {
 } as const;
 
 export const BOT_REPLACE_AFTER_MS = 3 * 60 * 1000;
-export const BOT_THINK_MS = { min: 800, max: 2000 } as const;
+// وقت تفكير الروبوت قبل كل حركة (أبطأ قليلاً ليسهل متابعته مع قارئ الشاشة)
+export const BOT_THINK_MS = { min: 1200, max: 2600 } as const;

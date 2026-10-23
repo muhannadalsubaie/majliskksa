@@ -241,10 +241,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             </div>
           )}
 
-          {(g.actions.canProject || g.actions.canBaloot) && (
+          {g.actions.canBaloot && (
             <div className="action-row">
-              {g.actions.canProject && <button onClick={() => act({ type: 'declareProject' })}>مشروع</button>}
-              {g.actions.canBaloot && <button onClick={() => act({ type: 'declareBaloot' })}>بلوت</button>}
+              <button onClick={() => act({ type: 'declareBaloot' })}>بلوت</button>
             </div>
           )}
 

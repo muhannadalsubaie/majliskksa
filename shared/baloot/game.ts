@@ -278,7 +278,12 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   const c = s.contract!;
   const hands = s.hands.map((h, i) => (i === seat ? h.filter((x) => !sameCard(x, card)) : h));
   const trick = [...s.trick, { seat, card }];
-  let next: GameState = { ...s, hands, trick, turn: nextSeat(seat) };
+  // الإعلان عن المشاريع إجباري وتلقائي: يُسجَّل مع أول ورقة يلعبها صاحبه
+  const declared = s.trickNo === 0 && !s.declared.some((d) => d.seat === seat)
+    && findProjects(s.initialHands[seat], c.mode).length > 0
+    ? [...s.declared, { seat, projects: findProjects(s.initialHands[seat], c.mode) }]
+    : s.declared;
+  let next: GameState = { ...s, hands, trick, declared, turn: nextSeat(seat) };
   if (trick.length < 4) return next;
 
   const winner = trickWinner(trick, c.mode, c.trump);
@@ -290,7 +295,7 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   if (s.trickNo === 7) cardAbnat[team] += LAST_TRICK_BONUS;
 
   next = { ...next, trick: [], lastTrick: { cards: trick, winner }, trickNo: s.trickNo + 1, tricksWon, cardAbnat, turn: winner };
-  if (s.trickNo === 0) next.projects = resolveProjects(s.declared, nextSeat(s.dealer));
+  if (s.trickNo === 0) next.projects = resolveProjects(next.declared, nextSeat(s.dealer));
   if (next.trickNo < 8) return next;
   return finishHand(next);
 }

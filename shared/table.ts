@@ -164,7 +164,10 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     case 'declareBaloot':
       events.push(`${who}: بلوت`);
       break;
-    case 'play':
+    case 'play': {
+      // إعلان المشروع التلقائي قبل الورقة
+      const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
+      if (newly) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       events.push(`${who}: ${cardLabel(action.card)}`);
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
@@ -193,6 +196,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         if (after.outcome.status === 'tiebreak') events.push('تعادل — جولة فاصلة');
       }
       break;
+    }
   }
   void rng;
   return { table: { ...t, game: after }, events };
