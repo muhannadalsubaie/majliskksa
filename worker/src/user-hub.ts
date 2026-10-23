@@ -109,6 +109,28 @@ export class UserHub extends DurableObject<Env> {
     return found;
   }
 
+  /**
+   * تسجيل مكافأة إعلان: يمنع تكرار نفس العملية، ويطبق الحد اليومي (بتوقيت السعودية).
+   * يرجع 'ok' أو سبب الرفض.
+   */
+  async claimAdReward(transactionId: string, maxPerDay: number): Promise<'ok' | 'duplicate' | 'daily-limit'> {
+    const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+    const log = (await this.ctx.storage.get<{ day: string; count: number; tx: string[] }>('ads')) ?? { day, count: 0, tx: [] };
+    if (log.day !== day) { log.day = day; log.count = 0; }
+    if (transactionId && log.tx.includes(transactionId)) return 'duplicate';
+    if (log.count >= maxPerDay) return 'daily-limit';
+    log.count++;
+    if (transactionId) log.tx = [...log.tx, transactionId].slice(-50);
+    await this.ctx.storage.put('ads', log);
+    return 'ok';
+  }
+
+  async adsLeftToday(maxPerDay: number): Promise<number> {
+    const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+    const log = await this.ctx.storage.get<{ day: string; count: number }>('ads');
+    return log?.day === day ? Math.max(0, maxPerDay - log.count) : maxPerDay;
+  }
+
   // ───── اتصال التطبيق ─────
 
   async fetch(request: Request): Promise<Response> {

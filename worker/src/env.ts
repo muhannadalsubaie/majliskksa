@@ -10,4 +10,6 @@ export interface Env {
   HUBS: DurableObjectNamespace<UserHub>;
   /** للتطوير المحلي فقط (ملف .dev.vars): يسمح بتوكنات وهمية ويتجاوز العملات. لا يُضبط في الإنتاج أبداً. */
   DEV_AUTH?: string;
+  /** "1" = نقبل مكافأة الإعلانات التجريبية بلا SSV (أثناء التطوير بإعلانات Google التجريبية فقط) */
+  ADS_TEST_REWARDS?: string;
 }

@@ -1,8 +1,9 @@
-import { COINS } from '../../shared/economy';
+import { COINS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore } from './firestore';
+import { verifySsv } from './ads';
 
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
@@ -77,6 +78,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const headers = new Headers(request.headers);
       headers.set('X-Uid', wsUser.uid);
       return stub.fetch(new Request(request, { headers }));
+    }
+
+    // مكافأة إعلان: Google تستدعي هذا الرابط (موقّعاً) بعد مشاهدة الإعلان كاملاً
+    if (pathname === '/ads/ssv') {
+      const reward = await verifySsv(url);
+      if (!reward || !reward.userId) return json({ error: 'invalid' }, 400);
+      const verdict = await env.HUBS.get(env.HUBS.idFromName(reward.userId)).claimAdReward(reward.transactionId, MAX_ADS_PER_DAY);
+      if (verdict === 'ok') {
+        await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).adjustCoins(reward.userId, COINS.watchAdReward);
+      }
+      return json({ ok: true, verdict }); // نرد 200 دائماً حتى لا تعيد Google المحاولة
     }
 
     // اتصال التطبيق بمركز اللاعب (الأصدقاء والحالة والدعوات)
@@ -162,6 +174,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       await db.update('users', user.uid, { username });
       return json({ ok: true, username });
+    }
+
+    // ───── الإعلانات ─────
+    if (pathname === '/ads/status' && request.method === 'POST') {
+      return json({ left: await hub(user.uid).adsLeftToday(MAX_ADS_PER_DAY), testMode: env.ADS_TEST_REWARDS === '1' });
+    }
+    // وضع التجربة فقط: إعلانات Google التجريبية لا ترسل SSV، فنقبل تأكيد التطبيق مع نفس الحد اليومي
+    if (pathname === '/ads/test-reward' && request.method === 'POST') {
+      if (env.ADS_TEST_REWARDS !== '1') return json({ error: 'disabled' }, 403);
+      const verdict = await hub(user.uid).claimAdReward('', MAX_ADS_PER_DAY);
+      if (verdict !== 'ok') return json({ error: verdict }, 429);
+      if (!devAuth) await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).adjustCoins(user.uid, COINS.watchAdReward);
+      return json({ ok: true });
     }
 
     // ───── الأصدقاء ─────

@@ -5,6 +5,7 @@ import { COINS } from '../../shared/economy';
 import type { TableView } from '../../shared/table';
 import { announce } from '../services/announcer';
 import type { ClientMessage } from '../services/tables';
+import { watchRewardedAd } from '../services/ads';
 import { type Friend, inviteFriend, listFriends, socialError } from '../services/social';
 
 interface Props {
@@ -76,7 +77,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           {isOwner && (
             <button className="secondary" onClick={() => setPage('invite')}>دعوة صديق</button>
           )}
-          <button className="secondary" onClick={() => announce('مشاهدة الإعلانات تتوفر في تطبيق الجوال قريباً')}>
+          <button className="secondary" onClick={() => void watchRewardedAd()}>
             مشاهدة إعلان (+{COINS.watchAdReward} 🪙)
           </button>
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
