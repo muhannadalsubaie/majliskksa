@@ -21,8 +21,8 @@ export function SplashScreen({ navigate }: { navigate: Navigate }) {
 
   return (
     <main className="screen center" aria-labelledby="splash-title">
-      <img src="/icon.svg" alt="" width={120} height={120} />
-      <h1 id="splash-title">مجلسك</h1>
+      <img src="/icon.png" alt="" className="app-logo" width={160} height={160} />
+      <h1 id="splash-title" className="sr-only">مجلسك</h1>
       {status === 'loading' && (
         <>
           <div className="spinner" role="progressbar" aria-label="جارٍ التحميل" />

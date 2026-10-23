@@ -35,7 +35,7 @@ export function ChooseUsernameScreen() {
 
   return (
     <main className="screen" aria-labelledby="choose-title">
-      <img src="/icon.svg" alt="" width={88} height={88} style={{ alignSelf: 'center' }} />
+      <img src="/icon.png" alt="" className="app-logo" width={100} height={100} style={{ alignSelf: 'center' }} />
       <h1 id="choose-title" style={{ textAlign: 'center' }}>اختر اسم المستخدم</h1>
       <p style={{ textAlign: 'center', color: 'var(--text-dim)', margin: 0 }}>
         هذا الاسم يظهر لكل اللاعبين ولا يمكن لأحد غيرك استخدامه.

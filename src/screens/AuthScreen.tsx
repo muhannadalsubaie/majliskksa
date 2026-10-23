@@ -91,7 +91,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
 
   return (
     <main className="screen" aria-labelledby="auth-title">
-      <img src="/icon.svg" alt="" width={88} height={88} style={{ alignSelf: 'center' }} />
+      <img src="/icon.png" alt="" className="app-logo" width={120} height={120} style={{ alignSelf: 'center' }} />
       <h1 id="auth-title" style={{ textAlign: 'center' }}>{isSignup ? 'حساب جديد' : 'تسجيل الدخول'}</h1>
 
       <form className="stack" onSubmit={submit} noValidate>
