@@ -15,7 +15,9 @@ const json = (data: unknown, status = 200) =>
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith('/api/')) return json({ error: 'not-found' }, 404);
+    const pathname = url.pathname.slice(4); // إزالة البادئة /api
 
     if (pathname === '/health') return json({ ok: true });
 

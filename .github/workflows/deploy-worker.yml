@@ -1,4 +1,4 @@
-# نشر خادم مجلسك على Cloudflare Workers تلقائياً عند تعديله.
+# نشر خادم مجلسك + نسخة الويب من التطبيق على Cloudflare Workers تلقائياً.
 # أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, FIREBASE_SERVICE_ACCOUNT
 # (معرّف الحساب موجود في worker/wrangler.jsonc)
 name: Deploy Worker
@@ -8,6 +8,12 @@ on:
     paths:
       - worker/**
       - shared/**
+      - src/**
+      - public/**
+      - index.html
+      - package.json
+      - package-lock.json
+      - .env
       - .github/workflows/deploy-worker.yml
   workflow_dispatch:
 
@@ -23,6 +29,8 @@ jobs:
           node-version: 22
       - name: Tests
         run: npm ci && npm test
+      - name: Build web app
+        run: npm run build
       - name: Install worker deps
         run: npm ci --prefix worker
       - name: Ensure workers.dev subdomain
