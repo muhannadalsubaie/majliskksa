@@ -46,7 +46,6 @@ export type ClientMessage =
 export function useTable(tableId: string) {
   const [view, setView] = useState<TableView | null>(null);
   const [connected, setConnected] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const closedByUs = useRef(false);
 
@@ -68,7 +67,6 @@ export function useTable(tableId: string) {
         const msg = JSON.parse(e.data as string);
         if (msg.type === 'state') setView(msg.view);
         if (msg.type === 'events') {
-          setLog((l) => [...l, ...msg.events].slice(-60));
           // كل حدث إعلان مستقل حتى يقرأها قارئ الشاشة بالترتيب
           for (const e of msg.events as string[]) announce(e);
         }
@@ -96,5 +94,5 @@ export function useTable(tableId: string) {
     else announce('جارٍ إعادة الاتصال بالطاولة…');
   }, []);
 
-  return { view, connected, log, send };
+  return { view, connected, send };
 }

@@ -90,6 +90,4 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .action-row button { flex: 1 1 30%; min-width: 90px; }
 .seat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--green-800); border-radius: var(--radius); padding: 10px 14px; min-height: 52px; }
 .seat-row button { padding: 8px 12px; }
-.log { background: var(--green-800); border-radius: var(--radius); padding: 10px 14px; max-height: 40vh; overflow: auto; }
-.log ol { margin: 0; padding-inline-start: 20px; }
 .table-row { display: flex; justify-content: space-between; width: 100%; text-align: start; }

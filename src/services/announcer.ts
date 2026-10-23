@@ -8,7 +8,7 @@ import { isScreenReaderOn } from './screenReader';
 
 let liveRegion: HTMLElement | null = null;
 let speechEnabled = loadSpeechSetting();
-const MAX_LINES = 20;
+const MAX_LINES = 3;
 
 function loadSpeechSetting(): boolean {
   // مغلق افتراضياً: مستخدمو TalkBack/VoiceOver يسمعون الأحداث من قارئهم مباشرة،

@@ -42,10 +42,9 @@ const sortHand = (hand: Card[]) =>
   [...hand].sort((a, b) => SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank));
 
 export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: string; navigate: Navigate }) {
-  const { view, connected, log, send } = useTable(tableId);
+  const { view, connected, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [lockChoice, setLockChoice] = useState(false);
-  const [showLog, setShowLog] = useState(false);
   const wasMyTurn = useRef(false);
 
   const g = view?.game ?? null;
@@ -77,35 +76,40 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     }
     return g.trick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
   };
-  const readTrick = () => announce(trickSummary());
-  const readTrickRef = useRef(readTrick);
-  readTrickRef.current = readTrick;
+  const readTrickRef = useRef(() => {});
+  readTrickRef.current = () => announce(trickSummary());
 
-  // إيماءة سحب من اليمين لليسار لقراءة ما على الطاولة:
-  // - مع قارئ التطبيق المدمج: سحب بإصبعين
-  // - بدونه (ومع TalkBack الذي يمرر سحب الإصبعين للتطبيق كسحبة واحدة): أي سحبة أفقية سريعة
+  // إيماءة: سحب بإصبعين من اليمين لليسار = قراءة ما على الطاولة ومن لعبه.
+  // قارئ التطبيق المدمج يرسلها كحدث، وبدونه نرصد الإصبعين هنا مباشرة.
   useEffect(() => {
     const onTwo = () => readTrickRef.current();
     window.addEventListener(TWO_FINGER_LEFT, onTwo);
-    let startPt: { x: number; y: number; t: number } | null = null;
+    let two: { x: number; y: number; t: number } | null = null;
+    let last = { x: 0, y: 0 };
+    const mid = (e: TouchEvent) => ({
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+    });
     const onStart = (e: TouchEvent) => {
       if (isScreenReaderOn()) return;
-      const t = e.touches[0];
-      startPt = { x: t.clientX, y: t.clientY, t: performance.now() };
+      if (e.touches.length === 2) { last = mid(e); two = { ...last, t: performance.now() }; }
+      else if (e.touches.length > 2) two = null;
     };
+    const onMove = (e: TouchEvent) => { if (two && e.touches.length === 2) last = mid(e); };
     const onEnd = (e: TouchEvent) => {
-      if (!startPt || isScreenReaderOn()) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - startPt.x;
-      const dy = t.clientY - startPt.y;
-      if (dx < -70 && Math.abs(dy) < 60 && performance.now() - startPt.t < 700) readTrickRef.current();
-      startPt = null;
+      if (!two || e.touches.length > 0) return;
+      const dx = last.x - two.x;
+      const dy = last.y - two.y;
+      if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6 && performance.now() - two.t < 800) readTrickRef.current();
+      two = null;
     };
     window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: true });
     window.addEventListener('touchend', onEnd, { passive: true });
     return () => {
       window.removeEventListener(TWO_FINGER_LEFT, onTwo);
       window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
     };
   }, []);
@@ -132,9 +136,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   return (
     <main className="screen table-screen" aria-labelledby="table-title">
       <header className="topbar">
-        <button className="secondary" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog}>سجل اللعب</button>
         <h1 id="table-title" className="sr-only">الطاولة</h1>
-        {g && <button className="secondary" onClick={readTrick}>وش على الطاولة؟</button>}
+        <span />
         <button className="secondary" onClick={() => setConfirmLeave(true)}>مغادرة</button>
       </header>
 
@@ -157,12 +160,6 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
         </p>
       )}
 
-      {showLog && (
-        <section aria-labelledby="log-title" className="log">
-          <h2 id="log-title" style={{ fontSize: 17 }}>سجل اللعب</h2>
-          <ol>{[...log].reverse().slice(0, 25).map((e, i) => <li key={i}>{e}</li>)}</ol>
-        </section>
-      )}
 
       {/* ───── قبل بدء المباراة: المقاعد ───── */}
       {!g && (
