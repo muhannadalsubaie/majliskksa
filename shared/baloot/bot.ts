@@ -104,8 +104,14 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
     return bids.reduce((a, b) => (hokmStrength(withQaba, (b as { suit: Suit }).suit) > hokmStrength(withQaba, (a as { suit: Suit }).suit) ? b : a));
   }
 
-  const partnerBid = s.hokmBid && teamOf(s.hokmBid.seat) === teamOf(seat);
   const sun = sunStrength(withQaba);
+  // قبلك: نأخذ الصن من اللاعب الذي بعدنا إن كانت يدنا تصلح صناً (والقائل ليس شريكنا)
+  if (bids.some((b) => b.type === 'qablak')) {
+    const callerIsPartner = s.sunClaim && teamOf(s.sunClaim.caller) === teamOf(seat);
+    return !callerIsPartner && sun >= p.sun + 0.5 ? { type: 'qablak' } : { type: 'pass' };
+  }
+
+  const partnerBid = s.hokmBid && teamOf(s.hokmBid.seat) === teamOf(seat);
   const sunNeeded = p.sun + (partnerBid ? p.overPartner : 0);
   if (bids.some((b) => b.type === 'sun') && sun >= sunNeeded) return { type: 'sun' };
 

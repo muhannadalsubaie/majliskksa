@@ -17,7 +17,8 @@ export type Bid =
   | { type: 'hokm'; suit: Suit }
   | { type: 'sun' }
   | { type: 'ashkal' }
-  | { type: 'secondHokm' };
+  | { type: 'secondHokm' }
+  | { type: 'qablak' };
 
 export interface Contract {
   mode: GameMode;
@@ -55,6 +56,11 @@ export interface GameState {
    * remaining = عدد من بقي عليهم الدور، 0 = صاحب الثاني يختار اللون الآن.
    */
   secondHokm: { seat: Seat; remaining: number } | null;
+  /**
+   * "قبلك": عندما يقول لاعب صن، يُعطى اللاعب الذي قبله مباشرة (وقد تكلّم في نفس اللفة)
+   * فرصة أخذ الصن والقبلة بدلاً منه، فيصبح هو المشتري.
+   */
+  sunClaim: { caller: Seat; challenger: Seat } | null;
   contract: Contract | null;
   doubling: DoublingState;
   initialHands: Card[][];
@@ -107,7 +113,7 @@ export function dealHand(dealer: Seat, scores: [number, number], rng: Rng): Game
   }
   return {
     phase: 'bidding', dealer, scores, turn: nextSeat(dealer), hands, qaba: deck[20], stock: deck.slice(21),
-    bidRound: 1, bidsInRound: 0, hokmBid: null, secondHokm: null, contract: null, doubling: freshDoubling(),
+    bidRound: 1, bidsInRound: 0, hokmBid: null, secondHokm: null, sunClaim: null, contract: null, doubling: freshDoubling(),
     initialHands: [], declared: [], projects: null, balootSeat: null,
     trick: [], lastTrick: null, trickNo: 0, tricksWon: [0, 0], cardAbnat: [0, 0], lastHand: null, outcome: { status: 'ongoing' },
   };
@@ -120,6 +126,8 @@ export function newMatch(rng: Rng, dealer: Seat = 0): GameState {
 /** الأزرار المتاحة للاعب في المزايدة. */
 export function availableBids(s: GameState, seat: Seat): Bid[] {
   if (s.phase !== 'bidding' || s.turn !== seat || !s.qaba) return [];
+  // "قبلك": اللاعب الذي قبل قائل الصن يقرر
+  if (s.sunClaim) return seat === s.sunClaim.challenger ? [{ type: 'pass' }, { type: 'qablak' }] : [];
   const otherSuits = (['S', 'H', 'C', 'D'] as Suit[]).filter((suit) => suit !== s.qaba!.suit);
   // صاحب "حكم ثاني" بعد أن قال الجميع بس: يختار لوناً غير لون القبلة
   if (s.secondHokm?.remaining === 0) return otherSuits.map((suit) => ({ type: 'hokm', suit }));
@@ -127,10 +135,11 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
   if (s.bidRound === 1) {
     bids.push({ type: 'hokm', suit: s.qaba.suit });
-    bids.push({ type: 'secondHokm' });
-    if (seat === nextSeat(s.dealer, 2)) bids.push({ type: 'ashkal' });
+    // أشكل: للاعب الذي بعد الموزع ولشريك الموزع
+    if (seat === nextSeat(s.dealer, 1) || seat === nextSeat(s.dealer, 2)) bids.push({ type: 'ashkal' });
   } else {
-    for (const suit of ['S', 'H', 'C', 'D'] as Suit[]) if (suit !== s.qaba.suit) bids.push({ type: 'hokm', suit });
+    // اللفة الثانية (بعد أن قال الجميع بس): حكم ثاني
+    bids.push({ type: 'secondHokm' });
   }
   return bids;
 }
@@ -164,7 +173,21 @@ function finalizeContract(s: GameState, contract: Contract): GameState {
 function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   if (!availableBids(s, seat).some((b) => bidEquals(b, bid))) fail('مزايدة غير مسموحة');
 
-  if (bid.type === 'sun') return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: seat });
+  // ───── قبلك ─────
+  if (s.sunClaim) {
+    const { caller, challenger } = s.sunClaim;
+    const buyer = bid.type === 'qablak' ? challenger : caller;
+    return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer, qabaTo: buyer });
+  }
+
+  if (bid.type === 'sun') {
+    // إن تكلّم أحد قبله في هذه اللفة، يُعطى اللاعب الذي قبله مباشرة فرصة "قبلك"
+    if (!s.secondHokm && s.bidsInRound > 0) {
+      const challenger = nextSeat(seat, 3);
+      return { ...s, sunClaim: { caller: seat, challenger }, turn: challenger };
+    }
+    return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: seat });
+  }
   if (bid.type === 'ashkal') {
     return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: nextSeat(seat, 2) });
   }

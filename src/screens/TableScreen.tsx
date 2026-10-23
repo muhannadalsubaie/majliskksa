@@ -41,6 +41,7 @@ function bidLabel(b: Bid): string {
     case 'sun': return 'صن';
     case 'ashkal': return 'أشكل';
     case 'secondHokm': return 'حكم ثاني';
+    case 'qablak': return 'قبلك';
     case 'hokm': return `حكم ${SUIT_NAMES[b.suit]} ${SUIT_SYMBOLS[b.suit]}`;
   }
 }
