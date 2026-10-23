@@ -52,3 +52,15 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .rate-row button { flex: 1; }
 .rate-row output { min-width: 64px; text-align: center; color: var(--gold); font-weight: 700; }
 .note { color: var(--text-dim); font-size: 14px; margin: 0; }
+/* مفتاح تشغيل/إيقاف */
+.switch-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  background: var(--green-800); color: var(--text); border: 1px solid var(--green-700);
+  padding: 14px 16px; min-height: 56px; text-align: start; font-weight: 600;
+}
+.switch-row.on { border-color: var(--gold); }
+.switch-track { flex: none; width: 50px; height: 28px; border-radius: 14px; background: var(--green-700); position: relative; transition: background .15s; }
+.switch-thumb { position: absolute; top: 3px; inset-inline-start: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--text-dim); transition: inset-inline-start .15s, background .15s; }
+.switch-row.on .switch-track { background: var(--gold); }
+.switch-row.on .switch-thumb { inset-inline-start: 25px; background: var(--green-900); }
+@media (prefers-reduced-motion: reduce) { .switch-track, .switch-thumb { transition: none; } }

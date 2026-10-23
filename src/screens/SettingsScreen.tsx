@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Switch } from '../components/Switch';
+import { isMuted, setMuted } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
 import { isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
 import { isScreenReaderOn, setScreenReader } from '../services/screenReader';
@@ -10,6 +12,7 @@ import type { Navigate } from '../state/navigation';
 export function SettingsScreen({ navigate }: { navigate: Navigate }) {
   const [speech, setSpeech] = useState(isSpeechEnabled());
   const [reader, setReader] = useState(isScreenReaderOn());
+  const [muted, setMutedState] = useState(isMuted());
   const [rate, setRate] = useState(getSpeechRate());
 
   const changeRate = (delta: number) => {
@@ -28,28 +31,29 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
 
       <section aria-labelledby="sec-sound" className="stack">
         <h2 id="sec-sound">الصوت</h2>
-        <label><input type="checkbox" style={{ width: 'auto' }} /> كتم عام لجميع الأصوات</label>
+        <Switch
+          label="كتم عام لجميع الأصوات"
+          checked={muted}
+          onChange={(on) => { setMutedState(on); setMuted(on); }}
+          description="يكتم مؤثرات اللعبة. النطق وقارئ الشاشة لهما إعدادات منفصلة."
+        />
       </section>
 
       <section aria-labelledby="sec-a11y" className="stack">
         <h2 id="sec-a11y">إمكانية الوصول</h2>
-        <label>
-          <input
-            type="checkbox" style={{ width: 'auto' }} checked={speech}
-            onChange={(e) => { setSpeech(e.target.checked); setSpeechEnabled(e.target.checked); }}
-          /> نطق أحداث اللعبة تلقائياً
-        </label>
+        <Switch
+          label="نطق أحداث اللعبة تلقائياً"
+          checked={speech}
+          onChange={(on) => { setSpeech(on); setSpeechEnabled(on); }}
+          description="ينطق الأوراق والمزايدة والدبل والأكلات أثناء اللعب."
+        />
 
-        <label>
-          <input
-            type="checkbox" style={{ width: 'auto' }} checked={reader}
-            onChange={(e) => { setReader(e.target.checked); setScreenReader(e.target.checked); }}
-          /> قارئ الشاشة المدمج (المس للاستماع، المس مرتين للتفعيل)
-        </label>
-        <p className="note">
-          اسحب يميناً أو يساراً للتنقل بين العناصر، واستخدم إصبعين للتمرير.
-          إذا كنت تستخدم TalkBack أو VoiceOver فاترك هذا الخيار مغلقاً.
-        </p>
+        <Switch
+          label="قارئ الشاشة المدمج"
+          checked={reader}
+          onChange={(on) => { setReader(on); setScreenReader(on); }}
+          description="المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل، وإصبعين للتمرير. إذا كنت تستخدم TalkBack أو VoiceOver فاترك هذا الخيار مغلقاً."
+        />
 
         <h3 id="rate-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة النطق</h3>
         <div className="rate-row" role="group" aria-labelledby="rate-title">

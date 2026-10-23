@@ -16,7 +16,11 @@ const TITLES: Record<ScreenName, string> = {
 };
 
 export default function App() {
-  const [screen, setScreen] = useState<ScreenName>('splash');
+  const [screen, setScreen] = useState<ScreenName>(() => {
+    // للتطوير فقط: فتح شاشة مباشرة عبر ?screen=settings
+    const dev = import.meta.env.DEV ? new URLSearchParams(location.search).get('screen') : null;
+    return (dev as ScreenName | null) ?? 'splash';
+  });
   const liveRef = useRef<HTMLDivElement>(null);
   const wasSignedIn = useRef(false);
   const { user, profile } = useProfile();

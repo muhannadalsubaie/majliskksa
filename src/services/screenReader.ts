@@ -84,7 +84,12 @@ export function describe(el: HTMLElement): string {
   const role = el.getAttribute('role');
   const parts: string[] = [label];
 
-  if (el instanceof HTMLInputElement && (el.type === 'checkbox' || role === 'switch')) {
+  if (role === 'switch') {
+    parts.push('مفتاح', el.getAttribute('aria-checked') === 'true' ? 'مفعّل' : 'غير مفعّل');
+    const hintId = el.getAttribute('aria-describedby');
+    const hint = hintId ? textOf(document.getElementById(hintId)) : '';
+    if (hint) parts.push(hint);
+  } else if (el instanceof HTMLInputElement && el.type === 'checkbox') {
     parts.push('مربع اختيار', el.checked ? 'محدد' : 'غير محدد');
   } else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
     parts.push(el.type === 'password' ? 'حقل كلمة مرور' : 'حقل تعديل');
@@ -177,7 +182,7 @@ function activate() {
   allowNextClick = false;
   // بعد التفعيل: أعد وصف العنصر إن بقي في الصفحة (مثل مربع اختيار تغيّرت حالته)
   setTimeout(() => {
-    if (current && document.contains(current) && current instanceof HTMLInputElement && current.type === 'checkbox') {
+    if (current && document.contains(current) && (current.getAttribute('role') === 'switch' || (current instanceof HTMLInputElement && current.type === 'checkbox'))) {
       speak(describe(current), true);
     }
   }, 60);
@@ -186,6 +191,7 @@ function activate() {
 // ───── معالجة اللمس ─────
 
 let allowNextClick = false;
+let lastHandledTouch = 0;
 
 function onTouchStart(e: TouchEvent) {
   if (e.touches.length > 1) { multiTouch = true; start = null; return; } // إصبعان: تمرير
@@ -220,6 +226,7 @@ function onTouchEnd(e: TouchEvent) {
   if (multiTouch) { if (e.touches.length === 0) { multiTouch = false; lastScrollY = null; } return; }
   if (!start) return;
   e.preventDefault();
+  lastHandledTouch = performance.now();
   const t = e.changedTouches[0];
   const dx = t.clientX - start.x;
   const dy = t.clientY - start.y;
@@ -243,10 +250,12 @@ function onTouchEnd(e: TouchEvent) {
   }
 }
 
-// يمنع النقرات العادية (من اللمس) حتى لا يُفعَّل شيء بلمسة واحدة
+// يمنع فقط النقرات الناتجة عن لمسة عالجناها نحن (حتى لا تُفعِّل اللمسة الواحدة شيئاً).
+// النقرات القادمة من TalkBack/VoiceOver أو لوحة المفاتيح لا تسبقها لمسة عندنا فتمر طبيعياً.
 function onClick(e: MouseEvent) {
-  if (allowNextClick || e.detail === 0) return;
-  if ((e as PointerEvent).pointerType === 'mouse') return;
+  if (allowNextClick) return;
+  if ((e as PointerEvent).pointerType !== 'touch') return; // لوحة مفاتيح/قارئ نظام/نقرة برمجية
+  if (performance.now() - lastHandledTouch > 700) return;
   e.preventDefault();
   e.stopPropagation();
 }
