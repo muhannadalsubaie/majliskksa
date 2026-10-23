@@ -65,15 +65,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   useEffect(() => { if (!g || g.actions.double === null) setLockChoice(false); }, [g]);
 
-  /** وصف الأكلة الحالية: من لعب ماذا وبالترتيب، ومن الأعلى حالياً */
+  /** الأوراق الموجودة على الطاولة الآن ومن لعب كل ورقة، بالترتيب */
   const trickSummary = (): string => {
-    if (!g) return 'المباراة لم تبدأ بعد';
-    if (g.phase === 'bidding') return g.qaba ? `المزايدة جارية. ورقة الأرض: ${cardLabel(g.qaba)}` : 'المزايدة جارية';
-    if (g.trick.length === 0) {
-      if (!g.lastTrick) return 'لا توجد أوراق على الطاولة';
-      const prev = g.lastTrick.cards.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
-      return `لا توجد أوراق على الطاولة. الأكلة السابقة لـ${name(g.lastTrick.winner)}: ${prev}`;
-    }
+    if (!g || g.trick.length === 0) return 'لا توجد أوراق على الطاولة';
     return g.trick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
   };
   const readTrickRef = useRef(() => {});
