@@ -5,6 +5,7 @@
   "account_id": "ea9eb2bdb9c44e3c7a79f118b2f159c6",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  "workers_dev": true,
   "vars": {
     "FIREBASE_PROJECT_ID": "majlisk-87eef"
   }
