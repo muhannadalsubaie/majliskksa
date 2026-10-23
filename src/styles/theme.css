@@ -68,18 +68,46 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .app-logo { align-self: center; border-radius: 22%; box-shadow: 0 6px 24px #0008, 0 0 0 1px #d4af3755; }
 /* ───── الطاولة ───── */
 .table-screen { padding-bottom: 96px; }
-.scores { display: flex; justify-content: space-between; align-items: center; background: var(--green-800); border: 1px solid var(--green-700); border-radius: var(--radius); padding: 10px 16px; font-size: 18px; }
-.scores strong { color: var(--gold); font-size: 22px; }
+.scores { display: flex; justify-content: space-between; align-items: stretch; gap: 10px; }
+.score-box { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: var(--green-800); border: 1px solid var(--green-700); border-radius: var(--radius); padding: 8px 4px; }
+.score-box.us { border-color: var(--gold); }
+.score-label { font-size: 14px; color: var(--text-dim); font-weight: 600; }
+.score-box strong { font-size: 30px; line-height: 1; color: var(--gold); }
+.score-goal { align-self: center; font-size: 13px; color: var(--text-dim); border: 1px dashed var(--green-700); border-radius: 999px; padding: 4px 10px; }
 .status-line { margin: 0; text-align: center; color: var(--gold-soft); font-weight: 700; }
 .turn-line { margin: 0; text-align: center; font-weight: 700; min-height: 1.4em; }
-.board { display: grid; grid-template-columns: 1fr 1.2fr 1fr; grid-template-rows: auto auto; gap: 8px; align-items: center; }
+.board {
+  display: grid; gap: 6px; align-items: center;
+  grid-template-columns: 1fr 1.6fr 1fr;
+  grid-template-areas: ". top ." "right center left";
+  background: radial-gradient(ellipse at center, #1b4d3966, transparent 70%);
+  border-radius: 24px; padding: 6px 0;
+}
 .player { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: var(--radius); border: 1px solid transparent; text-align: center; }
 .player.turn { border-color: var(--gold); background: #d4af3714; }
 .player-name { font-weight: 700; font-size: 15px; }
-.pos-2 { grid-column: 2; grid-row: 1; }
-.pos-1 { grid-column: 1; grid-row: 2; }
-.pos-3 { grid-column: 3; grid-row: 2; }
-.center-area { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 90px; justify-content: center; }
+.pos-2 { grid-area: top; }
+.pos-1 { grid-area: right; }
+.pos-3 { grid-area: left; }
+/* وسط الطاولة: كل ورقة في جهة لاعبها */
+.trick-area {
+  grid-area: center; position: relative; aspect-ratio: 1 / 1.1; min-height: 160px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr;
+  grid-template-areas: ". t ." "r q l" ". b .";
+  place-items: center; border-radius: 50%; border: 1px solid #d4af3733; background: #0b241b;
+}
+.trick-slot { animation-duration: .35s; animation-timing-function: ease-out; animation-fill-mode: both; }
+.trick-slot .card-face { width: 42px; height: 58px; font-size: 16px; box-shadow: 0 3px 8px #0008; }
+.from-2 { grid-area: t; animation-name: fall-top; }
+.from-1 { grid-area: r; animation-name: fall-right; }
+.from-3 { grid-area: l; animation-name: fall-left; }
+.from-0 { grid-area: b; animation-name: fall-bottom; }
+.qaba-slot { grid-area: q; }
+@keyframes fall-top { from { transform: translateY(-70px) scale(.8); opacity: 0; } }
+@keyframes fall-bottom { from { transform: translateY(90px) scale(.8); opacity: 0; } }
+@keyframes fall-right { from { transform: translateX(70px) scale(.8); opacity: 0; } }
+@keyframes fall-left { from { transform: translateX(-70px) scale(.8); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .trick-slot { animation: none; } }
 .card-face { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 46px; height: 64px; border-radius: 8px; background: #f8f3e3; color: #0d2b20; font-weight: 800; font-size: 18px; line-height: 1.1; border: 2px solid var(--gold); direction: ltr; }
 .card-face.red { color: #a3202a; }
 .hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }

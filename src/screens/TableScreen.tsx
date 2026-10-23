@@ -165,10 +165,12 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       {!connected && <p role="status" className="note">انقطع الاتصال — جارٍ إعادة المحاولة…</p>}
 
       {g && (
-        <section aria-label="النقاط" className="scores">
-          <span>لنا <strong>{scoreUs}</strong></span>
-          <span className="note">من 152</span>
-          <span>لهم <strong>{scoreThem}</strong></span>
+        <section className="scores" aria-labelledby="score-text">
+          {/* جملة واحدة كاملة لقارئ الشاشة */}
+          <p id="score-text" className="sr-only">النقاط: لنا {scoreUs}، لهم {scoreThem}. الفوز عند 152</p>
+          <div className="score-box us" aria-hidden="true"><span className="score-label">لنا</span><strong>{scoreUs}</strong></div>
+          <div className="score-goal" aria-hidden="true">152</div>
+          <div className="score-box them" aria-hidden="true"><span className="score-label">لهم</span><strong>{scoreThem}</strong></div>
         </section>
       )}
 
@@ -188,10 +190,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       {/* ───── اللعب ───── */}
       {g && (
         <>
-          <section aria-label="اللاعبون والأكلة الحالية" className="board">
+          <section aria-label="الطاولة" className="board">
             {([2, 1, 3] as const).map((r) => {
               const seat = ((me + r) % 4) as Seat;
-              const played = g.trick.find((p) => p.seat === seat);
               return (
                 <div key={r} className={`player pos-${r}${g.turn === seat && g.phase !== 'matchOver' ? ' turn' : ''}`}>
                   <p className="player-info">
@@ -203,17 +204,24 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                     <span className="sr-only">، </span>
                     <span className="note">{g.handCounts[seat]} أوراق</span>
                   </p>
-                  {played && <SpokenCard text={`${name(seat)} لعب ${cardLabel(played.card)}`} card={played.card} />}
                 </div>
               );
             })}
-            <div className="center-area">
+            {/* وسط الطاولة: الأوراق تنزل من جهة لاعبها، وتُقرأ بترتيب لعبها */}
+            <div className="trick-area" role="group" aria-label="وسط الطاولة">
               {g.phase === 'bidding' && g.qaba && (
-                <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="القبلة" />
+                <div className="trick-slot qaba-slot">
+                  <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="ورقة الأرض" />
+                </div>
               )}
-              {g.trick.find((p) => p.seat === me) && (
-                <SpokenCard text={`أنت لعبت ${cardLabel(g.trick.find((p) => p.seat === me)!.card)}`} card={g.trick.find((p) => p.seat === me)!.card} />
-              )}
+              {g.trick.map((p) => (
+                <div key={`${g.trickNo}-${p.seat}`} className={`trick-slot from-${rel(p.seat)}`}>
+                  <SpokenCard
+                    text={p.seat === mySeat ? `أنت لعبت ${cardLabel(p.card)}` : `${name(p.seat)} لعب ${cardLabel(p.card)}`}
+                    card={p.card}
+                  />
+                </div>
+              ))}
             </div>
           </section>
 
