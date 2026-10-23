@@ -1,0 +1,11 @@
+{
+  // خادم مجلسك على Cloudflare Workers — الحكَم الوحيد على العملات وقانونية الحركات
+  "name": "majlisk-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    "FIREBASE_PROJECT_ID": "majlisk-87eef"
+  }
+  // الأسرار (تُضبط من GitHub Actions، لا تُكتب هنا):
+  //   FIREBASE_SERVICE_ACCOUNT — ملف JSON لحساب خدمة Firebase
+}

@@ -1,0 +1,36 @@
+# نشر خادم مجلسك على Cloudflare Workers تلقائياً عند تعديله.
+# أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FIREBASE_SERVICE_ACCOUNT
+name: Deploy Worker
+
+on:
+  push:
+    paths:
+      - worker/**
+      - shared/**
+      - .github/workflows/deploy-worker.yml
+  workflow_dispatch:
+
+concurrency: worker-deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests
+        run: npm ci && npm test
+      - name: Install worker deps
+        run: npm ci --prefix worker
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          secrets: |
+            FIREBASE_SERVICE_ACCOUNT
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

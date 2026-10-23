@@ -13,8 +13,8 @@
 │  ├─ state/                التنقل وحالة التطبيق
 │  └─ styles/theme.css      الهوية البصرية (#0d2b20 + #d4af37)
 ├─ shared/                  كود مشترك بين الواجهة والخادم (قواعد البلوت، الاقتصاد)
-├─ functions/               Firebase Cloud Functions — الحكَم الوحيد على قانونية الحركات والعملات
-│  └─ src/vivox/            مولّد توكنات Vivox
+├─ worker/                  خادم Cloudflare Workers — الحكَم الوحيد على قانونية الحركات والعملات
+│  └─ src/vivox.ts          مولّد توكنات Vivox
 ├─ native-plugins/vivox-voice/   إضافة Capacitor الأصلية (Kotlin + Swift)
 ├─ firestore.rules          العميل يقرأ فقط؛ الكتابة من الخادم فقط
 ├─ codemagic.yaml           بناء Android وiOS عند كل push
@@ -32,10 +32,13 @@ npm test                     # اختبارات قواعد اللعبة
 
 إذا تعذّر الاتصال بـFirebase تعرض شاشة البداية زر إعادة المحاولة، وفي وضع التطوير زر "متابعة بدون خادم".
 
-## Cloud Functions
+## الخادم (Cloudflare Workers)
 
 ```bash
-cd functions && npm install && npm run build
+cd worker && npm install && npx wrangler dev
 ```
 
-`npm run build` ينسخ مجلد `shared/` إلى `functions/src/shared/` قبل الترجمة، لأن النشر يرفع مجلد `functions` وحده.
+يُنشر تلقائياً عبر GitHub Actions (`.github/workflows/deploy-worker.yml`) عند تعديل `worker/` أو `shared/`.
+الأسرار المطلوبة في GitHub: `CLOUDFLARE_API_TOKEN`، `CLOUDFLARE_ACCOUNT_ID`، `FIREBASE_SERVICE_ACCOUNT`.
+
+> Firebase مستخدم لتسجيل الدخول وFirestore فقط (الباقة المجانية). قواعد Firestore في `firestore.rules` تُنشر يدوياً من لوحة Firebase.

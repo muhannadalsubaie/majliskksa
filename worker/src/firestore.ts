@@ -1,0 +1,72 @@
+import { SignJWT, importPKCS8 } from 'jose';
+
+interface ServiceAccount { client_email: string; private_key: string; project_id: string }
+
+let cached: { token: string; exp: number } | null = null;
+
+/** توكن وصول OAuth لحساب الخدمة (يُخزّن مؤقتاً حتى قرب انتهائه). */
+async function accessToken(serviceAccountJson: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cached && cached.exp - 60 > now) return cached.token;
+  const sa = JSON.parse(serviceAccountJson) as ServiceAccount;
+  const key = await importPKCS8(sa.private_key, 'RS256');
+  const assertion = await new SignJWT({ scope: 'https://www.googleapis.com/auth/datastore' })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer(sa.client_email)
+    .setAudience('https://oauth2.googleapis.com/token')
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(key);
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
+  });
+  if (!res.ok) throw new Error(`oauth ${res.status}`);
+  const data = (await res.json()) as { access_token: string; expires_in: number };
+  cached = { token: data.access_token, exp: now + data.expires_in };
+  return data.access_token;
+}
+
+type FsValue = { stringValue: string } | { integerValue: string } | { timestampValue: string };
+
+export function fields(obj: Record<string, string | number | Date>): Record<string, FsValue> {
+  const out: Record<string, FsValue> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = v instanceof Date ? { timestampValue: v.toISOString() }
+      : typeof v === 'number' ? { integerValue: String(Math.trunc(v)) }
+        : { stringValue: v };
+  }
+  return out;
+}
+
+export class Firestore {
+  constructor(private projectId: string, private serviceAccountJson: string) {}
+
+  private base() {
+    return `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents`;
+  }
+
+  /** ينشئ مستنداً فقط إن لم يكن موجوداً. يرجع false إن كان موجوداً مسبقاً. */
+  async createIfMissing(collection: string, id: string, data: Record<string, string | number | Date>): Promise<boolean> {
+    const res = await fetch(`${this.base()}/${collection}?documentId=${encodeURIComponent(id)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields(data) }),
+    });
+    if (res.status === 409) return false;
+    if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
+    return true;
+  }
+
+  /** يحدّث حقولاً محددة فقط في مستند موجود. */
+  async update(collection: string, id: string, data: Record<string, string | number | Date>): Promise<void> {
+    const mask = Object.keys(data).map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+    const res = await fetch(`${this.base()}/${collection}/${encodeURIComponent(id)}?${mask}&currentDocument.exists=true`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields(data) }),
+    });
+    if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
+  }
+}

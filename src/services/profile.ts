@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { connectFirebase, isFirebaseConfigured } from './firebase';
+import { API_URL, api } from './api';
 
 export interface Profile {
   displayName: string;
@@ -27,6 +28,8 @@ export function useProfile(): { user: User | null; profile: Profile | null } {
         unsubDoc = undefined;
         if (!u) { setProfile(null); return; }
         setProfile({ displayName: u.displayName ?? '', coins: null });
+        // الخادم ينشئ ملف اللاعب مع 15 عملة ترحيبية عند أول دخول (لا يتكرر)
+        if (API_URL) void api(u, '/profile/ensure').catch(() => {});
         unsubDoc = onSnapshot(doc(db, 'users', u.uid), (snap) => {
           const data = snap.data();
           setProfile({ displayName: data?.displayName || u.displayName || '', coins: data ? Number(data.coins) : null });

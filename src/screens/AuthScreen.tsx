@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth';
 import { connectFirebase } from '../services/firebase';
 import { announce } from '../services/announcer';
+import { API_URL, api } from '../services/api';
 import type { Navigate } from '../state/navigation';
 
 const ERRORS: Record<string, string> = {
@@ -51,6 +52,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
         if (!name.trim()) throw { code: 'missing-name' };
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(cred.user, { displayName: name.trim() });
+        if (API_URL) await api(cred.user, '/profile/name', { displayName: name.trim() }).catch(() => {});
         announce(`أهلاً ${name.trim()}، حصلت على 15 عملة ترحيبية`);
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);

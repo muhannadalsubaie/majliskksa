@@ -2,9 +2,8 @@ node_modules/
 dist/
 
 .env.local
-functions/lib/
-functions/node_modules/
-functions/src/shared/
+worker/node_modules/
+worker/.wrangler/
 /android/
 /ios/
 *.log
