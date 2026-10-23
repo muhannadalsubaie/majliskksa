@@ -5,13 +5,14 @@ import { Switch } from '../components/Switch';
 import { isMuted, setMuted } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
 import { isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
-import { isScreenReaderOn, setScreenReader } from '../services/screenReader';
+import { isScreenReaderSettingOn, setScreenReader } from '../services/screenReader';
+import { isSystemReaderOn } from '../services/nativeA11y';
 import { RATE_MAX, RATE_MIN, RATE_STEP, getSpeechRate, setSpeechRate, speak } from '../services/speech';
 import type { Navigate } from '../state/navigation';
 
 export function SettingsScreen({ navigate }: { navigate: Navigate }) {
   const [speech, setSpeech] = useState(isSpeechEnabled());
-  const [reader, setReader] = useState(isScreenReaderOn());
+  const [reader, setReader] = useState(isScreenReaderSettingOn());
   const [muted, setMutedState] = useState(isMuted());
   const [rate, setRate] = useState(getSpeechRate());
 
@@ -52,7 +53,9 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
           label="قارئ الشاشة المدمج"
           checked={reader}
           onChange={(on) => { setReader(on); setScreenReader(on); }}
-          description="المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل، وإصبعين للتمرير. إذا كنت تستخدم TalkBack أو VoiceOver فاترك هذا الخيار مغلقاً."
+          description={isSystemReaderOn()
+            ? 'TalkBack أو VoiceOver يعمل الآن، لذلك القارئ المدمج متوقف تلقائياً. أحداث اللعبة تُعلن عبر قارئك مباشرة.'
+            : 'المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل، وإصبعين للتمرير، واسحب بإصبعين من اليمين لليسار لقراءة أوراق الطاولة.'}
         />
 
         <h3 id="rate-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة النطق</h3>

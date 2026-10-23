@@ -5,6 +5,7 @@
 //  • إصبعان: تمرير الصفحة كالمعتاد
 // يُترك مغلقاً لمن يستخدم TalkBack أو VoiceOver حتى لا يتعارضا.
 import { speak } from './speech';
+import { initNativeA11y, isSystemReaderOn, onSystemReaderChange } from './nativeA11y';
 
 const KEY = 'majlisk.screenReader';
 const DOUBLE_TAP_MS = 350;
@@ -37,7 +38,11 @@ function load(): boolean {
   try { return localStorage.getItem(KEY) === 'on'; } catch { return false; }
 }
 
-export function isScreenReaderOn() { return enabled; }
+/** القارئ المدمج فعّال (يتوقف تلقائياً ما دام TalkBack/VoiceOver يعمل حتى لا يتعارضا) */
+export function isScreenReaderOn() { return enabled && !isSystemReaderOn(); }
+
+/** هل الخيار مفعّل في الإعدادات (حتى لو كان متوقفاً مؤقتاً بسبب قارئ النظام) */
+export function isScreenReaderSettingOn() { return enabled; }
 
 export function onScreenReaderChange(fn: (on: boolean) => void) {
   listeners.add(fn);
@@ -47,6 +52,10 @@ export function onScreenReaderChange(fn: (on: boolean) => void) {
 export function setScreenReader(on: boolean) {
   enabled = on;
   try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch { /* ignore */ }
+  if (isSystemReaderOn()) {
+    listeners.forEach((fn) => fn(isScreenReaderOn()));
+    return;
+  }
   if (on) {
     attach();
     speak('تم تفعيل قارئ الشاشة. المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل.', true);
@@ -58,7 +67,13 @@ export function setScreenReader(on: boolean) {
 }
 
 export function initScreenReader() {
-  if (enabled) attach();
+  initNativeA11y();
+  if (enabled && !isSystemReaderOn()) attach();
+  onSystemReaderChange((systemOn) => {
+    if (systemOn) detach();
+    else if (enabled) attach();
+    listeners.forEach((fn) => fn(isScreenReaderOn()));
+  });
 }
 
 // ───── وصف العناصر ─────

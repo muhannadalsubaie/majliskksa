@@ -10,3 +10,4 @@ worker/.wrangler/
 .DS_Store
 .firebase/
 worker/.dev.vars
+*.tsbuildinfo

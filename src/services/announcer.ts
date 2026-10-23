@@ -5,6 +5,7 @@
 // (بخلاف استبدال نص منطقة واحدة الذي قد يُسقط أحداثاً متتالية).
 import { speak } from './speech';
 import { isScreenReaderOn } from './screenReader';
+import { isSystemReaderOn, systemAnnounce } from './nativeA11y';
 
 let liveRegion: HTMLElement | null = null;
 let speechEnabled = loadSpeechSetting();
@@ -22,6 +23,12 @@ export function mountAnnouncer(el: HTMLElement) {
 
 export function announce(message: string) {
   if (!message) return;
+  // تطبيق الجوال مع TalkBack/VoiceOver: نعلن مباشرة عبر النظام (منطقة aria-live غير موثوقة
+  // داخل WebView، واستخدام الاثنين يكرر الكلام)
+  if (isSystemReaderOn()) {
+    systemAnnounce(message);
+    return;
+  }
   if (liveRegion) {
     const line = document.createElement('p');
     line.textContent = message;

@@ -1,4 +1,8 @@
-// محرك النطق المشترك (Web Speech API) — سرعة واحدة لكل ما ينطقه التطبيق.
+// محرك النطق المشترك — سرعة واحدة لكل ما ينطقه التطبيق.
+// في المتصفح: Web Speech API. في تطبيق الجوال: محرك النطق في الجهاز
+// (WebView في Android لا يدعم speechSynthesis).
+import { Capacitor } from '@capacitor/core';
+import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech';
 
 const RATE_KEY = 'majlisk.speechRate';
 export const RATE_MIN = 0.5;
@@ -24,7 +28,15 @@ export function setSpeechRate(value: number) {
 
 /** ينطق النص. interrupt=true يقطع أي كلام سابق (مناسب للاستكشاف باللمس). */
 export function speak(text: string, interrupt = false) {
-  if (!text || !('speechSynthesis' in window)) return;
+  if (!text) return;
+  if (Capacitor.isNativePlatform()) {
+    TextToSpeech.speak({
+      text, lang: 'ar-SA', rate,
+      queueStrategy: interrupt ? QueueStrategy.Flush : QueueStrategy.Add,
+    }).catch(() => {});
+    return;
+  }
+  if (!('speechSynthesis' in window)) return;
   if (interrupt) window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ar-SA';
