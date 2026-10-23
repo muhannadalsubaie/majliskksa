@@ -29,6 +29,12 @@ export function SeatsLobby({ view, uid, send }: Props) {
 
   useEffect(() => { titleRef.current?.focus(); }, [panel]);
   useEffect(() => {
+    if (!panel) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPanel(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panel]);
+  useEffect(() => {
     if (!panel || !('invite' in panel)) return;
     const load = () => listFriends().then((r) => setFriends(r.friends)).catch(() => setFriends([]));
     void load();

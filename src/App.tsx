@@ -11,6 +11,7 @@ import { Placeholder } from './screens/Placeholder';
 import { CreateTableScreen } from './screens/CreateTableScreen';
 import { JoinTableScreen } from './screens/JoinTableScreen';
 import { TableScreen } from './screens/TableScreen';
+import { TABLE_BACK, initBackButton } from './services/backButton';
 import { FriendsScreen } from './screens/FriendsScreen';
 import { InviteDialog } from './components/InviteDialog';
 import { useHub } from './services/social';
@@ -43,6 +44,21 @@ export default function App() {
   // بعد تسجيل الخروج من أي شاشة نعود لشاشة الدخول
   useEffect(() => { if (!user && screen !== 'splash' && screen !== 'auth' && profile === null && wasSignedIn.current) setScreen('auth'); if (user) wasSignedIn.current = true; }, [user, screen, profile]);
   useEffect(() => { document.title = `${TITLES[screen]} — مجلسك`; }, [screen]);
+  // زر الرجوع في الجهاز: يرجع للصفحة السابقة داخل التطبيق
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
+  useEffect(() => initBackButton(() => {
+    switch (screenRef.current) {
+      case 'settings': case 'friends': case 'createTable': case 'joinTable':
+        setScreen('menu');
+        return true;
+      case 'table':
+        window.dispatchEvent(new Event(TABLE_BACK));
+        return true;
+      default:
+        return false; // الرئيسية وشاشة الدخول: يُصغَّر التطبيق
+    }
+  }), []);
 
   let content;
   if (needsUsername) content = <ChooseUsernameScreen />;

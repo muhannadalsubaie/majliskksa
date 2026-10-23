@@ -19,6 +19,14 @@ export function InviteDialog({ invite, onJoined }: { invite: TableInvite; onJoin
       setBusy(false);
     }
   };
+  const answerRef = useRef(answer);
+  answerRef.current = answer;
+  // زر الرجوع (أو Escape) = رفض الدعوة
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') void answerRef.current(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="dialog-backdrop">

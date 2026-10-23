@@ -5,6 +5,7 @@ import { COINS } from '../../shared/economy';
 import type { GameView } from '../../shared/table';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
+import { TABLE_BACK } from '../services/backButton';
 import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
@@ -124,6 +125,13 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
     };
+  }, []);
+
+  // زر الرجوع في الجهاز يفتح قائمة الطاولة (ومنها المغادرة) بدل الخروج المفاجئ
+  useEffect(() => {
+    const onBack = () => setMenuOpen(true);
+    window.addEventListener(TABLE_BACK, onBack);
+    return () => window.removeEventListener(TABLE_BACK, onBack);
   }, []);
 
   const act = (action: Record<string, unknown>) => send({ type: 'action', action });
