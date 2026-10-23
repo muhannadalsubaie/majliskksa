@@ -56,14 +56,15 @@ async function accessToken(serviceAccountJson: string): Promise<string> {
   return data.access_token;
 }
 
-type FsValue = { stringValue: string } | { integerValue: string } | { timestampValue: string };
+type FsValue = { stringValue: string } | { integerValue: string } | { timestampValue: string } | { booleanValue: boolean };
 
-export function fields(obj: Record<string, string | number | Date>): Record<string, FsValue> {
+export function fields(obj: Record<string, string | number | Date | boolean>): Record<string, FsValue> {
   const out: Record<string, FsValue> = {};
   for (const [k, v] of Object.entries(obj)) {
     out[k] = v instanceof Date ? { timestampValue: v.toISOString() }
-      : typeof v === 'number' ? { integerValue: String(Math.trunc(v)) }
-        : { stringValue: v };
+      : typeof v === 'boolean' ? { booleanValue: v }
+        : typeof v === 'number' ? { integerValue: String(Math.trunc(v)) }
+          : { stringValue: v };
   }
   return out;
 }
@@ -112,5 +113,52 @@ export class Firestore {
       else if (v.integerValue !== undefined) out[k] = Number(v.integerValue);
     }
     return out;
+  }
+
+  /**
+   * يضيف/يخصم عملات بأمان ضد السباق (قراءة ثم كتابة مشروطة بوقت آخر تعديل).
+   * يرمي 'not-enough-coins' إن كان الرصيد لا يكفي.
+   */
+  async adjustCoins(uid: string, delta: number): Promise<number> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(`${this.base()}/users/${encodeURIComponent(uid)}`, {
+        headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
+      });
+      if (!res.ok) throw new Error(res.status === 404 ? 'no-profile' : `firestore ${res.status}`);
+      const doc = (await res.json()) as { updateTime: string; fields?: { coins?: { integerValue?: string } } };
+      const coins = Number(doc.fields?.coins?.integerValue ?? 0) + delta;
+      if (coins < 0) throw new Error('not-enough-coins');
+      const patch = await fetch(
+        `${this.base()}/users/${encodeURIComponent(uid)}?updateMask.fieldPaths=coins&currentDocument.updateTime=${encodeURIComponent(doc.updateTime)}`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: fields({ coins }) }),
+        },
+      );
+      if (patch.ok) return coins;
+      // تغيّر المستند بين القراءة والكتابة — نعيد المحاولة
+      if (patch.status === 400 || patch.status === 409 || patch.status === 412) continue;
+      throw new Error(`firestore ${patch.status}`);
+    }
+    throw new Error('busy');
+  }
+
+  async remove(collection: string, id: string): Promise<void> {
+    const res = await fetch(`${this.base()}/${collection}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
+    });
+    if (!res.ok && res.status !== 404) throw new Error(`firestore ${res.status}`);
+  }
+
+  /** ينشئ أو يستبدل مستنداً بالكامل. */
+  async set(collection: string, id: string, data: Record<string, string | number | Date | boolean>): Promise<void> {
+    const res = await fetch(`${this.base()}/${collection}/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fields(data) }),
+    });
+    if (!res.ok) throw new Error(`firestore ${res.status}: ${await res.text()}`);
   }
 }

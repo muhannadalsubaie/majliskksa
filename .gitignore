@@ -9,3 +9,4 @@ worker/.wrangler/
 *.log
 .DS_Store
 .firebase/
+worker/.dev.vars

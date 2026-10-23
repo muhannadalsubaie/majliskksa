@@ -55,6 +55,8 @@ export interface GameState {
   projects: ProjectResolution | null;
   balootSeat: Seat | null;
   trick: PlayedCard[];
+  /** آخر أكلة مكتملة ومن أكلها */
+  lastTrick: { cards: PlayedCard[]; winner: Seat } | null;
   trickNo: number;
   tricksWon: [number, number];
   cardAbnat: [number, number];
@@ -100,7 +102,7 @@ export function dealHand(dealer: Seat, scores: [number, number], rng: Rng): Game
     phase: 'bidding', dealer, scores, turn: nextSeat(dealer), hands, qaba: deck[20], stock: deck.slice(21),
     bidRound: 1, bidsInRound: 0, hokmBid: null, contract: null, doubling: freshDoubling(),
     initialHands: [], declared: [], projects: null, balootSeat: null,
-    trick: [], trickNo: 0, tricksWon: [0, 0], cardAbnat: [0, 0], lastHand: null, outcome: { status: 'ongoing' },
+    trick: [], lastTrick: null, trickNo: 0, tricksWon: [0, 0], cardAbnat: [0, 0], lastHand: null, outcome: { status: 'ongoing' },
   };
 }
 
@@ -264,7 +266,7 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   cardAbnat[team] += trick.reduce((sum, p) => sum + cardPoints(p.card, c.mode, c.trump), 0);
   if (s.trickNo === 7) cardAbnat[team] += LAST_TRICK_BONUS;
 
-  next = { ...next, trick: [], trickNo: s.trickNo + 1, tricksWon, cardAbnat, turn: winner };
+  next = { ...next, trick: [], lastTrick: { cards: trick, winner }, trickNo: s.trickNo + 1, tricksWon, cardAbnat, turn: winner };
   if (s.trickNo === 0) next.projects = resolveProjects(s.declared, nextSeat(s.dealer));
   if (next.trickNo < 8) return next;
   return finishHand(next);

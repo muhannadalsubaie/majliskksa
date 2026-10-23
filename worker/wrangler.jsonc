@@ -13,6 +13,10 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "durable_objects": {
+    "bindings": [{ "name": "TABLES", "class_name": "TableRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TableRoom"] }],
   "vars": {
     "FIREBASE_PROJECT_ID": "majlisk-87eef"
   }

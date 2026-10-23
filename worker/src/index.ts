@@ -1,8 +1,11 @@
 import { COINS } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
-import { verifyUser } from './auth';
+import { verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore } from './firestore';
+
+export { TableRoom } from './table-room';
+
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -50,8 +53,57 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ available: !existing, error: existing ? 'taken' : undefined });
     }
 
-    const user = await verifyUser(request, env.FIREBASE_PROJECT_ID);
+    const devAuth = env.DEV_AUTH === '1';
+
+    // اتصال مباشر بالطاولة (WebSocket) — التوكن في الرابط لأن المتصفح لا يرسل ترويسات هنا
+    const wsMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/ws$/);
+    if (wsMatch) {
+      const wsUser = await verifyToken(url.searchParams.get('token') ?? '', env.FIREBASE_PROJECT_ID, devAuth);
+      if (!wsUser) return json({ error: 'unauthenticated' }, 401);
+      const stub = env.TABLES.get(env.TABLES.idFromString(wsMatch[1]));
+      if (!(await stub.isMember(wsUser.uid))) return json({ error: 'not-a-member' }, 403);
+      const headers = new Headers(request.headers);
+      headers.set('X-Uid', wsUser.uid);
+      return stub.fetch(new Request(request, { headers }));
+    }
+
+    const user = await verifyUser(request, env.FIREBASE_PROJECT_ID, devAuth);
     if (!user) return json({ error: 'unauthenticated' }, 401);
+
+    /** اسم المستخدم الفريد من ملف اللاعب (إلزامي لدخول الطاولات) */
+    const usernameOf = async (uid: string): Promise<string> => {
+      if (devAuth) return user.name;
+      const profile = await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', uid);
+      return String(profile?.username ?? '');
+    };
+
+    // إنشاء طاولة: عملتان من المنشئ
+    if (pathname === '/tables' && request.method === 'POST') {
+      const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown };
+      const username = await usernameOf(user.uid);
+      if (!username) return json({ error: 'no-username' }, 400);
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      if (!devAuth) {
+        try { await db.adjustCoins(user.uid, -COINS.createTable); } catch (e) { return json({ error: (e as Error).message }, 402); }
+      }
+      const id = env.TABLES.newUniqueId();
+      try {
+        await env.TABLES.get(id).create(id.toString(), { uid: user.uid, username }, body.isPrivate === true);
+      } catch (e) {
+        if (!devAuth) await db.adjustCoins(user.uid, COINS.createTable).catch(() => {}); // استرجاع عند الفشل
+        throw e;
+      }
+      return json({ id: id.toString() });
+    }
+
+    // الانضمام لطاولة: عملة من المنضم (مرة واحدة لكل طاولة)
+    const joinMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/join$/);
+    if (joinMatch && request.method === 'POST') {
+      const username = await usernameOf(user.uid);
+      if (!username) return json({ error: 'no-username' }, 400);
+      const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username });
+      return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
+    }
 
     // ينشئ ملف اللاعب مع الرصيد الترحيبي مرة واحدة فقط (آمن ضد التكرار)
     if (pathname === '/profile/ensure' && request.method === 'POST') {

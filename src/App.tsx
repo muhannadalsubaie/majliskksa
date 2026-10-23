@@ -8,7 +8,9 @@ import { useProfile } from './services/profile';
 import { MainMenuScreen } from './screens/MainMenuScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Placeholder } from './screens/Placeholder';
-import { VoiceButton } from './components/VoiceButton';
+import { CreateTableScreen } from './screens/CreateTableScreen';
+import { JoinTableScreen } from './screens/JoinTableScreen';
+import { TableScreen } from './screens/TableScreen';
 
 const TITLES: Record<ScreenName, string> = {
   splash: 'مجلسك', auth: 'تسجيل الدخول', menu: 'القائمة الرئيسية', createTable: 'إنشاء طاولة',
@@ -22,6 +24,8 @@ export default function App() {
     return (dev as ScreenName | null) ?? 'splash';
   });
   const liveRef = useRef<HTMLDivElement>(null);
+  const [tableId, setTableId] = useState<string | null>(() => (import.meta.env.DEV ? new URLSearchParams(location.search).get('table') : null));
+  const openTable = (id: string) => { setTableId(id); setScreen('table'); };
   const wasSignedIn = useRef(false);
   const { user, profile } = useProfile();
   // أي حساب مسجّل بلا اسم مستخدم يجب أن يختار اسماً قبل أي شاشة أخرى
@@ -39,9 +43,14 @@ export default function App() {
     case 'auth': content = <AuthScreen navigate={setScreen} />; break;
     case 'menu': content = <MainMenuScreen navigate={setScreen} profile={profile} />; break;
     case 'settings': content = <SettingsScreen navigate={setScreen} />; break;
-    case 'table':
-      content = <><Placeholder title={TITLES.table} navigate={setScreen} /><VoiceButton channelName="dev-table" /></>;
+    case 'createTable': content = <CreateTableScreen navigate={setScreen} openTable={openTable} coins={profile?.coins ?? null} />; break;
+    case 'joinTable': content = <JoinTableScreen navigate={setScreen} openTable={openTable} />; break;
+    case 'table': {
+      const devUser = import.meta.env.DEV ? new URLSearchParams(location.search).get('devUser') : null;
+      const uid = devUser ?? user?.uid ?? '';
+      content = tableId ? <TableScreen tableId={tableId} uid={uid} navigate={setScreen} /> : <Placeholder title={TITLES.table} navigate={setScreen} />;
       break;
+    }
     default: content = <Placeholder title={TITLES[screen]} navigate={setScreen} />;
   }
 
