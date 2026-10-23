@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDeck, cardPoints, HAND_TOTAL, LAST_TRICK_BONUS, cardStrength } from './cards';
+import { createDeck, cardPoints, HAND_TOTAL, LAST_TRICK_BONUS, cardStrength, SUN_ABNAT_MULTIPLIER } from './cards';
 
 describe('cards', () => {
   it('deck has 32 unique cards', () => {
@@ -8,9 +8,9 @@ describe('cards', () => {
     expect(new Set(deck.map((c) => c.rank + c.suit)).size).toBe(32);
   });
 
-  it('sun totals 130 with the last-trick bonus', () => {
+  it('sun totals 260 abnat (doubled) with the last-trick bonus', () => {
     const sum = createDeck().reduce((s, c) => s + cardPoints(c, 'sun', null), 0);
-    expect(sum + LAST_TRICK_BONUS).toBe(HAND_TOTAL.sun);
+    expect((sum + LAST_TRICK_BONUS) * SUN_ABNAT_MULTIPLIER).toBe(HAND_TOTAL.sun);
   });
 
   it('hokm totals 162 with the last-trick bonus', () => {

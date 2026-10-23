@@ -28,10 +28,12 @@ export const SUN_POINTS: Record<Rank, number> = { A: 11, '10': 10, K: 4, Q: 3, J
 export const TRUMP_POINTS: Record<Rank, number> = { J: 20, '9': 14, A: 11, '10': 10, K: 4, Q: 3, '8': 0, '7': 0 };
 
 export const LAST_TRICK_BONUS = 10; // الأرض
-// المجموع الحسابي الفعلي لأوراق الصكة + الأرض: صن 120+10=130، حكم 152+10=162.
-// (المواصفة ذكرت صن=140 وحكم=152 — بانتظار تأكيد طريقة الاحتساب المطلوبة)
-export const HAND_TOTAL: Record<GameMode, number> = { sun: 130, hokm: 162 };
+// أبناط الصن تُضاعف: (120 أوراق + 10 أرض) × 2 = 260
+export const SUN_ABNAT_MULTIPLIER = 2;
+// مجموع أبناط الصكة (أوراق + أرض) بعد مضاعفة الصن
+export const HAND_TOTAL: Record<GameMode, number> = { sun: 260, hokm: 162 };
 export const WINNING_SCORE = 152;
+export const SUN_DOUBLE_THRESHOLD = 100;
 export const MAX_PEOPLE_AT_TABLE = 15; // 4 لاعبين + 11 مشاهداً
 
 export function cardPoints(card: Card, mode: GameMode, trump: Suit | null): number {
@@ -55,3 +57,14 @@ export function cardId(card: Card): string {
 export function createDeck(): Card[] {
   return SUITS.flatMap((suit) => RANKS.map((rank) => ({ suit, rank })));
 }
+
+export function sameCard(a: Card, b: Card): boolean {
+  return a.suit === b.suit && a.rank === b.rank;
+}
+
+export type Seat = 0 | 1 | 2 | 3;
+export type Team = 0 | 1;
+/** الفريق 0 = المقعدان 0 و2 (اللاعب 1+3)، الفريق 1 = المقعدان 1 و3 (اللاعب 2+4). */
+export const teamOf = (seat: Seat): Team => (seat % 2) as Team;
+export const nextSeat = (seat: Seat, n = 1): Seat => ((seat + n) % 4) as Seat;
+export const otherTeam = (team: Team): Team => (1 - team) as Team;
