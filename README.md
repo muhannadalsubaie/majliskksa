@@ -25,12 +25,12 @@
 
 ```bash
 npm install
-cp .env.example .env.local   # ثم املأ مفاتيح Firebase
+# إعدادات Firebase في ملف .env (قيم عامة)
 npm run dev                  # http://localhost:5173
 npm test                     # اختبارات قواعد اللعبة
 ```
 
-بدون مفاتيح Firebase تعرض شاشة البداية زر "متابعة بدون خادم" (في وضع التطوير فقط).
+إذا تعذّر الاتصال بـFirebase تعرض شاشة البداية زر إعادة المحاولة، وفي وضع التطوير زر "متابعة بدون خادم".
 
 ## Cloud Functions
 
