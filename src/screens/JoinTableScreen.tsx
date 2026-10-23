@@ -8,7 +8,7 @@ import type { Navigate } from '../state/navigation';
 
 interface TableRow { id: string; ownerName: string; isPrivate: boolean; players: number; people: number; status: string }
 
-const STATUS: Record<string, string> = { waiting: 'بانتظار اللاعبين', playing: 'جارية', finished: 'انتهت' };
+const STATUS: Record<string, string> = { waiting: 'بانتظار اللاعبين', playing: 'جارية', finished: 'بانتظار مباراة جديدة' };
 
 export function JoinTableScreen({ navigate, openTable }: { navigate: Navigate; openTable: (id: string) => void }) {
   const [rows, setRows] = useState<TableRow[] | null>(null);
@@ -19,7 +19,8 @@ export function JoinTableScreen({ navigate, openTable }: { navigate: Navigate; o
     void connectFirebase().then(({ db }) => {
       const q = query(collection(db, 'tables'), orderBy('updatedAt', 'desc'), limit(50));
       unsub = onSnapshot(q, (snap) => {
-        setRows(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<TableRow, 'id'>) })).filter((r) => r.status !== 'finished'));
+        // كل طاولة فيها أحد تظهر (الطاولات المغلقة يحذفها الخادم من القائمة)
+        setRows(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<TableRow, 'id'>) })));
       }, () => setRows([]));
     }).catch(() => setRows([]));
     return () => unsub?.();
