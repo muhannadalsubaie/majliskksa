@@ -46,6 +46,7 @@ export type ClientMessage =
 export function useTable(tableId: string) {
   const [view, setView] = useState<TableView | null>(null);
   const [connected, setConnected] = useState(false);
+  const [closed, setClosed] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const closedByUs = useRef(false);
 
@@ -71,10 +72,17 @@ export function useTable(tableId: string) {
           for (const e of msg.events as string[]) announce(e);
         }
         if (msg.type === 'error') announce(msg.message);
+        if (msg.type === 'closed') {
+          closedByUs.current = true; // لا نعيد الاتصال بطاولة مغلقة
+          setClosed(true);
+          announce('أُغلقت الطاولة');
+        }
       };
       ws.onclose = () => {
         if (wsRef.current === ws) setConnected(false);
         if (cancelled || closedByUs.current) return;
+        // رُفض الاتصال لأن الطاولة لم تعد موجودة
+        if (!wsRef.current || (ws.readyState === WebSocket.CLOSED && retry >= 3)) { setClosed(true); return; }
         retry = Math.min(retry + 1, 5);
         timer = setTimeout(connect, 1000 * retry);
       };
@@ -94,5 +102,5 @@ export function useTable(tableId: string) {
     else announce('جارٍ إعادة الاتصال بالطاولة…');
   }, []);
 
-  return { view, connected, send };
+  return { view, connected, closed, send };
 }

@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, applyWithEvents, dealAnnouncement, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, applyWithEvents, dealAnnouncement, hasHumans, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   runAutoStep, seatOf, start, viewFor,
 } from '../../shared/table';
 import type { Env } from './env';
@@ -60,13 +60,21 @@ const ERRORS: Record<string, string> = {
   'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
 };
 
+/** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
+const EMPTY_GRACE_MS = 60_000;
+
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
+
+  /** مهلة الإغلاق (قصيرة في التطوير المحلي للاختبار) */
+  private grace() {
+    return this.env.DEV_AUTH === '1' ? 3000 : EMPTY_GRACE_MS;
+  }
 
   private db() {
     if (this.env.DEV_AUTH === '1') {
       // تطوير محلي: بدون Firestore
-      return { adjustCoins: async () => 99, set: async () => {} } as unknown as Firestore;
+      return { adjustCoins: async () => 99, set: async () => {}, remove: async () => {} } as unknown as Firestore;
     }
     return new Firestore(this.env.FIREBASE_PROJECT_ID, this.env.FIREBASE_SERVICE_ACCOUNT);
   }
@@ -103,6 +111,9 @@ export class TableRoom extends DurableObject<Env> {
     const t = newTable(id, owner, isPrivate, Date.now());
     await this.save(t);
     await this.publish(t);
+    // إن لم يتصل أحد خلال المهلة تُغلق الطاولة
+    await this.ctx.storage.put('emptySince', Date.now());
+    await this.ctx.storage.setAlarm(Date.now() + this.grace());
   }
 
   async joinTable(user: { uid: string; username: string }): Promise<{ ok: true } | { error: string }> {
@@ -135,6 +146,8 @@ export class TableRoom extends DurableObject<Env> {
     pair[1].serializeAttachment({ uid });
     const t = await this.load();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
+    await this.ctx.storage.delete('emptySince');
+    await this.schedule();
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -194,6 +207,8 @@ export class TableRoom extends DurableObject<Env> {
         const seat = seatOf(t, uid);
         const who = seat !== null ? t.seats[seat]!.username : t.spectators.find((m) => m.uid === uid)?.username ?? 'أحد الحاضرين';
         const r = leave(t, uid);
+        // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً
+        if (!hasHumans(r.table)) { await this.closeTable(); return; }
         await this.save(r.table);
         this.broadcast([r.botReplaced && seat !== null ? `غادر ${who} وحلّ مكانه ${r.table.seats[seat]!.username}` : `غادر ${who}`]);
         await this.publish(r.table);
@@ -205,12 +220,44 @@ export class TableRoom extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closed */ }
+    // آخر متصل خرج: نبدأ مهلة الإغلاق
+    if (this.connectedCount(ws) === 0) {
+      await this.ctx.storage.put('emptySince', Date.now());
+      await this.ctx.storage.setAlarm(Date.now() + this.grace());
+    }
+  }
+
+  private connectedCount(except?: WebSocket) {
+    return this.ctx.getWebSockets().filter((w) => w !== except && w.readyState === WebSocket.OPEN).length;
+  }
+
+  /** إغلاق الطاولة نهائياً: إشعار المتصلين، حذف الحالة، وإزالتها من قائمة الطاولات. */
+  private async closeTable() {
+    const id = this.table?.id ?? (await this.load())?.id;
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(JSON.stringify({ type: 'closed' }));
+        ws.close(1000, 'table closed');
+      } catch { /* already closed */ }
+    }
+    this.table = null;
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    if (id && this.env.DEV_AUTH !== '1') {
+      await this.db().remove('tables', id).catch((e) => console.error('remove failed', e));
+    }
   }
 
   // ───── الروبوتات والتوزيع التلقائي ─────
 
   private async schedule() {
     const t = await this.load();
+    // لا أحد متصل: لا داعي لتشغيل الروبوتات، ننتظر مهلة الإغلاق فقط
+    const emptySince = await this.ctx.storage.get<number>('emptySince');
+    if (emptySince) {
+      await this.ctx.storage.setAlarm(emptySince + this.grace());
+      return;
+    }
     const step = t ? nextAutoStep(t, rng) : null;
     // في التطوير المحلي نسرّع الروبوتات للاختبار
     if (step) await this.ctx.storage.setAlarm(Date.now() + (this.env.DEV_AUTH === '1' ? 5 : step.delayMs));
@@ -220,6 +267,16 @@ export class TableRoom extends DurableObject<Env> {
   async alarm() {
     const t = await this.load();
     if (!t) return;
+    const emptySince = await this.ctx.storage.get<number>('emptySince');
+    if (emptySince) {
+      if (this.connectedCount() === 0 && Date.now() - emptySince >= this.grace() - 500) {
+        await this.closeTable();
+        return;
+      }
+      if (this.connectedCount() > 0) await this.ctx.storage.delete('emptySince');
+      await this.schedule();
+      return;
+    }
     const step = nextAutoStep(t, rng);
     if (step) {
       const r = runAutoStep(t, step, rng);

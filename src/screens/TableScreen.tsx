@@ -57,7 +57,7 @@ const sortHand = (hand: Card[]) =>
   [...hand].sort((a, b) => SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank));
 
 export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: string; navigate: Navigate }) {
-  const { view, connected, send } = useTable(tableId);
+  const { view, connected, closed, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [lockChoice, setLockChoice] = useState(false);
   const wasMyTurn = useRef(false);
@@ -125,6 +125,16 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   const act = (action: Record<string, unknown>) => send({ type: 'action', action });
   const leaveTable = () => { send({ type: 'leave' }); navigate('menu'); };
+
+  if (closed) {
+    return (
+      <main className="screen center" aria-labelledby="table-closed">
+        <h1 id="table-closed">أُغلقت الطاولة</h1>
+        <p>لم يبق أحد على الطاولة، فأُغلقت تلقائياً.</p>
+        <button onClick={() => navigate('menu')}>العودة للقائمة الرئيسية</button>
+      </main>
+    );
+  }
 
   if (!view) {
     return (

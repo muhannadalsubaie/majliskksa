@@ -39,6 +39,8 @@ export const seatOf = (t: TableData, uid: string): Seat | null => {
 export const isMember = (t: TableData, uid: string) => seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid);
 export const peopleCount = (t: TableData) => t.seats.filter((m) => m && !m.isBot).length + t.spectators.length;
 export const isFull = (t: TableData) => t.seats.every(Boolean);
+/** هل بقي على الطاولة أي إنسان (لاعب أو مشاهد)؟ */
+export const hasHumans = (t: TableData) => peopleCount(t) > 0;
 
 export class TableError extends Error {}
 
