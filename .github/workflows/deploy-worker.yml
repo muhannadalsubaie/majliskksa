@@ -1,5 +1,6 @@
 # نشر خادم مجلسك على Cloudflare Workers تلقائياً عند تعديله.
-# أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FIREBASE_SERVICE_ACCOUNT
+# أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, FIREBASE_SERVICE_ACCOUNT
+# (معرّف الحساب موجود في worker/wrangler.jsonc)
 name: Deploy Worker
 
 on:
@@ -28,7 +29,6 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
           secrets: |
             FIREBASE_SERVICE_ACCOUNT

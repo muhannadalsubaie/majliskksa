@@ -39,6 +39,6 @@ cd worker && npm install && npx wrangler dev
 ```
 
 يُنشر تلقائياً عبر GitHub Actions (`.github/workflows/deploy-worker.yml`) عند تعديل `worker/` أو `shared/`.
-الأسرار المطلوبة في GitHub: `CLOUDFLARE_API_TOKEN`، `CLOUDFLARE_ACCOUNT_ID`، `FIREBASE_SERVICE_ACCOUNT`.
+الأسرار المطلوبة في GitHub: `CLOUDFLARE_API_TOKEN`، `FIREBASE_SERVICE_ACCOUNT`.
 
 > Firebase مستخدم لتسجيل الدخول وFirestore فقط (الباقة المجانية). قواعد Firestore في `firestore.rules` تُنشر يدوياً من لوحة Firebase.

@@ -1,6 +1,8 @@
 {
   // خادم مجلسك على Cloudflare Workers — الحكَم الوحيد على العملات وقانونية الحركات
   "name": "majlisk-api",
+  // معرّف حساب Cloudflare — ليس سراً
+  "account_id": "ea9eb2bdb9c44e3c7a79f118b2f159c6",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "vars": {
