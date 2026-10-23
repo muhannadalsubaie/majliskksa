@@ -23,6 +23,7 @@ let attached = false;
 let start: { x: number; y: number; t: number } | null = null;
 let moved = false;
 let lastTapAt = 0;
+let pendingTap: ReturnType<typeof setTimeout> | null = null;
 let multiTouch = false;
 let lastScrollY: number | null = null;
 const listeners = new Set<(on: boolean) => void>();
@@ -144,18 +145,16 @@ function hit(x: number, y: number): HTMLElement | null {
   return null;
 }
 
-function select(el: HTMLElement | null, announceEmpty = false) {
-  if (el === current) return;
+/** يحدد عنصراً وينطقه. اللمس على مكان فارغ لا يلغي التحديد الحالي. */
+function select(el: HTMLElement | null, repeat = false) {
+  if (!el) return;
+  if (el === current && !repeat) return;
   current?.classList.remove('sr-cursor');
   current = el;
-  if (el) {
-    el.classList.add('sr-cursor');
-    el.scrollIntoView({ block: 'nearest' });
-    speak(describe(el), true);
-    navigator.vibrate?.(8);
-  } else if (announceEmpty) {
-    speak('لا يوجد عنصر', true);
-  }
+  el.classList.add('sr-cursor');
+  el.scrollIntoView({ block: 'nearest' });
+  speak(describe(el), true);
+  navigator.vibrate?.(8);
 }
 
 function step(dir: 1 | -1) {
@@ -234,20 +233,30 @@ function onTouchEnd(e: TouchEvent) {
   start = null;
 
   if (Math.abs(dx) > SWIPE_MIN && Math.abs(dy) < Math.abs(dx) * 0.6 && dt < 400) {
+    if (pendingTap) { clearTimeout(pendingTap); pendingTap = null; }
     step(dx > 0 ? 1 : -1); // يمين = التالي، يسار = السابق (مثل TalkBack)
     lastTapAt = 0;
     return;
   }
   if (moved) { lastTapAt = 0; return; }
 
+  // لمستان سريعتان في أي مكان من الشاشة = تفعيل العنصر المحدد مسبقاً.
+  // لذلك لا نحدد شيئاً عند اللمسة الأولى إلا بعد التأكد أنها ليست بداية لمستين.
   const now = performance.now();
-  if (now - lastTapAt < DOUBLE_TAP_MS) {
+  if (pendingTap && now - lastTapAt < DOUBLE_TAP_MS) {
+    clearTimeout(pendingTap);
+    pendingTap = null;
     lastTapAt = 0;
     activate();
-  } else {
-    lastTapAt = now;
-    select(hit(t.clientX, t.clientY), true);
+    return;
   }
+  lastTapAt = now;
+  const x = t.clientX;
+  const y = t.clientY;
+  pendingTap = setTimeout(() => {
+    pendingTap = null;
+    select(hit(x, y), true);
+  }, DOUBLE_TAP_MS);
 }
 
 // يمنع فقط النقرات الناتجة عن لمسة عالجناها نحن (حتى لا تُفعِّل اللمسة الواحدة شيئاً).
@@ -279,6 +288,7 @@ function detach() {
   window.removeEventListener('touchmove', onTouchMove, opts);
   window.removeEventListener('touchend', onTouchEnd, opts);
   window.removeEventListener('click', onClick, true);
+  if (pendingTap) { clearTimeout(pendingTap); pendingTap = null; }
   current?.classList.remove('sr-cursor');
   current = null;
   document.documentElement.classList.remove('sr-mode');
