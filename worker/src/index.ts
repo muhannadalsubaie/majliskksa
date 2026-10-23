@@ -35,7 +35,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       // فحص اتصال الخادم بقاعدة البيانات (بدون كشف أي بيانات)
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '');
       let firestore = 'ok';
-      try { await db.get('usernames', '__healthcheck__'); } catch (e) { firestore = String((e as Error).message).slice(0, 300); }
+      try { await db.get('usernames', 'healthcheck'); } catch (e) { firestore = String((e as Error).message).slice(0, 300); }
       return json({ ok: true, firestore, hasServiceAccount: Boolean(env.FIREBASE_SERVICE_ACCOUNT) });
     }
 
