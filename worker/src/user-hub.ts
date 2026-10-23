@@ -1,0 +1,130 @@
+import { DurableObject } from 'cloudflare:workers';
+import type { Env } from './env';
+
+/**
+ * مركز اللاعب (واحد لكل مستخدم): الأصدقاء، طلبات الصداقة، الحالة (متصل/غير متصل)،
+ * والدعوات الواردة للطاولات. التطبيق يبقي اتصالاً واحداً مفتوحاً معه طوال تشغيله،
+ * فالحالة لحظية والدعوات تصل فوراً.
+ */
+
+export interface FriendInfo { uid: string; username: string }
+export interface TableInvite { tableId: string; code: string; fromUid: string; fromName: string; at: number }
+
+export interface HubState {
+  friends: FriendInfo[];
+  requests: FriendInfo[];
+  invites: TableInvite[];
+}
+
+/** الدعوة صالحة لعشر دقائق */
+const INVITE_TTL_MS = 10 * 60_000;
+
+export class UserHub extends DurableObject<Env> {
+  private async map(key: string): Promise<Record<string, string>> {
+    return (await this.ctx.storage.get<Record<string, string>>(key)) ?? {};
+  }
+
+  private async invitesNow(): Promise<TableInvite[]> {
+    const all = (await this.ctx.storage.get<TableInvite[]>('invites')) ?? [];
+    return all.filter((i) => Date.now() - i.at < INVITE_TTL_MS);
+  }
+
+  async getState(): Promise<HubState> {
+    const friends = await this.map('friends');
+    const requests = await this.map('requests');
+    return {
+      friends: Object.entries(friends).map(([uid, username]) => ({ uid, username })),
+      requests: Object.entries(requests).map(([uid, username]) => ({ uid, username })),
+      invites: await this.invitesNow(),
+    };
+  }
+
+  /** يرسل الحالة لكل اتصالات هذا اللاعب (قد يكون مفتوحاً على أكثر من جهاز) */
+  private async push(extra?: Record<string, unknown>) {
+    const state = await this.getState();
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(JSON.stringify({ type: 'state', ...state }));
+        if (extra) ws.send(JSON.stringify(extra));
+      } catch { /* closed */ }
+    }
+  }
+
+  async isOnline(): Promise<boolean> {
+    return this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN);
+  }
+
+  async isFriend(uid: string): Promise<boolean> {
+    return uid in (await this.map('friends'));
+  }
+
+  async hasRequestFrom(uid: string): Promise<boolean> {
+    return uid in (await this.map('requests'));
+  }
+
+  async addRequest(from: FriendInfo): Promise<void> {
+    const requests = await this.map('requests');
+    if (from.uid in (await this.map('friends'))) return;
+    requests[from.uid] = from.username;
+    await this.ctx.storage.put('requests', requests);
+    await this.push({ type: 'notice', text: `طلب صداقة من ${from.username}` });
+  }
+
+  async removeRequest(uid: string): Promise<void> {
+    const requests = await this.map('requests');
+    delete requests[uid];
+    await this.ctx.storage.put('requests', requests);
+    await this.push();
+  }
+
+  async addFriend(friend: FriendInfo, notice?: string): Promise<void> {
+    const friends = await this.map('friends');
+    friends[friend.uid] = friend.username;
+    const requests = await this.map('requests');
+    delete requests[friend.uid];
+    await this.ctx.storage.put({ friends, requests });
+    await this.push(notice ? { type: 'notice', text: notice } : undefined);
+  }
+
+  async removeFriend(uid: string): Promise<void> {
+    const friends = await this.map('friends');
+    delete friends[uid];
+    await this.ctx.storage.put('friends', friends);
+    await this.push();
+  }
+
+  async pushInvite(invite: TableInvite): Promise<void> {
+    const invites = (await this.invitesNow()).filter((i) => i.tableId !== invite.tableId);
+    invites.push(invite);
+    await this.ctx.storage.put('invites', invites);
+    await this.push({ type: 'invite', invite });
+  }
+
+  /** يأخذ الدعوة (ويحذفها) عند القبول أو الرفض */
+  async takeInvite(tableId: string): Promise<TableInvite | null> {
+    const invites = await this.invitesNow();
+    const found = invites.find((i) => i.tableId === tableId) ?? null;
+    await this.ctx.storage.put('invites', invites.filter((i) => i.tableId !== tableId));
+    await this.push();
+    return found;
+  }
+
+  // ───── اتصال التطبيق ─────
+
+  async fetch(request: Request): Promise<Response> {
+    if (request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1]);
+    pair[1].send(JSON.stringify({ type: 'state', ...(await this.getState()) }));
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  async webSocketMessage(ws: WebSocket, msg: string | ArrayBuffer) {
+    // نبضة للإبقاء على الاتصال
+    if (msg === 'ping') ws.send('pong');
+  }
+
+  async webSocketClose(ws: WebSocket) {
+    try { ws.close(); } catch { /* already closed */ }
+  }
+}

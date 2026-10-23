@@ -27,10 +27,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 export const createTable = (isPrivate: boolean) => post<{ id: string }>('/tables', { isPrivate }).then((r) => r.id);
 export const joinTable = (id: string, invite?: string) => post<{ ok: true }>(`/tables/${id}/join`, { invite });
-export const createInvite = (id: string) => post<{ code: string }>(`/tables/${id}/invite`).then((r) => r.code);
 
-/** رابط دعوة يفتح التطبيق وينضم للطاولة مباشرة */
-export const inviteLink = (id: string, code: string) => `${location.origin}/?join=${id}&invite=${code}`;
 
 export const API_ERRORS: Record<string, string> = {
   'not-enough-coins': 'رصيدك من العملات لا يكفي',

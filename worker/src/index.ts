@@ -5,6 +5,7 @@ import type { Env } from './env';
 import { Firestore } from './firestore';
 
 export { TableRoom } from './table-room';
+export { UserHub } from './user-hub';
 
 
 const CORS = {
@@ -78,8 +79,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return stub.fetch(new Request(request, { headers }));
     }
 
+    // اتصال التطبيق بمركز اللاعب (الأصدقاء والحالة والدعوات)
+    if (pathname === '/me/ws') {
+      const me = await verifyToken(url.searchParams.get('token') ?? '', env.FIREBASE_PROJECT_ID, devAuth);
+      if (!me) return json({ error: 'unauthenticated' }, 401);
+      return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(request);
+    }
+
     const user = await verifyUser(request, env.FIREBASE_PROJECT_ID, devAuth);
     if (!user) return json({ error: 'unauthenticated' }, 401);
+    const hub = (uid: string) => env.HUBS.get(env.HUBS.idFromName(uid));
 
     /** اسم المستخدم الفريد من ملف اللاعب (إلزامي لدخول الطاولات) */
     const usernameOf = async (uid: string): Promise<string> => {
@@ -155,11 +164,87 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ok: true, username });
     }
 
-    // رابط دعوة من مالك الطاولة
-    const inviteMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/invite$/);
-    if (inviteMatch && request.method === 'POST') {
-      const r = await env.TABLES.get(env.TABLES.idFromString(inviteMatch[1])).createInvite(user.uid);
-      return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
+    // ───── الأصدقاء ─────
+    const body = async () => (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
+    const db = () => new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+    /** معرّف اللاعب من اسم المستخدم (عبر جدول الأسماء الفريدة) */
+    const uidOfUsername = async (name: string): Promise<{ uid: string; username: string } | null> => {
+      if (devAuth) return name ? { uid: name, username: name } : null;
+      const entry = await db().get('usernames', usernameKey(name));
+      return entry?.uid ? { uid: String(entry.uid), username: String(entry.username) } : null;
+    };
+
+    if (pathname === '/friends/list' && request.method === 'POST') {
+      const state = await hub(user.uid).getState();
+      const friends = await Promise.all(state.friends.map(async (f) => ({ ...f, online: await hub(f.uid).isOnline() })));
+      return json({ ...state, friends });
+    }
+
+    if (pathname === '/friends/request' && request.method === 'POST') {
+      const target = await uidOfUsername(String((await body()).username ?? '').trim());
+      if (!target) return json({ error: 'user-not-found' }, 404);
+      if (target.uid === user.uid) return json({ error: 'self' }, 400);
+      if (await hub(user.uid).isFriend(target.uid)) return json({ error: 'already-friends' }, 400);
+      const myName = await usernameOf(user.uid);
+      if (!myName) return json({ error: 'no-username' }, 400);
+      // إن كان أرسل لي طلباً من قبل: نصبح أصدقاء مباشرة
+      if (await hub(user.uid).hasRequestFrom(target.uid)) {
+        await hub(user.uid).addFriend(target);
+        await hub(target.uid).addFriend({ uid: user.uid, username: myName }, `أصبحت أنت و${myName} أصدقاء`);
+        return json({ ok: true, friends: true });
+      }
+      await hub(target.uid).addRequest({ uid: user.uid, username: myName });
+      return json({ ok: true });
+    }
+
+    if (pathname === '/friends/respond' && request.method === 'POST') {
+      const b = await body();
+      const from = String(b.uid ?? '');
+      if (!(await hub(user.uid).hasRequestFrom(from))) return json({ error: 'no-request' }, 400);
+      const state = await hub(user.uid).getState();
+      const fromName = state.requests.find((r) => r.uid === from)!.username;
+      if (b.accept === true) {
+        const myName = await usernameOf(user.uid);
+        await hub(user.uid).addFriend({ uid: from, username: fromName });
+        await hub(from).addFriend({ uid: user.uid, username: myName }, `قبل ${myName} طلب صداقتك`);
+      } else {
+        await hub(user.uid).removeRequest(from);
+      }
+      return json({ ok: true });
+    }
+
+    if (pathname === '/friends/remove' && request.method === 'POST') {
+      const other = String((await body()).uid ?? '');
+      await hub(user.uid).removeFriend(other);
+      await hub(other).removeFriend(user.uid);
+      return json({ ok: true });
+    }
+
+    // دعوة صديق متصل للطاولة: عملة من المالك، والدعوة تصل للصديق فوراً
+    const inviteFriendMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/inviteFriend$/);
+    if (inviteFriendMatch && request.method === 'POST') {
+      const friend = String((await body()).uid ?? '');
+      if (!(await hub(user.uid).isFriend(friend))) return json({ error: 'not-friends' }, 400);
+      if (!(await hub(friend).isOnline())) return json({ error: 'offline' }, 400);
+      const tableId = inviteFriendMatch[1];
+      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid);
+      if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
+      await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName: await usernameOf(user.uid), at: Date.now() });
+      return json({ ok: true });
+    }
+
+    // قبول/رفض دعوة طاولة
+    if (pathname === '/invites/respond' && request.method === 'POST') {
+      const b = await body();
+      const tableId = String(b.tableId ?? '');
+      if (!/^[0-9a-f]{64}$/.test(tableId)) return json({ error: 'bad-request' }, 400);
+      const invite = await hub(user.uid).takeInvite(tableId);
+      if (!invite) return json({ error: 'no-invite' }, 400);
+      if (b.accept !== true) return json({ ok: true });
+      const username = await usernameOf(user.uid);
+      if (!username) return json({ error: 'no-username' }, 400);
+      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).joinTable({ uid: user.uid, username }, invite.code);
+      return 'error' in r ? json(r, 400) : json({ ok: true, tableId });
     }
 
     return json({ error: 'not-found' }, 404);

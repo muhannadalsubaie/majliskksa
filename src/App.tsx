@@ -11,8 +11,9 @@ import { Placeholder } from './screens/Placeholder';
 import { CreateTableScreen } from './screens/CreateTableScreen';
 import { JoinTableScreen } from './screens/JoinTableScreen';
 import { TableScreen } from './screens/TableScreen';
-import { API_ERRORS, joinTable } from './services/tables';
-import { announce } from './services/announcer';
+import { FriendsScreen } from './screens/FriendsScreen';
+import { InviteDialog } from './components/InviteDialog';
+import { useHub } from './services/social';
 
 const TITLES: Record<ScreenName, string> = {
   splash: 'مجلسك', auth: 'تسجيل الدخول', menu: 'القائمة الرئيسية', createTable: 'إنشاء طاولة',
@@ -30,25 +31,10 @@ export default function App() {
   const { user, profile } = useProfile();
   const openTable = (id: string) => { setTableId(id); setScreen('table'); };
 
-  // رابط دعوة (?join=...&invite=...): نحفظه حتى يكتمل تسجيل الدخول واختيار الاسم ثم ننضم
-  useEffect(() => {
-    const q = new URLSearchParams(location.search);
-    const id = q.get('join');
-    if (id && /^[0-9a-f]{64}$/.test(id)) {
-      try { sessionStorage.setItem('majlisk.pendingJoin', JSON.stringify({ id, invite: q.get('invite') ?? undefined })); } catch { /* ignore */ }
-      history.replaceState(null, '', location.pathname);
-    }
-  }, []);
-  useEffect(() => {
-    if (!user || !profile?.username || screen === 'splash' || screen === 'table') return;
-    let pending: { id: string; invite?: string } | null = null;
-    try { pending = JSON.parse(sessionStorage.getItem('majlisk.pendingJoin') ?? 'null'); } catch { /* ignore */ }
-    if (!pending) return;
-    try { sessionStorage.removeItem('majlisk.pendingJoin'); } catch { /* ignore */ }
-    joinTable(pending.id, pending.invite)
-      .then(() => { announce('تم قبول الدعوة'); openTable(pending!.id); })
-      .catch((e) => announce(API_ERRORS[(e as Error).message] ?? 'تعذّر الانضمام للطاولة'));
-  }, [user, profile?.username, screen]);
+  // مركز اللاعب: الحالة "متصل" للأصدقاء، وطلبات الصداقة والدعوات الفورية
+  const devUser = import.meta.env.DEV ? new URLSearchParams(location.search).get('devUser') : null;
+  const hub = useHub(Boolean(devUser) || Boolean(user && profile?.username));
+  const pendingInvite = hub.invites.find((i) => !(screen === 'table' && tableId === i.tableId)) ?? null;
   const wasSignedIn = useRef(false);
   // أي حساب مسجّل بلا اسم مستخدم يجب أن يختار اسماً قبل أي شاشة أخرى
   const needsUsername = Boolean(user && profile?.loaded && !profile.username && screen !== 'splash');
@@ -67,10 +53,10 @@ export default function App() {
     case 'settings': content = <SettingsScreen navigate={setScreen} />; break;
     case 'createTable': content = <CreateTableScreen navigate={setScreen} openTable={openTable} coins={profile?.unlimited ? Infinity : profile?.coins ?? null} />; break;
     case 'joinTable': content = <JoinTableScreen navigate={setScreen} openTable={openTable} />; break;
+    case 'friends': content = <FriendsScreen navigate={setScreen} hub={hub} />; break;
     case 'table': {
-      const devUser = import.meta.env.DEV ? new URLSearchParams(location.search).get('devUser') : null;
       const uid = devUser ?? user?.uid ?? '';
-      content = tableId ? <TableScreen tableId={tableId} uid={uid} navigate={setScreen} /> : <Placeholder title={TITLES.table} navigate={setScreen} />;
+      content = tableId ? <TableScreen key={tableId} tableId={tableId} uid={uid} navigate={setScreen} /> : <Placeholder title={TITLES.table} navigate={setScreen} />;
       break;
     }
     default: content = <Placeholder title={TITLES[screen]} navigate={setScreen} />;
@@ -79,6 +65,7 @@ export default function App() {
   return (
     <>
       {content}
+      {pendingInvite && !needsUsername && <InviteDialog invite={pendingInvite} onJoined={openTable} />}
       <div ref={liveRef} className="sr-only" role="log" aria-live="polite" aria-relevant="additions" aria-label="إعلانات اللعبة" />
     </>
   );

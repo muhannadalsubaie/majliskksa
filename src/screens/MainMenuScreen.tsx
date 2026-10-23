@@ -18,7 +18,7 @@ export function MainMenuScreen({ navigate, profile }: { navigate: Navigate; prof
       <nav className="stack" aria-label="القائمة الرئيسية">
         <button onClick={() => navigate('createTable')}>إنشاء طاولة</button>
         <button onClick={() => navigate('joinTable')}>انضمام إلى طاولة</button>
-        <button className="secondary" onClick={() => navigate('friends')}>الأصدقاء المتصلون</button>
+        <button className="secondary" onClick={() => navigate('friends')}>الأصدقاء</button>
         <button className="secondary" aria-label="مشاهدة إعلان للحصول على عملتين">مشاهدة إعلان (+2 🪙)</button>
         <button className="secondary" onClick={() => navigate('settings')}>الإعدادات</button>
       </nav>

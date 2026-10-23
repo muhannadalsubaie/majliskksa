@@ -4,7 +4,8 @@ import { teamOf } from '../../shared/baloot/cards';
 import { COINS } from '../../shared/economy';
 import type { TableView } from '../../shared/table';
 import { announce } from '../services/announcer';
-import { API_ERRORS, type ClientMessage, createInvite, inviteLink } from '../services/tables';
+import type { ClientMessage } from '../services/tables';
+import { type Friend, inviteFriend, listFriends, socialError } from '../services/social';
 
 interface Props {
   view: TableView;
@@ -14,13 +15,13 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = 'main' | 'players' | { replace: Seat };
+type Page = 'main' | 'players' | 'invite' | { replace: Seat };
 
 /** قائمة الطاولة: اللاعبون، دعوة صديق، مشاهدة إعلان، مغادرة */
 export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
   const [page, setPage] = useState<Page>('main');
-  const [link, setLink] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [friends, setFriends] = useState<Friend[] | null>(null);
+  const [busy, setBusy] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
   const isOwner = view.ownerUid === uid;
   const me = view.mySeat ?? 0;
@@ -44,20 +45,24 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
     return `${s.username}${tags.length ? ` (${tags.join('، ')})` : ''}`;
   };
 
-  const invite = async () => {
-    setBusy(true);
+  // صفحة الدعوة: قائمة الأصدقاء مع حالة الاتصال (تُحدَّث كل 10 ثوانٍ)
+  useEffect(() => {
+    if (page !== 'invite') return;
+    const load = () => listFriends().then((r) => setFriends(r.friends)).catch(() => setFriends([]));
+    void load();
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, [page]);
+
+  const invite = async (f: Friend) => {
+    setBusy(f.uid);
     try {
-      const url = inviteLink(view.id, await createInvite(view.id));
-      setLink(url);
-      if (navigator.share) {
-        await navigator.share({ title: 'مجلسك', text: 'تعال العب معي بلوت في مجلسك', url }).catch(() => {});
-      } else {
-        await navigator.clipboard?.writeText(url).then(() => announce('تم نسخ رابط الدعوة')).catch(() => {});
-      }
+      await inviteFriend(view.id, f.uid);
+      announce(`أُرسلت الدعوة إلى ${f.username}`);
     } catch (e) {
-      announce(API_ERRORS[(e as Error).message] ?? 'تعذّر إنشاء الدعوة');
+      announce(socialError(e));
     } finally {
-      setBusy(false);
+      setBusy('');
     }
   };
 
@@ -69,12 +74,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
         <div className="stack">
           <button className="secondary" onClick={() => setPage('players')}>اللاعبون</button>
           {isOwner && (
-            <button className="secondary" onClick={invite} disabled={busy}>دعوة صديق ({COINS.inviteFriend} 🪙)</button>
-          )}
-          {link && (
-            <p className="note" style={{ wordBreak: 'break-all' }}>
-              رابط الدعوة (صالح لشخص واحد): <span dir="ltr">{link}</span>
-            </p>
+            <button className="secondary" onClick={() => setPage('invite')}>دعوة صديق</button>
           )}
           <button className="secondary" onClick={() => announce('مشاهدة الإعلانات تتوفر في تطبيق الجوال قريباً')}>
             مشاهدة إعلان (+{COINS.watchAdReward} 🪙)
@@ -82,6 +82,27 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
           <button className="secondary" onClick={onClose}>إغلاق القائمة</button>
         </div>
+      </>
+    );
+  } else if (page === 'invite') {
+    const sorted = [...(friends ?? [])].sort((a, b) => Number(!!b.online) - Number(!!a.online));
+    body = (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1}>دعوة صديق</h2>
+        <p className="note">كل دعوة بعملة ({COINS.inviteFriend} 🪙)، ويدخل صديقك مجاناً.</p>
+        {friends === null && <p role="status">جارٍ التحميل…</p>}
+        {friends?.length === 0 && <p>لا يوجد أصدقاء بعد. أضفهم من شاشة الأصدقاء في القائمة الرئيسية.</p>}
+        <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {sorted.map((f) => (
+            <li key={f.uid} className="seat-row">
+              <span>{f.username}، {f.online ? 'متصل' : 'غير متصل'}</span>
+              {f.online && (
+                <button onClick={() => invite(f)} disabled={busy === f.uid} aria-label={`دعوة ${f.username}`}>دعوة</button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <button className="secondary" onClick={() => setPage('main')}>رجوع</button>
       </>
     );
   } else if (page === 'players') {

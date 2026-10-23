@@ -16,9 +16,15 @@
   // تنظيف قائمة الطاولات كل 10 دقائق
   "triggers": { "crons": ["*/10 * * * *"] },
   "durable_objects": {
-    "bindings": [{ "name": "TABLES", "class_name": "TableRoom" }]
+    "bindings": [
+      { "name": "TABLES", "class_name": "TableRoom" },
+      { "name": "HUBS", "class_name": "UserHub" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TableRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TableRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["UserHub"] }
+  ],
   "vars": {
     "FIREBASE_PROJECT_ID": "majlisk-87eef",
     // حسابات المطوّر (عملات لا محدودة): SHA-256 للإيميل الموثّق — الإيميل نفسه لا يُكتب هنا
