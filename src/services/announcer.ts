@@ -1,4 +1,7 @@
 // نطق أحداث اللعبة لقارئات الشاشة + نطق صوتي اختياري (Web Speech API).
+import { speak } from './speech';
+import { isScreenReaderOn } from './screenReader';
+
 let liveRegion: HTMLElement | null = null;
 let speechEnabled = loadSpeechSetting();
 
@@ -16,11 +19,8 @@ export function announce(message: string) {
     // تأخير بسيط حتى تلتقط قارئات الشاشة التغيير حتى لو تكررت الرسالة
     setTimeout(() => { if (liveRegion) liveRegion.textContent = message; }, 30);
   }
-  if (speechEnabled && 'speechSynthesis' in window) {
-    const u = new SpeechSynthesisUtterance(message);
-    u.lang = 'ar-SA';
-    window.speechSynthesis.speak(u);
-  }
+  // قارئ الشاشة المدمج ينطق كل الإعلانات دائماً
+  if (speechEnabled || isScreenReaderOn()) speak(message);
 }
 
 export function isSpeechEnabled() { return speechEnabled; }

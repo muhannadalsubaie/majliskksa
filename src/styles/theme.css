@@ -45,3 +45,10 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .voice-btn { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); left: 16px; width: 60px; height: 60px; border-radius: 50%; padding: 0; font-size: 26px; }
 .voice-btn.off { background: var(--green-700); color: var(--text-dim); border: 1px solid var(--gold); }
 .voice-btn.muted { background: var(--green-700); color: var(--gold); border: 2px solid var(--gold); }
+/* مؤشر قارئ الشاشة المدمج */
+.sr-cursor { outline: 3px solid var(--gold) !important; outline-offset: 3px; border-radius: 6px; }
+.sr-mode { touch-action: pan-x pan-y; }
+.rate-row { display: flex; align-items: center; gap: 10px; }
+.rate-row button { flex: 1; }
+.rate-row output { min-width: 64px; text-align: center; color: var(--gold); font-weight: 700; }
+.note { color: var(--text-dim); font-size: 14px; margin: 0; }
