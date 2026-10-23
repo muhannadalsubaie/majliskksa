@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { mountAnnouncer } from './services/announcer';
 import type { ScreenName } from './state/navigation';
 import { SplashScreen } from './screens/SplashScreen';
+import { AuthScreen } from './screens/AuthScreen';
+import { useProfile } from './services/profile';
 import { MainMenuScreen } from './screens/MainMenuScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Placeholder } from './screens/Placeholder';
@@ -15,6 +17,7 @@ const TITLES: Record<ScreenName, string> = {
 export default function App() {
   const [screen, setScreen] = useState<ScreenName>('splash');
   const liveRef = useRef<HTMLDivElement>(null);
+  const { profile } = useProfile();
 
   useEffect(() => { if (liveRef.current) mountAnnouncer(liveRef.current); }, []);
   useEffect(() => { document.title = `${TITLES[screen]} — مجلسك`; }, [screen]);
@@ -22,7 +25,8 @@ export default function App() {
   let content;
   switch (screen) {
     case 'splash': content = <SplashScreen navigate={setScreen} />; break;
-    case 'menu': content = <MainMenuScreen navigate={setScreen} coins={15} />; break;
+    case 'auth': content = <AuthScreen navigate={setScreen} />; break;
+    case 'menu': content = <MainMenuScreen navigate={setScreen} profile={profile} />; break;
     case 'settings': content = <SettingsScreen navigate={setScreen} />; break;
     case 'table':
       content = <><Placeholder title={TITLES.table} navigate={setScreen} /><VoiceButton channelName="dev-table" /></>;

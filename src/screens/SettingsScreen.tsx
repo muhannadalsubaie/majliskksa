@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { signOut } from 'firebase/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { connectFirebase } from '../services/firebase';
 import { isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
 import type { Navigate } from '../state/navigation';
 
@@ -31,7 +33,13 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
 
       <section aria-labelledby="sec-account" className="stack">
         <h2 id="sec-account">الحساب</h2>
-        <button className="secondary">تسجيل الخروج</button>
+        <button
+          className="secondary"
+          onClick={async () => {
+            try { await signOut((await connectFirebase()).auth); } catch { /* وضع التطوير بدون خادم */ }
+            navigate('auth');
+          }}
+        >تسجيل الخروج</button>
         <button className="danger" onClick={() => setConfirmDelete(true)}>حذف الحساب</button>
       </section>
 
