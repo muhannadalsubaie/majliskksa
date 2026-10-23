@@ -1,0 +1,29 @@
+rules_version = '2';
+// مبدأ أساسي: العميل يقرأ فقط. كل كتابة على العملات/الطاولات/الحركات تتم عبر Cloud Functions (Admin SDK).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /tables/{tableId} {
+      // الحالة العامة للطاولة (الأوراق الملعوبة، النقاط، المزايدة) — بدون أيدي اللاعبين
+      allow read: if signedIn();
+      allow write: if false;
+
+      // يد كل لاعب في مستند منفصل لا يقرؤه إلا صاحبه
+      match /hands/{uid} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+
+    match /friendRequests/{id} {
+      allow read: if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow write: if false;
+    }
+  }
+}

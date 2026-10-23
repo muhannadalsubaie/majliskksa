@@ -1,0 +1,47 @@
+:root {
+  --green-900: #0d2b20;
+  --green-800: #133a2b;
+  --green-700: #1b4d39;
+  --gold: #d4af37;
+  --gold-soft: #e8cf7a;
+  --text: #f3efe2;
+  --text-dim: #b9c4bd;
+  --danger: #c0392b;
+  --radius: 14px;
+  color-scheme: dark;
+  font-family: system-ui, "Segoe UI", Tahoma, "Noto Kufi Arabic", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body { background: var(--green-900); color: var(--text); }
+button {
+  font: inherit; color: var(--green-900); background: var(--gold);
+  border: 0; border-radius: var(--radius); padding: 14px 20px; font-weight: 700; cursor: pointer;
+}
+button.secondary { background: var(--green-700); color: var(--text); border: 1px solid var(--gold); }
+button.danger { background: var(--danger); color: #fff; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--gold-soft); outline-offset: 2px; }
+input {
+  font: inherit; width: 100%; padding: 12px; border-radius: var(--radius);
+  border: 1px solid var(--green-700); background: var(--green-800); color: var(--text);
+}
+h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
+.screen { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.center { align-items: center; justify-content: center; text-align: center; }
+.topbar { display: flex; justify-content: space-between; align-items: center; }
+.coins { color: var(--gold); font-weight: 700; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.spinner {
+  width: 48px; height: 48px; border-radius: 50%;
+  border: 5px solid var(--green-700); border-top-color: var(--gold);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dialog-backdrop { position: fixed; inset: 0; background: #000a; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dialog { background: var(--green-800); border: 1px solid var(--gold); border-radius: var(--radius); padding: 20px; max-width: 420px; width: 100%; }
+.dialog .actions { display: flex; gap: 10px; margin-top: 16px; }
+.voice-btn { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); left: 16px; width: 60px; height: 60px; border-radius: 50%; padding: 0; font-size: 26px; }
+.voice-btn.off { background: var(--green-700); color: var(--text-dim); border: 1px solid var(--gold); }
+.voice-btn.muted { background: var(--green-700); color: var(--gold); border: 2px solid var(--gold); }

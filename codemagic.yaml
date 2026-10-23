@@ -1,0 +1,49 @@
+# Codemagic — بناء Android وiOS تلقائياً عند كل push.
+# المتغيرات السرية (Firebase، توقيع التطبيق) تُضاف من واجهة Codemagic في مجموعة "majlisk".
+workflows:
+  android:
+    name: Android
+    instance_type: linux_x2
+    environment:
+      node: 22
+      java: 21
+      groups: [majlisk]
+    triggering:
+      events: [push]
+    scripts:
+      - name: Install
+        script: npm ci
+      - name: Test
+        script: npm test
+      - name: Build web + sync
+        script: |
+          npm run build
+          [ -d android ] || npx cap add android
+          npx cap sync android
+      - name: Build APK/AAB
+        script: cd android && ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+
+  ios:
+    name: iOS
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+      groups: [majlisk]
+    triggering:
+      events: [push]
+    scripts:
+      - name: Install
+        script: npm ci
+      - name: Build web + sync
+        script: |
+          npm run build
+          [ -d ios ] || npx cap add ios
+          npx cap sync ios
+      - name: Build (unsigned until Apple account is ready)
+        script: |
+          cd ios/App
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build

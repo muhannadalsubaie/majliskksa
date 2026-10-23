@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+functions/lib/
+functions/node_modules/
+functions/src/shared/
+/android/
+/ios/
+*.log
+.DS_Store
+.firebase/

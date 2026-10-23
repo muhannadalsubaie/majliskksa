@@ -1,0 +1,57 @@
+// تعريفات الأوراق المشتركة بين الواجهة وCloud Functions.
+// لا تحتوي على أي منطق تحقق — القرار النهائي دائماً في الخادم.
+
+export const SUITS = ['S', 'H', 'C', 'D'] as const;
+export type Suit = (typeof SUITS)[number];
+
+export const RANKS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'] as const;
+export type Rank = (typeof RANKS)[number];
+
+export interface Card {
+  suit: Suit;
+  rank: Rank;
+}
+
+export type GameMode = 'sun' | 'hokm';
+
+export const SUIT_NAMES: Record<Suit, string> = { S: 'سبيت', H: 'هاص', C: 'شريا', D: 'ديمن' };
+export const SUIT_SYMBOLS: Record<Suit, string> = { S: '♠', H: '♥', C: '♣', D: '♦' };
+export const RANK_NAMES: Record<Rank, string> = {
+  A: 'أكة', K: 'شايب', Q: 'بنت', J: 'ولد', '10': '10', '9': '9', '8': '8', '7': '7',
+};
+
+// الترتيب من الأقوى إلى الأضعف
+export const SUN_ORDER: Rank[] = ['A', '10', 'K', 'Q', 'J', '9', '8', '7'];
+export const TRUMP_ORDER: Rank[] = ['J', '9', 'A', '10', 'K', 'Q', '8', '7'];
+
+export const SUN_POINTS: Record<Rank, number> = { A: 11, '10': 10, K: 4, Q: 3, J: 2, '9': 0, '8': 0, '7': 0 };
+export const TRUMP_POINTS: Record<Rank, number> = { J: 20, '9': 14, A: 11, '10': 10, K: 4, Q: 3, '8': 0, '7': 0 };
+
+export const LAST_TRICK_BONUS = 10; // الأرض
+// المجموع الحسابي الفعلي لأوراق الصكة + الأرض: صن 120+10=130، حكم 152+10=162.
+// (المواصفة ذكرت صن=140 وحكم=152 — بانتظار تأكيد طريقة الاحتساب المطلوبة)
+export const HAND_TOTAL: Record<GameMode, number> = { sun: 130, hokm: 162 };
+export const WINNING_SCORE = 152;
+export const MAX_PEOPLE_AT_TABLE = 15; // 4 لاعبين + 11 مشاهداً
+
+export function cardPoints(card: Card, mode: GameMode, trump: Suit | null): number {
+  return mode === 'hokm' && card.suit === trump ? TRUMP_POINTS[card.rank] : SUN_POINTS[card.rank];
+}
+
+/** قوة الورقة داخل لونها (رقم أكبر = أقوى). */
+export function cardStrength(card: Card, mode: GameMode, trump: Suit | null): number {
+  const order = mode === 'hokm' && card.suit === trump ? TRUMP_ORDER : SUN_ORDER;
+  return order.length - order.indexOf(card.rank);
+}
+
+export function cardLabel(card: Card): string {
+  return `${RANK_NAMES[card.rank]} ${SUIT_NAMES[card.suit]}`;
+}
+
+export function cardId(card: Card): string {
+  return `${card.rank}${card.suit}`;
+}
+
+export function createDeck(): Card[] {
+  return SUITS.flatMap((suit) => RANKS.map((rank) => ({ suit, rank })));
+}
