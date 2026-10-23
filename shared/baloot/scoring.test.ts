@@ -60,6 +60,21 @@ describe('scoreHand — sun', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [0, 0] });
     expect(r.points).toEqual([13, 13]);
   });
+  it('buyer under half loses everything to the opponents', () => {
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [60, 70] });
+    expect(r.buyerFailed).toBe(true);
+    expect(r.points).toEqual([0, 26]);
+  });
+  it('exactly half is not a loss; buyer projects count', () => {
+    expect(scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [65, 65] }).buyerFailed).toBe(false);
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [60, 70], projectAbnat: [20, 0] });
+    expect(r.buyerFailed).toBe(false);
+    expect(r.points).toEqual([14, 14]);
+  });
+  it('sun loss with a double: opponents get everything ×2, projects not multiplied', () => {
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [40, 90], projectAbnat: [0, 50], multiplier: 2, doublerTeam: 1 });
+    expect(r.points).toEqual([0, 57]);
+  });
   it('kaboot = 44', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [130, 0], tricksWon: [8, 0] });
     expect(r.kaboot).toBe(0);

@@ -9,8 +9,8 @@ import { BALOOT_ABNAT } from './projects';
 export const RULES = {
   /** الحكم: ينجح المشتري إذا تجاوزت أبناطه (مع مشاريعه) هذا الحد */
   hokmBuyerThreshold: 81,
-  /** الصن: هل يخسر المشتري كل النقاط إن لم يتجاوز النصف؟ (بانتظار التأكيد — المواصفة الأخيرة: تُسجل للطرفين) */
-  sunBuyerCanFail: false,
+  /** الصن: إذا جاب المشتري أقل من النص يخسر وتذهب كل النقاط للخصم */
+  sunBuyerCanFail: true,
   /** نقاط الكبوت بدون مشاريع (تُضرب في معامل الدبل) */
   sunKabootPoints: 44,
   hokmKabootPoints: 25,
@@ -74,7 +74,8 @@ export function scoreHand(input: HandScoreInput): HandScore {
       // تعادل بعد الدبل: الخسارة على طالب الدبل
       if (total[buyerTeam] === t && doublerTeam === opp) success = true;
     } else if (RULES.sunBuyerCanFail) {
-      success = total[buyerTeam] > total[opp] || (total[buyerTeam] === total[opp] && doublerTeam === opp);
+      // يخسر فقط إن جاب أقل من النص (أوراقه + مشاريعه مقابل الخصم)؛ النص بالضبط لا يُعد خسارة
+      success = total[buyerTeam] >= total[opp];
     } else {
       success = true;
     }
