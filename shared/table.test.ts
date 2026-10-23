@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER } from './baloot/cards';
-import { BOT_NAMES, addBot, join, leave, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
+import { BOT_NAMES, addBot, addInvite, join, leave, replaceSeat, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -39,6 +39,34 @@ describe('table', () => {
       expect(new Set(names).size).toBe(3);
       expect(names.every((n) => BOT_NAMES.includes(n))).toBe(true);
     }
+  });
+
+  it('private tables need an invite; an invite is free for the guest and single-use', () => {
+    let t = newTable('t1', owner, true, 0);
+    expect(() => join(t, { uid: 'u2', username: 'أحمد' })).toThrow(TableError);
+    t = addInvite(t, 'abc');
+    const r = join(t, { uid: 'u2', username: 'أحمد' }, 'abc');
+    expect(r.charge).toBe(false);
+    expect(r.table.seats[1]?.username).toBe('أحمد');
+    expect(() => join(r.table, { uid: 'u3', username: 'سعد' }, 'abc')).toThrow(TableError);
+  });
+
+  it('owner replaces a bot with a spectator mid-game; replaced human becomes a spectator', () => {
+    let t = newTable('t1', owner, false, 0);
+    t = join(t, { uid: 'u2', username: 'أحمد' }).table;
+    t = addBot(t, 2, seededRng(1)); t = addBot(t, 3, seededRng(2));
+    t = start(t, seededRng(3));
+    t = join(t, { uid: 'u5', username: 'سعد' }).table; // مشاهد
+    const hand = t.game!.hands[2];
+    t = replaceSeat(t, 2, 'u5');
+    expect(t.seats[2]).toMatchObject({ uid: 'u5', username: 'سعد', isBot: false });
+    expect(viewFor(t, 'u5').game!.myHand).toEqual(hand); // يأخذ أوراق المقعد
+    expect(t.spectators).toEqual([]);
+    t = join(t, { uid: 'u6', username: 'خالد' }).table;
+    t = replaceSeat(t, 1, 'u6');
+    expect(t.seats[1]?.username).toBe('خالد');
+    expect(t.spectators.map((m) => m.username)).toEqual(['أحمد']);
+    expect(() => replaceSeat(t, 1, 'nobody')).toThrow(TableError);
   });
 
   it('cannot start until 4 seats are filled', () => {

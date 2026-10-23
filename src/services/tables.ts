@@ -26,7 +26,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const createTable = (isPrivate: boolean) => post<{ id: string }>('/tables', { isPrivate }).then((r) => r.id);
-export const joinTable = (id: string) => post<{ ok: true }>(`/tables/${id}/join`);
+export const joinTable = (id: string, invite?: string) => post<{ ok: true }>(`/tables/${id}/join`, { invite });
+export const createInvite = (id: string) => post<{ code: string }>(`/tables/${id}/invite`).then((r) => r.code);
+
+/** رابط دعوة يفتح التطبيق وينضم للطاولة مباشرة */
+export const inviteLink = (id: string, code: string) => `${location.origin}/?join=${id}&invite=${code}`;
 
 export const API_ERRORS: Record<string, string> = {
   'not-enough-coins': 'رصيدك من العملات لا يكفي',
@@ -34,13 +38,16 @@ export const API_ERRORS: Record<string, string> = {
   'table-full': 'الطاولة ممتلئة',
   'not-found': 'الطاولة غير موجودة',
   'not-a-member': 'لست عضواً في هذه الطاولة',
+  'private': 'هذه طاولة خاصة — تحتاج دعوة من مالكها',
+  'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
 };
 
 export type ClientMessage =
   | { type: 'action'; action: Record<string, unknown> }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
-  | { type: 'leave' };
+  | { type: 'leave' }
+  | { type: 'replace'; seat: number; uid: string };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {

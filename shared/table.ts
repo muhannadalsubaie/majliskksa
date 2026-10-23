@@ -21,6 +21,8 @@ export interface TableData {
   paid: string[];
   game: GameState | null;
   botCount: number;
+  /** رموز دعوات صالحة (لمرة واحدة) — دعوات المالك مدفوعة مسبقاً */
+  invites?: string[];
 }
 
 export function newTable(id: string, owner: { uid: string; username: string }, isPrivate: boolean, now: number): TableData {
@@ -60,11 +62,19 @@ function botName(t: TableData, rng: () => number): string {
 }
 
 /** ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول. */
-export function join(t: TableData, user: { uid: string; username: string }): { table: TableData; charge: boolean } {
+/**
+ * ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول.
+ * بدعوة صالحة: لا رسوم (دفعها المالك)، ويمكن دخول الطاولة الخاصة. الدعوة تُستهلك.
+ */
+export function join(t: TableData, user: { uid: string; username: string }, invite?: string): { table: TableData; charge: boolean } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
-  const charge = !t.paid.includes(user.uid);
-  const paid = charge ? [...t.paid, user.uid] : t.paid;
+  const invites = t.invites ?? [];
+  const invited = !!invite && invites.includes(invite);
+  if (t.isPrivate && !invited && !t.paid.includes(user.uid)) throw new TableError('private');
+  const charge = !invited && !t.paid.includes(user.uid);
+  const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
+  if (invited) t = { ...t, invites: invites.filter((c) => c !== invite) };
   const free = t.game ? -1 : t.seats.findIndex((m) => m === null);
   const member: Member = { uid: user.uid, username: user.username, isBot: false };
   if (free >= 0) {
@@ -87,6 +97,26 @@ export function leave(t: TableData, uid: string, rng: () => number = Math.random
   }
   seats[seat] = null;
   return { table: { ...t, seats }, botReplaced: false };
+}
+
+/** دعوة جديدة (يدفعها المالك) */
+export function addInvite(t: TableData, code: string): TableData {
+  return { ...t, invites: [...(t.invites ?? []), code].slice(-30) };
+}
+
+/**
+ * المالك يستبدل من في المقعد بأحد المشاهدين (حتى أثناء اللعب: يأخذ البديل أوراق المقعد).
+ * إن كان المُستبدَل إنساناً يصبح مشاهداً، وإن كان روبوتاً يُزال.
+ */
+export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): TableData {
+  const incoming = t.spectators.find((m) => m.uid === spectatorUid);
+  if (!incoming) throw new TableError('not-a-spectator');
+  const outgoing = t.seats[seat];
+  const seats = [...t.seats];
+  seats[seat] = incoming;
+  let spectators = t.spectators.filter((m) => m.uid !== spectatorUid);
+  if (outgoing && !outgoing.isBot) spectators = [...spectators, outgoing];
+  return { ...t, seats, spectators };
 }
 
 export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
@@ -300,7 +330,7 @@ export interface TableView {
   isPrivate: boolean;
   mySeat: Seat | null;
   seats: ({ username: string; isBot: boolean } | null)[];
-  spectators: string[];
+  spectators: { uid: string; username: string }[];
   game: GameView | null;
 }
 
@@ -333,7 +363,7 @@ export function viewFor(t: TableData, uid: string): TableView {
   return {
     id: t.id, ownerUid: t.ownerUid, isPrivate: t.isPrivate, mySeat,
     seats: t.seats.map((m) => (m ? { username: m.username, isBot: m.isBot } : null)),
-    spectators: t.spectators.map((m) => m.username),
+    spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
     game,
   };
 }

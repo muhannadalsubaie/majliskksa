@@ -11,6 +11,8 @@ import { Placeholder } from './screens/Placeholder';
 import { CreateTableScreen } from './screens/CreateTableScreen';
 import { JoinTableScreen } from './screens/JoinTableScreen';
 import { TableScreen } from './screens/TableScreen';
+import { API_ERRORS, joinTable } from './services/tables';
+import { announce } from './services/announcer';
 
 const TITLES: Record<ScreenName, string> = {
   splash: 'مجلسك', auth: 'تسجيل الدخول', menu: 'القائمة الرئيسية', createTable: 'إنشاء طاولة',
@@ -25,9 +27,29 @@ export default function App() {
   });
   const liveRef = useRef<HTMLDivElement>(null);
   const [tableId, setTableId] = useState<string | null>(() => (import.meta.env.DEV ? new URLSearchParams(location.search).get('table') : null));
-  const openTable = (id: string) => { setTableId(id); setScreen('table'); };
-  const wasSignedIn = useRef(false);
   const { user, profile } = useProfile();
+  const openTable = (id: string) => { setTableId(id); setScreen('table'); };
+
+  // رابط دعوة (?join=...&invite=...): نحفظه حتى يكتمل تسجيل الدخول واختيار الاسم ثم ننضم
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const id = q.get('join');
+    if (id && /^[0-9a-f]{64}$/.test(id)) {
+      try { sessionStorage.setItem('majlisk.pendingJoin', JSON.stringify({ id, invite: q.get('invite') ?? undefined })); } catch { /* ignore */ }
+      history.replaceState(null, '', location.pathname);
+    }
+  }, []);
+  useEffect(() => {
+    if (!user || !profile?.username || screen === 'splash' || screen === 'table') return;
+    let pending: { id: string; invite?: string } | null = null;
+    try { pending = JSON.parse(sessionStorage.getItem('majlisk.pendingJoin') ?? 'null'); } catch { /* ignore */ }
+    if (!pending) return;
+    try { sessionStorage.removeItem('majlisk.pendingJoin'); } catch { /* ignore */ }
+    joinTable(pending.id, pending.invite)
+      .then(() => { announce('تم قبول الدعوة'); openTable(pending!.id); })
+      .catch((e) => announce(API_ERRORS[(e as Error).message] ?? 'تعذّر الانضمام للطاولة'));
+  }, [user, profile?.username, screen]);
+  const wasSignedIn = useRef(false);
   // أي حساب مسجّل بلا اسم مستخدم يجب أن يختار اسماً قبل أي شاشة أخرى
   const needsUsername = Boolean(user && profile?.loaded && !profile.username && screen !== 'splash');
 

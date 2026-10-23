@@ -112,7 +112,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (joinMatch && request.method === 'POST') {
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
-      const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username });
+      const body = (await request.json().catch(() => ({}))) as { invite?: unknown };
+      const invite = typeof body.invite === 'string' ? body.invite.slice(0, 20) : undefined;
+      const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username }, invite);
       return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
     }
 
@@ -151,6 +153,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       await db.update('users', user.uid, { username });
       return json({ ok: true, username });
+    }
+
+    // رابط دعوة من مالك الطاولة
+    const inviteMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/invite$/);
+    if (inviteMatch && request.method === 'POST') {
+      const r = await env.TABLES.get(env.TABLES.idFromString(inviteMatch[1])).createInvite(user.uid);
+      return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
     }
 
     return json({ error: 'not-found' }, 404);

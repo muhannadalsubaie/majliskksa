@@ -4,6 +4,7 @@ import type { Bid } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import type { GameView } from '../../shared/table';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { TableMenu } from '../components/TableMenu';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
 import { useTable } from '../services/tables';
@@ -59,6 +60,7 @@ const sortHand = (hand: Card[]) =>
 export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: string; navigate: Navigate }) {
   const { view, connected, closed, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [lockChoice, setLockChoice] = useState(false);
   const wasMyTurn = useRef(false);
 
@@ -155,9 +157,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   return (
     <main className="screen table-screen" aria-labelledby="table-title">
       <header className="topbar">
+        <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
         <h1 id="table-title" className="sr-only">الطاولة</h1>
-        <span />
-        <button className="secondary" onClick={() => setConfirmLeave(true)}>مغادرة</button>
       </header>
 
       {!connected && <p role="status" className="note">انقطع الاتصال — جارٍ إعادة المحاولة…</p>}
@@ -198,7 +199,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               )}
             </div>
           ))}
-          {view.spectators.length > 0 && <p className="note">المشاهدون: {view.spectators.join('، ')}</p>}
+          {view.spectators.length > 0 && <p className="note">المشاهدون: {view.spectators.map((s) => s.username).join('، ')}</p>}
           {isOwner
             ? <button onClick={() => send({ type: 'start' })} disabled={!view.seats.every(Boolean)}>بدء المباراة</button>
             : <p role="status">بانتظار مالك الطاولة لبدء المباراة</p>}
@@ -310,13 +311,23 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
       <VoiceButton channelName={`table-${tableId.slice(0, 16)}`} />
 
+      {menuOpen && !confirmLeave && (
+        <TableMenu
+          view={view}
+          uid={uid}
+          send={send}
+          onLeave={() => setConfirmLeave(true)}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
+
       {confirmLeave && (
         <ConfirmDialog
           title="مغادرة الطاولة"
           message={g && g.phase !== 'matchOver' && mySeat !== null ? 'المباراة جارية — سيحل روبوت مكانك. هل تريد المغادرة؟' : 'هل تريد مغادرة الطاولة؟'}
           confirmLabel="مغادرة"
           onConfirm={leaveTable}
-          onCancel={() => setConfirmLeave(false)}
+          onCancel={() => { setConfirmLeave(false); setMenuOpen(false); }}
         />
       )}
     </main>

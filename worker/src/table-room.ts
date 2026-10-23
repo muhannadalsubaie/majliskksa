@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, applyWithEvents, dealAnnouncement, hasHumans, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, dealAnnouncement, hasHumans, replaceSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   runAutoStep, seatOf, start, viewFor,
 } from '../../shared/table';
 import type { Env } from './env';
@@ -19,7 +19,8 @@ type ClientMessage =
   | { type: 'action'; action: unknown }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
-  | { type: 'leave' };
+  | { type: 'leave' }
+  | { type: 'replace'; seat: number; uid: string };
 
 const rng = () => Math.random();
 
@@ -58,6 +59,7 @@ const ERRORS: Record<string, string> = {
   'seat-taken': 'المقعد محجوز',
   'not-full': 'يجب أن تكتمل المقاعد الأربعة',
   'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
+  'not-a-spectator': 'هذا الشخص لم يعد في الطاولة',
 };
 
 /** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
@@ -116,11 +118,11 @@ export class TableRoom extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + this.grace());
   }
 
-  async joinTable(user: { uid: string; username: string }): Promise<{ ok: true } | { error: string }> {
+  async joinTable(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     try {
-      const r = join(t, user);
+      const r = join(t, user, invite);
       if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable);
       await this.save(r.table);
       this.broadcast([`انضم ${user.username}`]);
@@ -143,6 +145,22 @@ export class TableRoom extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(Date.now() + this.grace());
     }
     return true;
+  }
+
+  /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
+  async createInvite(uid: string): Promise<{ code: string } | { error: string }> {
+    const t = await this.load();
+    if (!t) return { error: 'not-found' };
+    if (t.ownerUid !== uid) return { error: 'not-owner' };
+    try {
+      await this.db().adjustCoins(uid, -COINS.inviteFriend);
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+    const bytes = crypto.getRandomValues(new Uint8Array(6));
+    const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
+    await this.save(addInvite(t, code));
+    return { code };
   }
 
   async isMember(uid: string): Promise<boolean> {
@@ -214,6 +232,16 @@ export class TableRoom extends DurableObject<Env> {
         const next = start(t, rng);
         await this.save(next);
         this.broadcast(['بدأت المباراة', dealAnnouncement(next)]);
+        await this.publish(next);
+        break;
+      }
+      case 'replace': {
+        if (!isOwner) throw new Error('not-owner');
+        if (!isSeat(msg.seat) || typeof msg.uid !== 'string') throw new Error('bad-request');
+        const before = t.seats[msg.seat];
+        const next = replaceSeat(t, msg.seat, msg.uid);
+        await this.save(next);
+        this.broadcast([`${next.seats[msg.seat]!.username} جلس مكان ${before?.username ?? 'المقعد الفارغ'}`]);
         await this.publish(next);
         break;
       }
