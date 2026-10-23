@@ -27,12 +27,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install deps
+        run: npm ci && npm ci --prefix worker
       - name: Tests
-        run: npm ci && npm test
+        run: npm test
       - name: Build web app
         run: npm run build
-      - name: Install worker deps
-        run: npm ci --prefix worker
       - name: Ensure workers.dev subdomain
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

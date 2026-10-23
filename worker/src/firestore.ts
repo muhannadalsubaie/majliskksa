@@ -4,11 +4,39 @@ interface ServiceAccount { client_email: string; private_key: string; project_id
 
 let cached: { token: string; exp: number } | null = null;
 
+/**
+ * يقرأ ملف حساب الخدمة حتى لو حُوّلت رموز \n داخل النصوص إلى أسطر حقيقية
+ * (يحدث عند نسخ الملف ولصقه من الجوال).
+ */
+export function parseServiceAccount(raw: string): ServiceAccount {
+  try {
+    return JSON.parse(raw) as ServiceAccount;
+  } catch {
+    let out = '';
+    let inString = false;
+    let escaped = false;
+    for (const ch of raw) {
+      if (inString) {
+        if (escaped) { escaped = false; out += ch; continue; }
+        if (ch === '\\') { escaped = true; out += ch; continue; }
+        if (ch === '"') { inString = false; out += ch; continue; }
+        if (ch === '\n') { out += '\\n'; continue; }
+        if (ch === '\r') continue;
+        out += ch;
+      } else {
+        if (ch === '"') inString = true;
+        out += ch;
+      }
+    }
+    return JSON.parse(out) as ServiceAccount;
+  }
+}
+
 /** توكن وصول OAuth لحساب الخدمة (يُخزّن مؤقتاً حتى قرب انتهائه). */
 async function accessToken(serviceAccountJson: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   if (cached && cached.exp - 60 > now) return cached.token;
-  const sa = JSON.parse(serviceAccountJson) as ServiceAccount;
+  const sa = parseServiceAccount(serviceAccountJson);
   const key = await importPKCS8(sa.private_key, 'RS256');
   const assertion = await new SignJWT({ scope: 'https://www.googleapis.com/auth/datastore' })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
