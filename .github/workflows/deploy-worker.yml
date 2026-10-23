@@ -57,3 +57,8 @@ jobs:
             FIREBASE_SERVICE_ACCOUNT
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Smoke test
+        run: |
+          sleep 5
+          curl -s https://majlisk-api.majlisk.workers.dev/api/health; echo
+          curl -s -X POST -H "Content-Type: application/json" --data '{"username":"test_check"}' https://majlisk-api.majlisk.workers.dev/api/username/available; echo

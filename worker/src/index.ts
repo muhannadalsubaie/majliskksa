@@ -15,12 +15,29 @@ const json = (data: unknown, status = 200) =>
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handle(request, env);
+    } catch (e) {
+      // رسالة الخطأ فقط (بدون أي أسرار) لتسهيل التشخيص
+      console.error(e);
+      return json({ error: 'server', detail: String((e as Error).message ?? e).slice(0, 300) }, 500);
+    }
+  },
+};
+
+async function handle(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return json({ error: 'not-found' }, 404);
     const pathname = url.pathname.slice(4); // إزالة البادئة /api
 
-    if (pathname === '/health') return json({ ok: true });
+    if (pathname === '/health') {
+      // فحص اتصال الخادم بقاعدة البيانات (بدون كشف أي بيانات)
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '');
+      let firestore = 'ok';
+      try { await db.get('usernames', '__healthcheck__'); } catch (e) { firestore = String((e as Error).message).slice(0, 300); }
+      return json({ ok: true, firestore, hasServiceAccount: Boolean(env.FIREBASE_SERVICE_ACCOUNT) });
+    }
 
     // فحص توفر اسم المستخدم (متاح قبل إنشاء الحساب، لذلك بدون تسجيل دخول)
     if (pathname === '/username/available' && request.method === 'POST') {
@@ -72,5 +89,4 @@ export default {
     }
 
     return json({ error: 'not-found' }, 404);
-  },
-};
+}
