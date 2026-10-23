@@ -79,6 +79,8 @@ describe('table', () => {
         if (++steps > 20000) throw new Error(`seed ${seed}: too many steps`);
       }
       expect(events.at(-1)).toMatch(/^انتهت المباراة — فاز/);
+      expect(events.some((e) => /الموزع\. ورقة الأرض: /.test(e))).toBe(true);
+      expect(events.some((e) => / اشترى (حكم|صن)/.test(e))).toBe(true);
     }
   });
 

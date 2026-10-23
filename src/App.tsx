@@ -57,7 +57,7 @@ export default function App() {
   return (
     <>
       {content}
-      <div ref={liveRef} className="sr-only" aria-live="assertive" aria-atomic="true" />
+      <div ref={liveRef} className="sr-only" role="log" aria-live="polite" aria-relevant="additions" aria-label="إعلانات اللعبة" />
     </>
   );
 }

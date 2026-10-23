@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
 import { useTable } from '../services/tables';
+import { TWO_FINGER_LEFT, isScreenReaderOn } from '../services/screenReader';
 import type { Navigate } from '../state/navigation';
 
 const RANK_SHORT: Record<string, string> = { A: 'A', K: 'K', Q: 'Q', J: 'J', '10': '10', '9': '9', '8': '8', '7': '7' };
@@ -25,6 +26,7 @@ function bidLabel(b: Bid): string {
     case 'pass': return 'بس';
     case 'sun': return 'صن';
     case 'ashkal': return 'أشكل';
+    case 'secondHokm': return 'حكم ثاني';
     case 'hokm': return `حكم ${SUIT_NAMES[b.suit]} ${SUIT_SYMBOLS[b.suit]}`;
   }
 }
@@ -64,6 +66,50 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   useEffect(() => { if (!g || g.actions.double === null) setLockChoice(false); }, [g]);
 
+  /** وصف الأكلة الحالية: من لعب ماذا وبالترتيب، ومن الأعلى حالياً */
+  const trickSummary = (): string => {
+    if (!g) return 'المباراة لم تبدأ بعد';
+    if (g.phase === 'bidding') return g.qaba ? `المزايدة جارية. ورقة الأرض: ${cardLabel(g.qaba)}` : 'المزايدة جارية';
+    if (g.trick.length === 0) {
+      if (!g.lastTrick) return 'لا توجد أوراق على الطاولة';
+      const prev = g.lastTrick.cards.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
+      return `لا توجد أوراق على الطاولة. الأكلة السابقة لـ${name(g.lastTrick.winner)}: ${prev}`;
+    }
+    return g.trick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
+  };
+  const readTrick = () => announce(trickSummary());
+  const readTrickRef = useRef(readTrick);
+  readTrickRef.current = readTrick;
+
+  // إيماءة سحب من اليمين لليسار لقراءة ما على الطاولة:
+  // - مع قارئ التطبيق المدمج: سحب بإصبعين
+  // - بدونه (ومع TalkBack الذي يمرر سحب الإصبعين للتطبيق كسحبة واحدة): أي سحبة أفقية سريعة
+  useEffect(() => {
+    const onTwo = () => readTrickRef.current();
+    window.addEventListener(TWO_FINGER_LEFT, onTwo);
+    let startPt: { x: number; y: number; t: number } | null = null;
+    const onStart = (e: TouchEvent) => {
+      if (isScreenReaderOn()) return;
+      const t = e.touches[0];
+      startPt = { x: t.clientX, y: t.clientY, t: performance.now() };
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!startPt || isScreenReaderOn()) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startPt.x;
+      const dy = t.clientY - startPt.y;
+      if (dx < -70 && Math.abs(dy) < 60 && performance.now() - startPt.t < 700) readTrickRef.current();
+      startPt = null;
+    };
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      window.removeEventListener(TWO_FINGER_LEFT, onTwo);
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchend', onEnd);
+    };
+  }, []);
+
   const act = (action: Record<string, unknown>) => send({ type: 'action', action });
   const leaveTable = () => { send({ type: 'leave' }); navigate('menu'); };
 
@@ -88,6 +134,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       <header className="topbar">
         <button className="secondary" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog}>سجل اللعب</button>
         <h1 id="table-title" className="sr-only">الطاولة</h1>
+        {g && <button className="secondary" onClick={readTrick}>وش على الطاولة؟</button>}
         <button className="secondary" onClick={() => setConfirmLeave(true)}>مغادرة</button>
       </header>
 

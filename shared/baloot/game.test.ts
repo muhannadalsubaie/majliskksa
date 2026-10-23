@@ -42,7 +42,7 @@ describe('game flow', () => {
     expect(s.hands.map((h) => h.length)).toEqual([5, 5, 5, 5]);
     expect(s.stock).toHaveLength(11);
     expect(s.turn).toBe(1);
-    expect(availableBids(s, 1).map((b) => b.type)).toEqual(['pass', 'sun', 'hokm']);
+    expect(availableBids(s, 1).map((b) => b.type)).toEqual(['pass', 'sun', 'hokm', 'secondHokm']);
     expect(availableBids(s, 2).map((b) => b.type)).toEqual([]);
   });
 
@@ -55,6 +55,34 @@ describe('game flow', () => {
     expect(s.contract).toMatchObject({ mode: 'sun', buyer: 2, qabaTo: 0 });
     expect(s.hands[0]).toContainEqual(qaba);
     expect(s.hands.map((h) => h.length)).toEqual([8, 8, 8, 8]);
+  });
+
+  it('حكم ثاني: others may only pass or sun, then the caller picks a non-qaba suit', () => {
+    let s = newMatch(seededRng(11), 0);
+    const qabaSuit = s.qaba!.suit;
+    expect(availableBids(s, 1).map((b) => b.type)).toContain('secondHokm');
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
+    expect(s.turn).toBe(2);
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun']);
+    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    // back to the caller: only hokm in the other three suits
+    expect(s.turn).toBe(1);
+    const choices = availableBids(s, 1);
+    expect(choices).toHaveLength(3);
+    expect(choices.every((b) => b.type === 'hokm' && b.suit !== qabaSuit)).toBe(true);
+    const suit = (choices[0] as { suit: string }).suit;
+    expect(() => applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: qabaSuit } })).toThrow(IllegalAction);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: choices[0] });
+    expect(s.contract).toMatchObject({ mode: 'hokm', trump: suit, buyer: 1, qabaTo: 1 });
+    expect(s.hands.map((h) => h.length)).toEqual([8, 8, 8, 8]);
+  });
+
+  it('حكم ثاني: anyone may take sun instead', () => {
+    let s = newMatch(seededRng(12), 0);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'sun' } });
+    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 3 });
   });
 
   it('after hokm, later players may only take sun', () => {

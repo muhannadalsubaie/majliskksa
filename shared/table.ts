@@ -105,8 +105,16 @@ function bidText(b: Bid): string {
     case 'pass': return 'بس';
     case 'sun': return 'صن';
     case 'ashkal': return 'أشكل';
+    case 'secondHokm': return 'حكم ثاني';
     case 'hokm': return `حكم ${SUIT_NAMES[b.suit]}`;
   }
+}
+
+/** إعلان بداية كل توزيع: الموزع وورقة الأرض (القبلة) */
+export function dealAnnouncement(t: TableData): string {
+  const g = t.game;
+  if (!g?.qaba) return '';
+  return `${nameOf(t, g.dealer)} الموزع. ورقة الأرض: ${cardLabel(g.qaba)}`;
 }
 
 export function contractText(g: GameState): string {
@@ -123,13 +131,21 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
   const who = 'seat' in action ? nameOf(t, action.seat) : '';
 
   switch (action.type) {
-    case 'bid':
-      events.push(`${who}: ${bidText(action.bid)}`);
+    case 'bid': {
+      // اختيار لون "الثاني" يُعلن مباشرة كشراء
+      const choosingSecond = before.secondHokm?.remaining === 0;
+      if (!choosingSecond) events.push(`${who}: ${bidText(action.bid)}`);
       if (!before.contract && after.contract) {
-        events.push(`المشتري ${nameOf(t, after.contract.buyer)}، ${contractText(after)}`);
+        const c = after.contract;
+        events.push(`${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
+        if (c.qabaTo !== c.buyer) events.push(`القبلة لـ${nameOf(t, c.qabaTo)}`);
+      }
+      if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
+        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار الحكم`);
       }
       if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
       break;
+    }
     case 'double': {
       const d = after.doubling;
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
@@ -153,7 +169,18 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
         if (before.trickNo === 0 && after.projects?.winningTeam != null) {
-          events.push(`تُحتسب مشاريع ${teamName(t, after.projects.winningTeam)}`);
+          const winTeam = after.projects.winningTeam;
+          // كشف المشاريع: أوراق مشاريع الفريق الفائز، وإلغاء مشاريع الآخر
+          for (const d of after.declared) {
+            const owner = nameOf(t, d.seat);
+            if (teamOf(d.seat) === winTeam) {
+              for (const p of d.projects) {
+                events.push(`مشروع ${owner}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`);
+              }
+            } else {
+              events.push(`أُلغي مشروع ${owner}`);
+            }
+          }
         }
       }
       if (after.lastHand && !before.lastHand) {
@@ -202,10 +229,12 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
 
 export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[] } {
   if (step.kind === 'redeal') {
-    return { table: { ...t, game: redeal(t.game!, rng) }, events: ['توزيع جديد'] };
+    const table = { ...t, game: redeal(t.game!, rng) };
+    return { table, events: ['توزيع جديد', dealAnnouncement(table)] };
   }
   if (step.kind === 'nextHand') {
-    return { table: { ...t, game: nextHand(t.game!, rng) }, events: ['صكة جديدة'] };
+    const table = { ...t, game: nextHand(t.game!, rng) };
+    return { table, events: ['صكة جديدة', dealAnnouncement(table)] };
   }
   return applyWithEvents(t, step.action, rng);
 }

@@ -28,6 +28,10 @@ function chooseBid(s: GameState, seat: Seat): Bid {
   const qaba = s.qaba!;
   // المشتري يأخذ القبلة، فنحسبها ضمن اليد عند التقييم
   const withQaba = [...hand, qaba];
+  // اختيار لون "الثاني": أقوى لون غير لون القبلة
+  if (bids.every((b) => b.type === 'hokm')) {
+    return bids.reduce((a, b) => (hokmStrength(withQaba, (b as { suit: Suit }).suit) > hokmStrength(withQaba, (a as { suit: Suit }).suit) ? b : a));
+  }
   if (bids.some((b) => b.type === 'sun') && sunStrength(withQaba) >= 7.5) return { type: 'sun' };
   let best: { bid: Bid; score: number } | null = null;
   for (const b of bids) {
@@ -35,7 +39,13 @@ function chooseBid(s: GameState, seat: Seat): Bid {
     const score = hokmStrength(b.suit === qaba.suit ? withQaba : hand, b.suit);
     if (score >= 7 && (!best || score > best.score)) best = { bid: b, score };
   }
-  return best?.bid ?? { type: 'pass' };
+  if (best) return best.bid;
+  // حكم ثاني: إن كان لون آخر غير القبلة قوياً
+  if (bids.some((b) => b.type === 'secondHokm')) {
+    const strong = (['S', 'H', 'C', 'D'] as Suit[]).some((suit) => suit !== qaba.suit && hokmStrength(withQaba, suit) >= 7.5);
+    if (strong) return { type: 'secondHokm' };
+  }
+  return { type: 'pass' };
 }
 
 function chooseDouble(s: GameState, seat: Seat): Action {

@@ -69,7 +69,8 @@ export function useTable(tableId: string) {
         if (msg.type === 'state') setView(msg.view);
         if (msg.type === 'events') {
           setLog((l) => [...l, ...msg.events].slice(-60));
-          announce(msg.events.join('. '));
+          // كل حدث إعلان مستقل حتى يقرأها قارئ الشاشة بالترتيب
+          for (const e of msg.events as string[]) announce(e);
         }
         if (msg.type === 'error') announce(msg.message);
       };

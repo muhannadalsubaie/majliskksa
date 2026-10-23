@@ -42,10 +42,10 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
       <section aria-labelledby="sec-a11y" className="stack">
         <h2 id="sec-a11y">إمكانية الوصول</h2>
         <Switch
-          label="نطق أحداث اللعبة تلقائياً"
+          label="نطق أحداث اللعبة بصوت التطبيق"
           checked={speech}
           onChange={(on) => { setSpeech(on); setSpeechEnabled(on); }}
-          description="ينطق الأوراق والمزايدة والدبل والأكلات أثناء اللعب."
+          description="لمن لا يستخدم قارئ شاشة. مع TalkBack أو VoiceOver اتركه مغلقاً: قارئك ينطق الأحداث تلقائياً."
         />
 
         <Switch

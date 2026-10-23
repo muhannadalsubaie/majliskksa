@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, applyWithEvents, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, applyWithEvents, dealAnnouncement, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   runAutoStep, seatOf, start, viewFor,
 } from '../../shared/table';
 import type { Env } from './env';
@@ -186,7 +186,7 @@ export class TableRoom extends DurableObject<Env> {
         if (!isFull(t)) throw new TableError('not-full');
         const next = start(t, rng);
         await this.save(next);
-        this.broadcast(['بدأت المباراة — توزيع الأوراق']);
+        this.broadcast(['بدأت المباراة', dealAnnouncement(next)]);
         await this.publish(next);
         break;
       }

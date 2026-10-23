@@ -26,6 +26,11 @@ let lastTapAt = 0;
 let pendingTap: ReturnType<typeof setTimeout> | null = null;
 let multiTouch = false;
 let lastScrollY: number | null = null;
+let twoStart: { x: number; t: number } | null = null;
+let twoLastX = 0;
+
+/** إيماءة سحب بإصبعين من اليمين لليسار — تستمع لها الشاشات (مثل الطاولة) */
+export const TWO_FINGER_LEFT = 'majlisk:two-finger-left';
 const listeners = new Set<(on: boolean) => void>();
 
 function load(): boolean {
@@ -208,6 +213,9 @@ function onTouchMove(e: TouchEvent) {
     e.preventDefault();
     multiTouch = true;
     start = null;
+    const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    if (!twoStart) twoStart = { x, t: performance.now() };
+    twoLastX = x;
     const y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     if (lastScrollY !== null) window.scrollBy(0, lastScrollY - y);
     lastScrollY = y;
@@ -222,7 +230,17 @@ function onTouchMove(e: TouchEvent) {
 }
 
 function onTouchEnd(e: TouchEvent) {
-  if (multiTouch) { if (e.touches.length === 0) { multiTouch = false; lastScrollY = null; } return; }
+  if (multiTouch) {
+    if (e.touches.length === 0) {
+      if (twoStart && twoStart.x - twoLastX > SWIPE_MIN && performance.now() - twoStart.t < 700) {
+        window.dispatchEvent(new Event(TWO_FINGER_LEFT));
+      }
+      multiTouch = false;
+      lastScrollY = null;
+      twoStart = null;
+    }
+    return;
+  }
   if (!start) return;
   e.preventDefault();
   lastHandledTouch = performance.now();

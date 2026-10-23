@@ -16,7 +16,8 @@ export type Bid =
   | { type: 'pass' }
   | { type: 'hokm'; suit: Suit }
   | { type: 'sun' }
-  | { type: 'ashkal' };
+  | { type: 'ashkal' }
+  | { type: 'secondHokm' };
 
 export interface Contract {
   mode: GameMode;
@@ -48,6 +49,12 @@ export interface GameState {
   bidRound: 1 | 2;
   bidsInRound: number;
   hokmBid: { seat: Seat; suit: Suit } | null;
+  /**
+   * "حكم ثاني" في اللفة الأولى: يمر الدور على البقية (بس أو صن فقط)،
+   * فإن قالوا كلهم بس يعود لصاحبه ليختار حكماً بغير لون القبلة.
+   * remaining = عدد من بقي عليهم الدور، 0 = صاحب الثاني يختار اللون الآن.
+   */
+  secondHokm: { seat: Seat; remaining: number } | null;
   contract: Contract | null;
   doubling: DoublingState;
   initialHands: Card[][];
@@ -100,7 +107,7 @@ export function dealHand(dealer: Seat, scores: [number, number], rng: Rng): Game
   }
   return {
     phase: 'bidding', dealer, scores, turn: nextSeat(dealer), hands, qaba: deck[20], stock: deck.slice(21),
-    bidRound: 1, bidsInRound: 0, hokmBid: null, contract: null, doubling: freshDoubling(),
+    bidRound: 1, bidsInRound: 0, hokmBid: null, secondHokm: null, contract: null, doubling: freshDoubling(),
     initialHands: [], declared: [], projects: null, balootSeat: null,
     trick: [], lastTrick: null, trickNo: 0, tricksWon: [0, 0], cardAbnat: [0, 0], lastHand: null, outcome: { status: 'ongoing' },
   };
@@ -113,10 +120,14 @@ export function newMatch(rng: Rng, dealer: Seat = 0): GameState {
 /** الأزرار المتاحة للاعب في المزايدة. */
 export function availableBids(s: GameState, seat: Seat): Bid[] {
   if (s.phase !== 'bidding' || s.turn !== seat || !s.qaba) return [];
+  const otherSuits = (['S', 'H', 'C', 'D'] as Suit[]).filter((suit) => suit !== s.qaba!.suit);
+  // صاحب "حكم ثاني" بعد أن قال الجميع بس: يختار لوناً غير لون القبلة
+  if (s.secondHokm?.remaining === 0) return otherSuits.map((suit) => ({ type: 'hokm', suit }));
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
-  if (s.hokmBid) return bids; // بعد الحكم: يحق فقط الصن
+  if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
   if (s.bidRound === 1) {
     bids.push({ type: 'hokm', suit: s.qaba.suit });
+    bids.push({ type: 'secondHokm' });
     if (seat === nextSeat(s.dealer, 2)) bids.push({ type: 'ashkal' });
   } else {
     for (const suit of ['S', 'H', 'C', 'D'] as Suit[]) if (suit !== s.qaba.suit) bids.push({ type: 'hokm', suit });
@@ -156,6 +167,18 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   if (bid.type === 'sun') return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: seat });
   if (bid.type === 'ashkal') {
     return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: nextSeat(seat, 2) });
+  }
+
+  // ───── حكم ثاني ─────
+  if (bid.type === 'secondHokm') return { ...s, secondHokm: { seat, remaining: 3 }, turn: nextSeat(seat) };
+  if (s.secondHokm) {
+    const owner = s.secondHokm.seat;
+    if (s.secondHokm.remaining === 0 && bid.type === 'hokm') {
+      return finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner });
+    }
+    // بس من أحد البقية
+    const remaining = s.secondHokm.remaining - 1;
+    return { ...s, secondHokm: { seat: owner, remaining }, turn: remaining === 0 ? owner : nextSeat(seat) };
   }
 
   const next: GameState = { ...s, bidsInRound: s.bidsInRound + 1, turn: nextSeat(seat) };
