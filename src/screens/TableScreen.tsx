@@ -21,6 +21,20 @@ function CardFace({ card }: { card: Card }) {
   );
 }
 
+/**
+ * ورقة معروضة على الطاولة: نص حقيقي يقرؤه TalkBack وVoiceOver وقارئ التطبيق
+ * عند الوقوف عليها (aria-label على عنصر عادي يتجاهله أغلب القرّاء)، والرسم مخفي عنهم.
+ */
+function SpokenCard({ text, card, caption }: { text: string; card: Card; caption?: string }) {
+  return (
+    <p className="spoken-card">
+      <span className="sr-only">{text}</span>
+      {caption && <span className="note" aria-hidden="true">{caption}</span>}
+      <CardFace card={card} />
+    </p>
+  );
+}
+
 function bidLabel(b: Bid): string {
   switch (b.type) {
     case 'pass': return 'بس';
@@ -190,18 +204,16 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                 <div key={r} className={`player pos-${r}${g.turn === seat && g.phase !== 'matchOver' ? ' turn' : ''}`}>
                   <span className="player-name">{name(seat)}{r === 2 ? ' (شريكك)' : ''}</span>
                   <span className="note">{g.handCounts[seat]} أوراق</span>
-                  {played && <span aria-label={`لعب ${cardLabel(played.card)}`}><CardFace card={played.card} /></span>}
+                  {played && <SpokenCard text={`${name(seat)} لعب ${cardLabel(played.card)}`} card={played.card} />}
                 </div>
               );
             })}
             <div className="center-area">
               {g.phase === 'bidding' && g.qaba && (
-                <div aria-label={`القبلة ${cardLabel(g.qaba)}`}><span className="note">القبلة</span><CardFace card={g.qaba} /></div>
+                <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="القبلة" />
               )}
               {g.trick.find((p) => p.seat === me) && (
-                <div aria-label={`ورقتك ${cardLabel(g.trick.find((p) => p.seat === me)!.card)}`}>
-                  <CardFace card={g.trick.find((p) => p.seat === me)!.card} />
-                </div>
+                <SpokenCard text={`أنت لعبت ${cardLabel(g.trick.find((p) => p.seat === me)!.card)}`} card={g.trick.find((p) => p.seat === me)!.card} />
               )}
             </div>
           </section>

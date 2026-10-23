@@ -63,8 +63,12 @@ export function initScreenReader() {
 
 // ───── وصف العناصر ─────
 
+/** النص المقروء لعنصر: يتجاهل الأجزاء المخفية عن قارئات الشاشة (aria-hidden) */
 function textOf(el: Element | null): string {
-  return (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  if (!el) return '';
+  const clone = el.cloneNode(true) as Element;
+  clone.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+  return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 function labelFor(el: HTMLElement): string {
