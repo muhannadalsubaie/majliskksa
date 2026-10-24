@@ -113,8 +113,8 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .card-face.red { color: #a3202a; }
 .hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .card-btn { padding: 0; background: none; border-radius: 10px; }
-.card-btn:disabled { opacity: .45; cursor: default; }
-.card-btn:not(:disabled) .card-face { box-shadow: 0 0 0 2px var(--gold-soft); }
+.card-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
+.card-btn:not([aria-disabled="true"]) .card-face { box-shadow: 0 0 0 2px var(--gold-soft); }
 .action-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .action-row button { flex: 1 1 30%; min-width: 90px; }
 /* أزرار المزايدة (بس، صن، حكم، أشكل...) أصغر لتترك مساحة للأوراق — مع إبقاء مساحة لمس كافية */

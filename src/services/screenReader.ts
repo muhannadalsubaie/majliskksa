@@ -7,7 +7,8 @@
 import { speak } from './speech';
 import { initNativeA11y, isSystemReaderOn, onSystemReaderChange } from './nativeA11y';
 
-const KEY = 'majlisk.screenReader';
+// مفتاح جديد: القارئ المدمج يبدأ مغلقاً للجميع، ويُفعَّل من الإعدادات فقط
+const KEY = 'majlisk.builtInReader';
 const DOUBLE_TAP_MS = 350;
 const TAP_SLOP = 18;
 const SWIPE_MIN = 60;

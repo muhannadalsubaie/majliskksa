@@ -40,31 +40,37 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
         />
       </section>
 
-      <section aria-labelledby="sec-a11y" className="stack">
-        <h2 id="sec-a11y">إمكانية الوصول</h2>
+      <section aria-labelledby="sec-reader" className="stack">
+        <h2 id="sec-reader">قارئ الشاشة المدمج</h2>
         <Switch
-          label="نطق أحداث اللعبة بصوت التطبيق"
-          checked={speech}
-          onChange={(on) => { setSpeech(on); setSpeechEnabled(on); }}
-          description="لمن لا يستخدم قارئ شاشة. مع TalkBack أو VoiceOver اتركه مغلقاً: قارئك ينطق الأحداث تلقائياً."
-        />
-
-        <Switch
-          label="قارئ الشاشة المدمج"
+          label="تفعيل قارئ الشاشة المدمج"
           checked={reader}
           onChange={(on) => { setReader(on); setScreenReader(on); }}
           description={isSystemReaderOn()
             ? 'TalkBack أو VoiceOver يعمل الآن، لذلك القارئ المدمج متوقف تلقائياً. أحداث اللعبة تُعلن عبر قارئك مباشرة.'
-            : 'المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل، وإصبعين للتمرير، وفي الطاولة اسحب بإصبعين: من اليمين لليسار لأوراق الطاولة، ومن اليسار لليمين لنوع اللعب ومن اشترى، ومن تحت لفوق للمشاريع.'}
+            : 'مغلق افتراضياً. لمن لا يستخدم TalkBack أو VoiceOver: المس أي عنصر لسماعه، والمس مرتين لتفعيله، واسحب يميناً أو يساراً للتنقل، وإصبعين للتمرير. وفي الطاولة اسحب بإصبعين: من اليمين لليسار لأوراق الطاولة، ومن اليسار لليمين لنوع اللعب ومن اشترى، ومن تحت لفوق للمشاريع.'}
         />
+        {reader && (
+          <>
+            <h3 id="rate-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة النطق</h3>
+            <div className="rate-row" role="group" aria-labelledby="rate-title">
+              <button className="secondary" onClick={() => changeRate(-RATE_STEP)} disabled={rate <= RATE_MIN}>أبطأ</button>
+              <output aria-live="polite" aria-label={`السرعة الحالية ${formatRate(rate)}`}>{formatRate(rate)}</output>
+              <button className="secondary" onClick={() => changeRate(RATE_STEP)} disabled={rate >= RATE_MAX}>أسرع</button>
+            </div>
+            <button className="secondary" onClick={() => speak('هذا مثال على سرعة النطق في مجلسك', true)}>تجربة النطق</button>
+          </>
+        )}
+      </section>
 
-        <h3 id="rate-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة النطق</h3>
-        <div className="rate-row" role="group" aria-labelledby="rate-title">
-          <button className="secondary" onClick={() => changeRate(-RATE_STEP)} disabled={rate <= RATE_MIN}>أبطأ</button>
-          <output aria-live="polite" aria-label={`السرعة الحالية ${formatRate(rate)}`}>{formatRate(rate)}</output>
-          <button className="secondary" onClick={() => changeRate(RATE_STEP)} disabled={rate >= RATE_MAX}>أسرع</button>
-        </div>
-        <button className="secondary" onClick={() => speak('هذا مثال على سرعة النطق في مجلسك', true)}>تجربة النطق</button>
+      <section aria-labelledby="sec-speech" className="stack">
+        <h2 id="sec-speech">نطق الأحداث</h2>
+        <Switch
+          label="نطق أحداث اللعبة بصوت التطبيق"
+          checked={speech}
+          onChange={(on) => { setSpeech(on); setSpeechEnabled(on); }}
+          description="لمن لا يستخدم أي قارئ شاشة. مع TalkBack أو VoiceOver اتركه مغلقاً: قارئك ينطق الأحداث تلقائياً."
+        />
       </section>
 
       <section aria-labelledby="sec-account" className="stack">

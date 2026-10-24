@@ -337,7 +337,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           </section>
 
           {/* ليس منطقة حية: "دورك" يُعلن مرة واحدة، وتحديثها مع كل ورقة كان يقطع إعلانات اللعب */}
-          <p className="turn-line">
+          <p className="turn-line" tabIndex={-1}>
             {g.phase === 'matchOver'
               ? (g.outcome.status === 'won' ? (g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر') : '')
               : myTurn ? 'دورك' : g.phase === 'doubling' ? 'بانتظار قرار الدبل' : `دور ${name(g.turn)}`}
@@ -393,9 +393,11 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                     <button
                       key={cardId(c)}
                       className="card-btn"
-                      disabled={!legal}
+                      // aria-disabled بدل disabled: تبقى الورقة قابلة للتركيز، فلا يقفز مؤشر
+                      // قارئ الشاشة لأعلى الصفحة عندما ينتهي دورك
+                      aria-disabled={!legal}
                       aria-label={cardLabel(c)}
-                      onClick={() => act({ type: 'play', card: c })}
+                      onClick={() => { if (legal) act({ type: 'play', card: c }); }}
                     >
                       <CardFace card={c} />
                     </button>
