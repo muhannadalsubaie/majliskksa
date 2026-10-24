@@ -399,7 +399,10 @@ export class TableRoom extends DurableObject<Env> {
         // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً
         if (!hasHumans(r.table)) { await this.closeTable(); return; }
         await this.save(r.table);
-        this.broadcast([r.botReplaced && seat !== null ? `غادر ${who} وحلّ مكانه ${r.table.seats[seat]!.username}` : `غادر ${who}`]);
+        this.broadcast([
+          r.botReplaced && seat !== null ? `غادر ${who} وحلّ مكانه ${r.table.seats[seat]!.username}` : `غادر ${who}`,
+          ...(r.newOwner ? [`أصبح ${r.newOwner} مالك الطاولة`] : []),
+        ]);
         await this.publish(r.table);
         break;
       }

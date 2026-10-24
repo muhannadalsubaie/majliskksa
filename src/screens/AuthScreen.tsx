@@ -10,6 +10,7 @@ import { connectFirebase } from '../services/firebase';
 import { announce } from '../services/announcer';
 import { api, apiPublic } from '../services/api';
 import type { Navigate } from '../state/navigation';
+import { SITE_URL } from '../services/api';
 
 const ERRORS: Record<string, string> = {
   'auth/invalid-credential': 'البريد أو كلمة المرور غير صحيحة',
@@ -119,6 +120,9 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
 
         <button type="submit" disabled={busy}>{isSignup ? 'إنشاء الحساب (+15 🪙)' : 'دخول'}</button>
       </form>
+      <p className="note" style={{ margin: 0 }}>
+        بالتسجيل أنت توافق على <a href={`${SITE_URL}/privacy.html`} target="_blank" rel="noopener">سياسة الخصوصية</a>.
+      </p>
 
       <button className="secondary" onClick={google} disabled={busy}>الدخول بحساب Google</button>
 

@@ -150,18 +150,31 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
 }
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
-export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean } {
+export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean; newOwner?: string } {
   const t = markBack(withoutVoice(t0, uid), uid);
   const seat = seatOf(t, uid);
-  if (seat === null) return { table: { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) }, botReplaced: false };
-  const seats = [...t.seats];
-  if (t.game && t.game.phase !== 'matchOver') {
-    const n = t.botCount + 1;
-    seats[seat] = { uid: `bot-${n}`, username: botName(t, rng), isBot: true };
-    return { table: { ...t, seats, botCount: n }, botReplaced: true };
+  let table: TableData;
+  let botReplaced = false;
+  if (seat === null) {
+    table = { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) };
+  } else {
+    const seats = [...t.seats];
+    if (t.game && t.game.phase !== 'matchOver') {
+      const n = t.botCount + 1;
+      seats[seat] = { uid: `bot-${n}`, username: botName(t, rng), isBot: true };
+      table = { ...t, seats, botCount: n };
+      botReplaced = true;
+    } else {
+      seats[seat] = null;
+      table = { ...t, seats };
+    }
   }
-  seats[seat] = null;
-  return { table: { ...t, seats }, botReplaced: false };
+  // غادر المالك: تنتقل الملكية لأول لاعب حقيقي جالس، وإلا لأقدم مشاهد
+  if (uid === t.ownerUid) {
+    const heir = table.seats.find((m) => m && !m.isBot) ?? table.spectators[0];
+    if (heir) return { table: { ...table, ownerUid: heir.uid }, botReplaced, newOwner: heir.username };
+  }
+  return { table, botReplaced };
 }
 
 /** دعوة جديدة (يدفعها المالك)، ويمكن أن تحجز مقعداً */

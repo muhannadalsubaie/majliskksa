@@ -2,7 +2,7 @@ import { COINS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
-import { Firestore } from './firestore';
+import { Firestore, deleteAuthUser } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './table-room';
 
@@ -295,6 +295,29 @@ async function handle(request: Request, env: Env): Promise<Response> {
         console.error('voice', code);
         return json({ error: code.startsWith('realtime:') ? 'voice-failed' : code }, 400);
       }
+    }
+
+    // حذف الحساب نهائياً (مطلب Google Play وApp Store): الملف، اسم المستخدم، الأصدقاء، وحساب الدخول
+    if (pathname === '/me/delete' && request.method === 'POST') {
+      if (devAuth) return json({ ok: true });
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      const profile = await db.get('users', user.uid);
+      const username = String(profile?.username ?? '');
+      if (username) {
+        const key = usernameKey(username);
+        const entry = await db.get('usernames', key);
+        if (entry?.uid === user.uid) await db.remove('usernames', key);
+      }
+      const friends = await hub(user.uid).wipe();
+      await Promise.all(friends.map((f) => hub(f).removeFriend(user.uid).catch(() => {})));
+      await db.remove('users', user.uid);
+      try {
+        await deleteAuthUser(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT, user.uid);
+      } catch (e) {
+        console.error('delete auth user', e);
+        return json({ error: 'auth-delete-failed' }, 500);
+      }
+      return json({ ok: true });
     }
 
     // قبول/رفض دعوة طاولة

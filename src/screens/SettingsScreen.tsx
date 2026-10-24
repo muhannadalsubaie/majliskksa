@@ -4,7 +4,9 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Switch } from '../components/Switch';
 import { isMuted, setMuted } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
-import { isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
+import { announce, isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
+import { deleteMyAccount } from '../services/tables';
+import { SITE_URL } from '../services/api';
 import { isScreenReaderSettingOn, setScreenReader } from '../services/screenReader';
 import { isSystemReaderOn } from '../services/nativeA11y';
 import { RATE_MAX, RATE_MIN, RATE_STEP, getSpeechRate, setSpeechRate, speak } from '../services/speech';
@@ -83,15 +85,27 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
           }}
         >تسجيل الخروج</button>
         <button className="danger" onClick={() => setConfirmDelete(true)}>حذف الحساب</button>
+        <a className="note" href={`${SITE_URL}/privacy.html`} target="_blank" rel="noopener">سياسة الخصوصية</a>
       </section>
 
       {confirmDelete && (
         <ConfirmDialog
           title="حذف الحساب"
-          message="سيتم حذف حسابك وجميع عملاتك نهائياً. لا يمكن التراجع عن هذا الإجراء."
+          message="سيتم حذف حسابك نهائياً: اسم المستخدم، والعملات، وقائمة الأصدقاء، وبيانات الدخول. لا يمكن التراجع عن هذا الإجراء."
           confirmLabel="حذف نهائياً"
           danger
-          onConfirm={() => setConfirmDelete(false) /* TODO: Cloud Function deleteAccount */}
+          onConfirm={async () => {
+            setConfirmDelete(false);
+            announce('جارٍ حذف الحساب…');
+            try {
+              await deleteMyAccount();
+              try { await signOut((await connectFirebase()).auth); } catch { /* الحساب حُذف أصلاً */ }
+              announce('تم حذف حسابك نهائياً');
+              navigate('auth');
+            } catch {
+              announce('تعذّر حذف الحساب الآن، حاول مرة أخرى');
+            }
+          }}
           onCancel={() => setConfirmDelete(false)}
         />
       )}

@@ -69,3 +69,14 @@ it('reveals a project in the second trick, right after its owner plays', async (
   }
   expect(found).toBe(true);
 });
+
+it('passes ownership to a seated player, or a spectator, when the owner leaves', async () => {
+  const { leave } = await import('./table');
+  const t = playing(); // المالك a، والجالسون b c d، والمشاهد e
+  const r = leave(t, 'a', seededRng(3));
+  expect(r.table.ownerUid).toBe('b');
+  expect(r.newOwner).toBe('بدر');
+  let lobby = newTable('t', { uid: 'a', username: 'أحمد' }, false, 0);
+  lobby = { ...lobby, spectators: [{ uid: 'z', username: 'زياد', isBot: false }] };
+  expect(leave(lobby, 'a').table.ownerUid).toBe('z');
+});

@@ -36,6 +36,9 @@ async function isMember(tableId: string): Promise<boolean | null> {
   }
 }
 
+/** حذف الحساب نهائياً من الخادم (الملف، اسم المستخدم، الأصدقاء، وحساب الدخول) */
+export const deleteMyAccount = () => post<{ ok: true }>('/me/delete');
+
 export const createTable = (isPrivate: boolean) => post<{ id: string }>('/tables', { isPrivate }).then((r) => r.id);
 export const joinTable = (id: string, invite?: string) => post<{ ok: true }>(`/tables/${id}/join`, { invite });
 

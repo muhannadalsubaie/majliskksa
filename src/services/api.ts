@@ -27,3 +27,6 @@ export async function apiPublic<T>(path: string, body?: unknown): Promise<T> {
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `http-${res.status}`);
   return data as T;
 }
+
+/** موقع اللعبة العام (لصفحات مثل سياسة الخصوصية) — في التطبيق تُفتح في المتصفح */
+export const SITE_URL = API_URL ? API_URL.replace(/\/api$/, '') : '';

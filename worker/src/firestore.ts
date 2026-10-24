@@ -38,7 +38,9 @@ async function accessToken(serviceAccountJson: string): Promise<string> {
   if (cached && cached.exp - 60 > now) return cached.token;
   const sa = parseServiceAccount(serviceAccountJson);
   const key = await importPKCS8(sa.private_key, 'RS256');
-  const assertion = await new SignJWT({ scope: 'https://www.googleapis.com/auth/datastore' })
+  // Firestore + إدارة حسابات Firebase Auth (لحذف الحساب عند طلب صاحبه)
+  const scope = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform';
+  const assertion = await new SignJWT({ scope })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(sa.client_email)
     .setAudience('https://oauth2.googleapis.com/token')
@@ -177,4 +179,14 @@ export class Firestore {
     const data = (await res.json()) as { documents?: { name: string }[] };
     return (data.documents ?? []).map((d) => d.name.split('/').pop()!);
   }
+}
+
+/** يحذف حساب Firebase Auth نهائياً (بصلاحية حساب الخدمة) */
+export async function deleteAuthUser(projectId: string, serviceAccountJson: string, uid: string): Promise<void> {
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:delete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await accessToken(serviceAccountJson)}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ localId: uid }),
+  });
+  if (!res.ok) throw new Error(`auth-delete ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }

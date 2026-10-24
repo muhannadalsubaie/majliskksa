@@ -150,6 +150,14 @@ export class UserHub extends DurableObject<Env> {
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
 
+  /** حذف الحساب: يمسح كل بيانات اللاعب هنا ويغلق اتصالاته، ويرجع قائمة أصدقائه لإزالته عندهم */
+  async wipe(): Promise<string[]> {
+    const friends = Object.keys(await this.map('friends'));
+    for (const ws of this.ctx.getWebSockets()) { try { ws.close(1000, 'account deleted'); } catch { /* closed */ } }
+    await this.ctx.storage.deleteAll();
+    return friends;
+  }
+
   // ───── اتصال التطبيق ─────
 
   async fetch(request: Request): Promise<Response> {
