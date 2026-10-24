@@ -10,6 +10,7 @@ import { isSystemReaderOn } from '../services/nativeA11y';
 import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
+import { sounds } from '../services/sounds';
 import { useTable } from '../services/tables';
 import { type SwipeDir, TWO_FINGER, isScreenReaderOn, swipeDir } from '../services/screenReader';
 import type { Navigate } from '../state/navigation';
@@ -103,6 +104,30 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     }
   }, [g?.trickNo]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownTrick = g && heldTrick === g.trickNo && g.trick.length === 0 && g.lastTrick ? g.lastTrick.cards : g?.trick ?? [];
+
+  // المؤثرات الصوتية: نقارن الحالة الجديدة بالسابقة لنعرف ما حدث
+  const prevGame = useRef<GameView | null>(null);
+  useEffect(() => {
+    const prev = prevGame.current;
+    prevGame.current = g;
+    if (!g || !prev) return;
+    const total = (x: GameView) => x.handCounts.reduce((a, b) => a + b, 0);
+    if (total(g) > total(prev)) sounds.deal(total(g) - total(prev) > 12 ? 10 : 6);
+    // الورقة الجديدة: آخر ورقة في الأكلة الحالية، أو الرابعة إن اكتملت الأكلة للتو
+    let played: { card: Card; lead: Card } | null = null;
+    if (g.trickNo === prev.trickNo && g.trick.length > prev.trick.length) {
+      played = { card: g.trick[g.trick.length - 1].card, lead: g.trick[0].card };
+    } else if (g.trickNo === prev.trickNo + 1 && g.lastTrick) {
+      played = { card: g.lastTrick.cards[3].card, lead: g.lastTrick.cards[0].card };
+    }
+    if (played) {
+      const trump = g.contract?.mode === 'hokm' ? g.contract.trump : null;
+      const isCut = trump !== null && played.card.suit === trump && played.lead.suit !== trump;
+      if (isCut) sounds.cut(); else sounds.card();
+    }
+    if (g.declared.length > prev.declared.length) sounds.project();
+    if (g.balootSeat !== null && prev.balootSeat === null) sounds.baloot();
+  }, [g]);
 
   /** الأوراق الموجودة على الطاولة الآن ومن لعب كل ورقة، بالترتيب */
   const trickSummary = (): string => {

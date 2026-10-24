@@ -36,7 +36,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
           label="كتم عام لجميع الأصوات"
           checked={muted}
           onChange={(on) => { setMutedState(on); setMuted(on); }}
-          description="يكتم مؤثرات اللعبة. النطق وقارئ الشاشة لهما إعدادات منفصلة."
+          description="يكتم مؤثرات اللعبة (التوزيع، رمي الورق، القطع، المشاريع). النطق وقارئ الشاشة لهما إعدادات منفصلة."
         />
       </section>
 
