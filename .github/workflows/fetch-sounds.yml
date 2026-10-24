@@ -1,0 +1,50 @@
+# يجلب أصوات ورق حقيقية مسجّلة من حزمة Kenney "Casino Audio" (رخصة CC0 — بلا قيود)
+# ويحوّلها إلى mp3 داخل public/sounds ثم يحفظها في المستودع. يعمل مرة عند تعديل هذا الملف.
+name: Fetch card sounds
+
+on:
+  push:
+    paths:
+      - .github/workflows/fetch-sounds.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Kenney Casino Audio
+        run: |
+          set -e
+          PAGE=$(curl -sL https://kenney.nl/assets/casino-audio)
+          ZIP=$(echo "$PAGE" | grep -oE 'https://kenney\.nl/media/pages/assets/casino-audio/[^"]+\.zip' | head -1)
+          echo "zip: $ZIP"
+          curl -sL "$ZIP" -o /tmp/casino.zip
+          mkdir -p /tmp/casino && unzip -o -q /tmp/casino.zip -d /tmp/casino
+          echo "---- files ----"
+          find /tmp/casino -type f | sed 's#/tmp/casino/##' | sort
+          cat /tmp/casino/License.txt 2>/dev/null || find /tmp/casino -iname '*licen*' -exec cat {} \;
+      - name: Pick and convert
+        run: |
+          set -e
+          mkdir -p public/sounds
+          pick() { find /tmp/casino -type f -iname "*.ogg" | grep -iE "$1" | sort | head -${2:-1}; }
+          conv() { ffmpeg -loglevel error -y -i "$1" -ac 1 -ar 44100 -b:a 96k "public/sounds/$2.mp3"; echo "$2 <- $(basename "$1")"; }
+          i=1; for f in $(pick 'card.?place' 4); do conv "$f" "card$i"; i=$((i+1)); done
+          i=1; for f in $(pick 'card.?(shove|slide)' 3); do conv "$f" "slide$i"; i=$((i+1)); done
+          f=$(pick 'shuffle' 1); [ -n "$f" ] && conv "$f" shuffle
+          f=$(pick 'card.?fan' 1); [ -n "$f" ] && conv "$f" fan
+          i=1; for f in $(pick 'chip.?(lay|stack|collide)' 3); do conv "$f" "chip$i"; i=$((i+1)); done
+          cp /tmp/casino/License.txt public/sounds/LICENSE-kenney.txt 2>/dev/null || true
+          ls -la public/sounds
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+          git add public/sounds
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "Add CC0 card sounds from Kenney Casino Audio"
+          git push
