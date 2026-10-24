@@ -16,7 +16,11 @@ export function MainMenuScreen({ navigate, profile }: { navigate: Navigate; prof
           ? <span className="coins" aria-label="رصيدك عملات لا محدودة، حساب المطوّر">🪙 ∞</span>
           : <span className="coins" aria-label={coins === null ? 'الرصيد غير متاح بعد' : `رصيدك ${coins} عملة`}>🪙 {coins ?? '…'}</span>}
       </header>
-      <nav className="stack" aria-label="القائمة الرئيسية">
+      {/* شعار التطبيق في المنتصف، والقائمة في أسفل الشاشة */}
+      <div className="menu-logo">
+        <img src="/icon.png" alt="" aria-hidden="true" />
+      </div>
+      <nav className="stack menu-nav" aria-label="القائمة الرئيسية">
         <button onClick={() => navigate('createTable')}>إنشاء طاولة</button>
         <button onClick={() => navigate('joinTable')}>انضمام إلى طاولة</button>
         <button className="secondary" onClick={() => navigate('friends')}>الأصدقاء</button>

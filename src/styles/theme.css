@@ -128,3 +128,8 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .player-info { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .seat-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .seat-actions button { padding: 8px 10px; font-size: 14px; }
+
+/* الشاشة الرئيسية: الشعار في المنتصف والقائمة تحت */
+.menu-logo { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px 0; }
+.menu-logo img { width: min(44vw, 180px); height: auto; }
+.menu-nav { padding-bottom: env(safe-area-inset-bottom); }
