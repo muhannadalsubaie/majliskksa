@@ -60,6 +60,9 @@ const RANK_ORDER = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'];
 const sortHand = (hand: Card[]) =>
   [...hand].sort((a, b) => SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank));
 
+/** كم تبقى الأكلة المكتملة ظاهرة قبل أن تذهب لصاحبها */
+const TRICK_HOLD_MS = 1200;
+
 export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: string; navigate: Navigate }) {
   const { view, connected, closed, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -85,10 +88,26 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   useEffect(() => { if (!g || g.actions.double === null) setLockChoice(false); }, [g]);
 
+  // بعد آخر ورقة في الأكلة: نبقي الأوراق الأربع ظاهرة لحظة قبل أن تذهب لصاحبها
+  // (ما لم تبدأ الأكلة التالية قبل ذلك)
+  const [heldTrick, setHeldTrick] = useState<number | null>(null);
+  const lastTrickNo = useRef<number | null>(null);
+  useEffect(() => {
+    if (!g) return;
+    const prev = lastTrickNo.current;
+    lastTrickNo.current = g.trickNo;
+    if (prev !== null && g.trickNo === prev + 1 && g.lastTrick && g.trick.length === 0) {
+      setHeldTrick(g.trickNo);
+      const t = setTimeout(() => setHeldTrick(null), TRICK_HOLD_MS);
+      return () => clearTimeout(t);
+    }
+  }, [g?.trickNo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownTrick = g && heldTrick === g.trickNo && g.trick.length === 0 && g.lastTrick ? g.lastTrick.cards : g?.trick ?? [];
+
   /** الأوراق الموجودة على الطاولة الآن ومن لعب كل ورقة، بالترتيب */
   const trickSummary = (): string => {
-    if (!g || g.trick.length === 0) return 'لا توجد أوراق على الطاولة';
-    return g.trick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
+    if (shownTrick.length === 0) return 'لا توجد أوراق على الطاولة';
+    return shownTrick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
   };
   const teamWord = (s: Seat) => (mySeat === null ? `فريق ${name(s)}` : teamOf(s) === teamOf(me) ? 'فريقك' : 'الخصم');
 
@@ -272,7 +291,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             <div
               className="trick-area"
               role="group"
-              aria-label={g.trick.length ? `وسط الطاولة: ${trickSummary()}` : 'وسط الطاولة: لا توجد أوراق'}
+              aria-label={shownTrick.length ? `وسط الطاولة: ${trickSummary()}` : 'وسط الطاولة: لا توجد أوراق'}
               onClick={() => readTrickRef.current('left')}
             >
               {g.phase === 'bidding' && g.qaba && (
@@ -280,8 +299,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                   <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="ورقة الأرض" />
                 </div>
               )}
-              {g.trick.map((p) => (
-                <div key={`${g.trickNo}-${p.seat}`} className={`trick-slot from-${rel(p.seat)}`}>
+              {shownTrick.map((p) => (
+                <div key={`${heldTrick !== null && g.trick.length === 0 ? g.trickNo - 1 : g.trickNo}-${p.seat}`} className={`trick-slot from-${rel(p.seat)}`}>
                   <SpokenCard
                     text={p.seat === mySeat ? `أنت لعبت ${cardLabel(p.card)}` : `${name(p.seat)} لعب ${cardLabel(p.card)}`}
                     card={p.card}
