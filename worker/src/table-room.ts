@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
-import { COINS } from '../../shared/economy';
+import { COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   memberName, runAutoStep, seatOf, start, viewFor, withoutVoice,
@@ -191,6 +191,25 @@ export class TableRoom extends DurableObject<Env> {
 
   // ───── المحادثة الصوتية (Cloudflare Realtime) ─────
 
+  private usage() {
+    return this.env.HUBS.get(this.env.HUBS.idFromName('__voice_usage__'));
+  }
+
+  /**
+   * يضيف استهلاك الصوت منذ آخر تغيير للعدّاد الشهري العام، ويعيد الطاولة بوقت محدّث.
+   * يُستدعى قبل أي تغيير في المنضمين (لأن عدد من يسمع من يتغير).
+   */
+  private async accountVoice(t: TableData): Promise<TableData> {
+    const now = Date.now();
+    const n = Object.keys(t.voice ?? {}).length;
+    const listening = n * (n - 1);
+    const since = t.voiceSince ?? now;
+    if (listening > 0 && now > since) {
+      await this.usage().addVoiceUsage(((now - since) / 1000) * listening).catch((e) => console.error('voice usage', e));
+    }
+    return { ...t, voiceSince: now };
+  }
+
   /**
    * كل طلبات الصوت تمر من هنا: الغرفة تعرف من في الطاولة ومن يملك أي جلسة،
    * فلا يستطيع أحد سحب صوت طاولة ليس فيها أو التحكم بجلسة غيره.
@@ -211,8 +230,11 @@ export class TableRoom extends DurableObject<Env> {
     switch (req.op) {
       case 'publish': {
         if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
+        // السقف الشهري: نحسب ما مضى ثم نرفض الانضمام إن تجاوزناه
+        const acc = await this.accountVoice(t);
+        if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
         const r = await rt.publish(req.offer, req.mid, VOICE_TRACK);
-        const next = { ...t, voice: { ...(t.voice ?? {}), [uid]: { sessionId: r.sessionId, muted: true } } };
+        const next = { ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId: r.sessionId, muted: true } } };
         await this.save(next);
         this.broadcast([`${name} انضم للمحادثة الصوتية`]);
         return r;
@@ -241,7 +263,7 @@ export class TableRoom extends DurableObject<Env> {
       }
       case 'leave': {
         if (!mine) return { ok: true };
-        await this.save(withoutVoice(t, uid));
+        await this.save(withoutVoice(await this.accountVoice(t), uid));
         this.broadcast([`${name} غادر المحادثة الصوتية`]);
         return { ok: true };
       }
@@ -341,7 +363,7 @@ export class TableRoom extends DurableObject<Env> {
       case 'leave': {
         const seat = seatOf(t, uid);
         const who = seat !== null ? t.seats[seat]!.username : t.spectators.find((m) => m.uid === uid)?.username ?? 'أحد الحاضرين';
-        const r = leave(t, uid);
+        const r = leave(t.voice?.[uid] ? await this.accountVoice(t) : t, uid);
         // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً
         if (!hasHumans(r.table)) { await this.closeTable(); return; }
         await this.save(r.table);
@@ -361,7 +383,7 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (t?.voice?.[uid] && !stillHere) {
       const name = memberName(t, uid);
-      await this.save(withoutVoice(t, uid));
+      await this.save(withoutVoice(await this.accountVoice(t), uid));
       this.broadcast(name ? [`${name} غادر المحادثة الصوتية`] : []);
     }
     // آخر متصل خرج: نبدأ مهلة الإغلاق
@@ -377,7 +399,9 @@ export class TableRoom extends DurableObject<Env> {
 
   /** إغلاق الطاولة نهائياً: إشعار المتصلين، حذف الحالة، وإزالتها من قائمة الطاولات. */
   private async closeTable() {
-    const id = this.table?.id ?? (await this.load())?.id;
+    const current = this.table ?? (await this.load());
+    if (current?.voice) await this.accountVoice(current);
+    const id = current?.id;
     for (const ws of this.ctx.getWebSockets()) {
       try {
         ws.send(JSON.stringify({ type: 'closed' }));

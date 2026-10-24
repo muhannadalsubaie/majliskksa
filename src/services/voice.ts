@@ -80,7 +80,9 @@ export function joinVoice(id: string, uid: string): Promise<void> {
         ? 'لم يُسمح باستخدام الميكروفون. فعّله من إعدادات الجهاز للتطبيق'
         : (e as Error).message === 'voice-not-configured'
           ? 'المحادثة الصوتية غير مفعّلة بعد'
-          : 'تعذّر الانضمام للمحادثة الصوتية، حاول مرة أخرى';
+          : (e as Error).message === 'voice-limit'
+            ? 'المحادثة الصوتية وصلت لحدها هذا الشهر، وترجع بداية الشهر الجاي'
+            : 'تعذّر الانضمام للمحادثة الصوتية، حاول مرة أخرى';
       announce(msg);
       return;
     }

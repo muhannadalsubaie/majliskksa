@@ -25,6 +25,8 @@ export interface TableData {
   invites?: (string | { code: string; seat?: Seat })[];
   /** المحادثة الصوتية: من انضم (جلسة Cloudflare Realtime الخاصة به) وهل ميكروفونه مكتوم */
   voice?: Record<string, VoiceMember>;
+  /** آخر لحظة حُسب فيها استهلاك الصوت (للسقف الشهري) */
+  voiceSince?: number;
 }
 
 export interface VoiceMember { sessionId: string; muted: boolean }

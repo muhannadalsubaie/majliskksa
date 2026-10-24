@@ -131,6 +131,21 @@ export class UserHub extends DurableObject<Env> {
     return log?.day === day ? Math.max(0, maxPerDay - log.count) : maxPerDay;
   }
 
+  /** عدّاد استهلاك الصوت الشهري (بالثواني) — يُستخدم في نسخة واحدة عامة لكل الطاولات */
+  async addVoiceUsage(seconds: number): Promise<number> {
+    const month = new Date().toISOString().slice(0, 7);
+    const u = (await this.ctx.storage.get<{ month: string; seconds: number }>('voiceUsage')) ?? { month, seconds: 0 };
+    if (u.month !== month) { u.month = month; u.seconds = 0; }
+    u.seconds += Math.max(0, seconds);
+    await this.ctx.storage.put('voiceUsage', u);
+    return u.seconds;
+  }
+
+  async voiceUsageSeconds(): Promise<number> {
+    const u = await this.ctx.storage.get<{ month: string; seconds: number }>('voiceUsage');
+    return u?.month === new Date().toISOString().slice(0, 7) ? u.seconds : 0;
+  }
+
   /** ملاحظة تشخيصية قصيرة (تُستخدم لآخر سبب رفض لطلبات SSV) */
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
