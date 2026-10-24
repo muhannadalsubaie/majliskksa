@@ -27,11 +27,19 @@ let lastTapAt = 0;
 let pendingTap: ReturnType<typeof setTimeout> | null = null;
 let multiTouch = false;
 let lastScrollY: number | null = null;
-let twoStart: { x: number; t: number } | null = null;
-let twoLastX = 0;
+let twoStart: { x: number; y: number; t: number } | null = null;
+let twoLast = { x: 0, y: 0 };
 
-/** إيماءة سحب بإصبعين من اليمين لليسار — تستمع لها الشاشات (مثل الطاولة) */
-export const TWO_FINGER_LEFT = 'majlisk:two-finger-left';
+/** إيماءة سحب سريع بإصبعين — تستمع لها الشاشات (مثل الطاولة)؛ الاتجاه في detail */
+export const TWO_FINGER = 'majlisk:two-finger';
+export type SwipeDir = 'left' | 'right' | 'up' | 'down';
+
+/** اتجاه سحبة (أو null إن لم تكن سحبة واضحة) */
+export function swipeDir(dx: number, dy: number, min = SWIPE_MIN): SwipeDir | null {
+  if (Math.abs(dx) >= min && Math.abs(dy) < Math.abs(dx) * 0.6) return dx < 0 ? 'left' : 'right';
+  if (Math.abs(dy) >= min && Math.abs(dx) < Math.abs(dy) * 0.6) return dy < 0 ? 'up' : 'down';
+  return null;
+}
 const listeners = new Set<(on: boolean) => void>();
 
 function load(): boolean {
@@ -233,9 +241,9 @@ function onTouchMove(e: TouchEvent) {
     multiTouch = true;
     start = null;
     const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-    if (!twoStart) twoStart = { x, t: performance.now() };
-    twoLastX = x;
     const y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    if (!twoStart) twoStart = { x, y, t: performance.now() };
+    twoLast = { x, y };
     if (lastScrollY !== null) window.scrollBy(0, lastScrollY - y);
     lastScrollY = y;
     return;
@@ -251,9 +259,8 @@ function onTouchMove(e: TouchEvent) {
 function onTouchEnd(e: TouchEvent) {
   if (multiTouch) {
     if (e.touches.length === 0) {
-      if (twoStart && twoStart.x - twoLastX > SWIPE_MIN && performance.now() - twoStart.t < 700) {
-        window.dispatchEvent(new Event(TWO_FINGER_LEFT));
-      }
+      const dir = twoStart && performance.now() - twoStart.t < 700 ? swipeDir(twoLast.x - twoStart.x, twoLast.y - twoStart.y) : null;
+      if (dir) window.dispatchEvent(new CustomEvent<SwipeDir>(TWO_FINGER, { detail: dir }));
       multiTouch = false;
       lastScrollY = null;
       twoStart = null;

@@ -406,7 +406,8 @@ export interface GameView {
   myHand: Card[];
   balootSeat: Seat | null;
   projects: GameState['projects'];
-  declared: { seat: Seat; kinds: string[] }[];
+  /** cards: أوراق كل مشروع (بعد الأكلة الأولى فقط) */
+  declared: { seat: Seat; kinds: string[]; cards?: string[] }[];
   actions: {
     bids: Bid[];
     double: ReturnType<typeof availableDouble>;
@@ -446,8 +447,12 @@ export function viewFor(t: TableData, uid: string): TableView {
       myHand: playing ? g.hands[mySeat] : [],
       balootSeat: g.balootSeat,
       projects: g.trickNo > 0 ? g.projects : null,
-      // المشاريع تُكشف بعد الأكلة الأولى فقط
-      declared: g.trickNo > 0 ? g.declared.map((d) => ({ seat: d.seat, kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]) })) : [],
+      // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف بعد الأكلة الأولى فقط
+      declared: g.declared.map((d) => ({
+        seat: d.seat,
+        kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
+        cards: g.trickNo > 0 ? d.projects.map((p) => p.cards.map(cardLabel).join('، ')) : undefined,
+      })),
       actions: {
         bids: playing ? availableBids(g, mySeat) : [],
         double: playing ? availableDouble(g, mySeat) : null,

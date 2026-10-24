@@ -11,7 +11,7 @@ import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce } from '../services/announcer';
 import { useTable } from '../services/tables';
-import { TWO_FINGER_LEFT, isScreenReaderOn } from '../services/screenReader';
+import { type SwipeDir, TWO_FINGER, isScreenReaderOn, swipeDir } from '../services/screenReader';
 import type { Navigate } from '../state/navigation';
 
 const RANK_SHORT: Record<string, string> = { A: 'A', K: 'K', Q: 'Q', J: 'J', '10': '10', '9': '9', '8': '8', '7': '7' };
@@ -90,14 +90,57 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     if (!g || g.trick.length === 0) return 'لا توجد أوراق على الطاولة';
     return g.trick.map((p) => `${name(p.seat)}: ${cardLabel(p.card)}`).join('، ');
   };
-  const readTrickRef = useRef(() => {});
-  readTrickRef.current = () => announce(trickSummary());
+  const teamWord = (s: Seat) => (mySeat === null ? `فريق ${name(s)}` : teamOf(s) === teamOf(me) ? 'فريقك' : 'الخصم');
 
-  // إيماءة: سحب بإصبعين من اليمين لليسار = قراءة ما على الطاولة ومن لعبه.
+  /** نوع اللعب: من اشترى، وعلى ماذا (صن أو حكم وأي شكل)، والدبل */
+  const contractSummary = (): string => {
+    if (!g) return 'لم تبدأ المباراة بعد';
+    const c = g.contract;
+    if (!c) {
+      const ground = g.qaba ? `، ورقة الأرض ${cardLabel(g.qaba)}` : '';
+      return `لم يشترِ أحد بعد، المزايدة في الجولة ${g.bidRound === 1 ? 'الأولى' : 'الثانية'}${ground}`;
+    }
+    const mode = c.mode === 'sun' ? 'صن' : `حكم ${SUIT_NAMES[c.trump!]}`;
+    const parts = [c.buyer === mySeat ? `أنت اشتريت ${mode}` : `${name(c.buyer)} اشترى ${mode}، ${teamWord(c.buyer)}`];
+    if (c.qabaTo !== c.buyer) parts.push(`القبلة لـ${c.qabaTo === mySeat ? 'ك' : name(c.qabaTo)}`);
+    const d = g.doubling;
+    if (d.gahwa) parts.push('قهوة');
+    else if (d.level > 1) {
+      const label = ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
+      parts.push(`${label}${c.mode === 'hokm' ? (d.locked ? ' مقفل' : ' مفتوح') : ''}`);
+    } else parts.push('بدون دبل');
+    return parts.join('، ');
+  };
+
+  /** المشاريع المعلنة ومن أعلنها (وأوراقها بعد الأكلة الأولى) */
+  const projectsSummary = (): string => {
+    if (!g) return 'لم تبدأ المباراة بعد';
+    const lines = g.declared.map((d) => {
+      const who = d.seat === mySeat ? 'أنت' : name(d.seat);
+      const items = d.kinds.map((k, i) => (d.cards?.[i] ? `${k}: ${d.cards[i]}` : k));
+      return `${who}: ${items.join('، و')}`;
+    });
+    if (g.balootSeat !== null) lines.push(`${g.balootSeat === mySeat ? 'أنت' : name(g.balootSeat)}: بلوت`);
+    if (!lines.length) return 'لا توجد مشاريع معلنة';
+    if (g.projects?.winningTeam != null && g.declared.length) {
+      lines.push(`المشاريع المحتسبة لـ${mySeat === null ? `فريق ${name(g.projects.winningTeam as Seat)}` : g.projects.winningTeam === teamOf(me) ? 'فريقك' : 'الخصم'}`);
+    }
+    return lines.join('. ');
+  };
+
+  const readTrickRef = useRef((_dir: SwipeDir) => {});
+  readTrickRef.current = (dir: SwipeDir) => {
+    if (dir === 'left') announce(trickSummary());
+    else if (dir === 'right') announce(contractSummary());
+    else if (dir === 'up') announce(projectsSummary());
+  };
+
+  // إيماءات بإصبعين: من اليمين لليسار = أوراق الطاولة ومن لعبها، من اليسار لليمين = نوع اللعب
+  // ومن اشترى، ومن تحت لفوق = المشاريع المعلنة.
   // قارئ التطبيق المدمج يرسلها كحدث، وبدونه نرصد الإصبعين هنا مباشرة.
   useEffect(() => {
-    const onTwo = () => readTrickRef.current();
-    window.addEventListener(TWO_FINGER_LEFT, onTwo);
+    const onTwo = (e: Event) => readTrickRef.current((e as CustomEvent<SwipeDir>).detail);
+    window.addEventListener(TWO_FINGER, onTwo);
     let two: { x: number; y: number; t: number } | null = null;
     let last = { x: 0, y: 0 };
     // متوسط مواقع الأصابع على الشاشة
@@ -119,16 +162,15 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     const onMove = (e: TouchEvent) => { if (two && fingersOk(e.touches.length)) last = mid(e); };
     const onEnd = (e: TouchEvent) => {
       if (!two || e.touches.length > 0) return;
-      const dx = last.x - two.x;
-      const dy = last.y - two.y;
-      if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6 && performance.now() - two.t < 1200) readTrickRef.current();
+      const dir = performance.now() - two.t < 1200 ? swipeDir(last.x - two.x, last.y - two.y) : null;
+      if (dir) readTrickRef.current(dir);
       two = null;
     };
     window.addEventListener('touchstart', onStart, { passive: true });
     window.addEventListener('touchmove', onMove, { passive: true });
     window.addEventListener('touchend', onEnd, { passive: true });
     return () => {
-      window.removeEventListener(TWO_FINGER_LEFT, onTwo);
+      window.removeEventListener(TWO_FINGER, onTwo);
       window.removeEventListener('touchstart', onStart);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
@@ -231,7 +273,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               className="trick-area"
               role="group"
               aria-label={g.trick.length ? `وسط الطاولة: ${trickSummary()}` : 'وسط الطاولة: لا توجد أوراق'}
-              onClick={() => readTrickRef.current()}
+              onClick={() => readTrickRef.current('left')}
             >
               {g.phase === 'bidding' && g.qaba && (
                 <div className="trick-slot qaba-slot">

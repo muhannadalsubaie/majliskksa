@@ -14,9 +14,11 @@ let regions: HTMLElement[] = [];
 let active = 0;
 let speechEnabled = loadSpeechSetting();
 
+// تقدير وقت النطق بالعربية (~13 حرفاً في الثانية بالسرعة العادية) مع هامش، حتى تكتمل
+// الجملة قبل التي بعدها — الأفضل أن يتأخر الإعلان التالي قليلاً على أن يقطع ما قبله
 const BATCH_MS = 150;
-const MS_PER_CHAR = 55;
-const MIN_GAP_MS = 700;
+const MS_PER_CHAR = 75;
+const MIN_GAP_MS = 900;
 let pending: string[] = [];
 let busyUntil = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
