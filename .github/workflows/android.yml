@@ -64,7 +64,7 @@ jobs:
           {
             echo "### بصمات مفتاح التوقيع (تُضاف في Firebase لتسجيل الدخول بجوجل)"
             keytool -list -v -keystore /tmp/upload.jks -alias majlisk -storepass "$PASS" | grep -E "SHA1:|SHA256:" | sed 's/^\s*/- /'
-          } >> $GITHUB_STEP_SUMMARY
+          } | tee -a $GITHUB_STEP_SUMMARY
       - name: Build
         working-directory: android
         env:
