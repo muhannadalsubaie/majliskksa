@@ -1,0 +1,24 @@
+# فحص تشخيصي لخدمة Cloudflare Realtime (المحادثة الصوتية): ينشئ جلسة فارغة ويطبع الرد (بلا أسرار)
+name: Voice check
+
+on:
+  push:
+    paths:
+      - .github/workflows/voice-check.yml
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create an empty Realtime session
+        env:
+          SECRET: ${{ secrets.REALTIME_APP_SECRET }}
+        run: |
+          APP=$(grep -o '"REALTIME_APP_ID": *"[^"]*"' worker/wrangler.jsonc | sed 's/.*"\([0-9a-f]*\)"$/\1/')
+          echo "app id: $APP, secret length: ${#SECRET}"
+          echo "--- POST sessions/new (no body)"
+          curl -s -w "\nHTTP %{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" "https://rtc.live.cloudflare.com/v1/apps/$APP/sessions/new"
+          echo "--- POST sessions/new (empty json)"
+          curl -s -w "\nHTTP %{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" --data '{}' "https://rtc.live.cloudflare.com/v1/apps/$APP/sessions/new"
