@@ -30,14 +30,17 @@ jobs:
       - name: Pick and convert
         run: |
           set -e
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
           mkdir -p public/sounds
           pick() { find /tmp/casino -type f -iname "*.ogg" | grep -iE "$1" | sort | head -${2:-1}; }
           conv() { ffmpeg -loglevel error -y -i "$1" -ac 1 -ar 44100 -b:a 96k "public/sounds/$2.mp3"; echo "$2 <- $(basename "$1")"; }
-          i=1; for f in $(pick 'card.?place' 4); do conv "$f" "card$i"; i=$((i+1)); done
-          i=1; for f in $(pick 'card.?(shove|slide)' 3); do conv "$f" "slide$i"; i=$((i+1)); done
-          f=$(pick 'shuffle' 1); [ -n "$f" ] && conv "$f" shuffle
-          f=$(pick 'card.?fan' 1); [ -n "$f" ] && conv "$f" fan
-          i=1; for f in $(pick 'chip.?(lay|stack|collide)' 3); do conv "$f" "chip$i"; i=$((i+1)); done
+          A=/tmp/casino/Audio
+          for n in 1 2 3 4; do conv $A/card-place-$n.ogg card$n; conv $A/card-slide-$n.ogg slide$n; conv $A/card-shove-$n.ogg shove$n; done
+          conv $A/card-shuffle.ogg shuffle
+          conv $A/card-fan-1.ogg fan
+          conv $A/chips-stack-1.ogg chips1
+          conv $A/chips-stack-2.ogg chips2
+          conv $A/chips-collide-1.ogg collide
           cp /tmp/casino/License.txt public/sounds/LICENSE-kenney.txt 2>/dev/null || true
           ls -la public/sounds
       - name: Commit
