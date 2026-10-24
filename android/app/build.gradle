@@ -5,7 +5,7 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         // AdMob: معرّف Google التجريبي حتى يُضاف معرّف التطبيق الحقيقي (ADMOB_APP_ID)
-        manifestPlaceholders = [admobAppId: (project.findProperty('ADMOB_APP_ID') ?: 'ca-app-pub-3940256099942544~3347511713')]
+        manifestPlaceholders = [admobAppId: (project.findProperty('ADMOB_APP_ID') ?: 'ca-app-pub-4779146366215281~8891548077')]
         applicationId "com.majlisk.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
