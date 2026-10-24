@@ -107,12 +107,13 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   // المؤثرات الصوتية: نقارن الحالة الجديدة بالسابقة لنعرف ما حدث
   const prevGame = useRef<GameView | null>(null);
+  useEffect(() => { sounds.preload(); }, []);
   useEffect(() => {
     const prev = prevGame.current;
     prevGame.current = g;
     if (!g || !prev) return;
     const total = (x: GameView) => x.handCounts.reduce((a, b) => a + b, 0);
-    if (total(g) > total(prev)) sounds.deal(total(g) - total(prev) > 12 ? 10 : 6);
+    if (total(g) > total(prev)) sounds.deal(total(g) - total(prev) > 12);
     // الورقة الجديدة: آخر ورقة في الأكلة الحالية، أو الرابعة إن اكتملت الأكلة للتو
     let played: { card: Card; lead: Card } | null = null;
     if (g.trickNo === prev.trickNo && g.trick.length > prev.trick.length) {
