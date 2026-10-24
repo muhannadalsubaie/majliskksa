@@ -83,12 +83,20 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
   }).then(() => syncVoice(members));
 }
 
+/** خروج مقصود: حتى لا يظن التحديث القادم من الخادم (وأنت لست في القائمة) أنه انقطاع فيعيدك */
+let leaving = false;
+
 export function leaveVoice(quiet = false): Promise<void> {
+  if (state.joined) leaving = true;
   return serial(async () => {
     if (!state.joined) return;
-    await request({ op: 'leave' }).catch(() => {});
-    cleanup();
-    if (!quiet) announce('أنت خارج المحادثة الصوتية');
+    try {
+      await request({ op: 'leave' }).catch(() => {});
+      cleanup();
+      if (!quiet) announce('أنت خارج المحادثة الصوتية');
+    } finally {
+      leaving = false;
+    }
   });
 }
 
@@ -132,7 +140,7 @@ export function syncVoice(list: TableView['voice']) {
   members = list;
   if (!state.joined || state.busy) return Promise.resolve();
   // أخرجنا الخادم من المحادثة (انقطع اتصالنا بالطاولة أثناء مكالمة مثلاً): نعود تلقائياً مكتومين
-  if (!members.some((m) => m.uid === myUid)) return rejoin();
+  if (!members.some((m) => m.uid === myUid)) return leaving ? Promise.resolve() : rejoin();
   return serial(async () => {
     if (!pc || !sessionId) return;
     // المفتاح uid + الجلسة: من أعاد الانضمام بجلسة جديدة نسحب صوته من جديد
@@ -167,7 +175,7 @@ export function syncVoice(list: TableView['voice']) {
 /** إعادة الانضمام بهدوء بعد انقطاع (الميكروفون يعود مكتوماً) */
 let rejoining = false;
 function rejoin(): Promise<void> {
-  if (rejoining || !tableId) return Promise.resolve();
+  if (rejoining || leaving || !tableId) return Promise.resolve();
   rejoining = true;
   const id = tableId;
   cleanup();
