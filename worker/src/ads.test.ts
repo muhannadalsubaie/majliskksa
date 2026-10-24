@@ -26,3 +26,13 @@ it('verifies a correctly signed SSV callback and rejects tampering', async () =>
   expect(await verifySsv(forged, keys)).toBeNull();
   expect(await verifySsv(new URL(url.toString().replace('key_id=42', 'key_id=7')), keys)).toBeNull();
 });
+
+it('accepts callbacks whose signed content is the percent-decoded query (e.g. Arabic reward item)', async () => {
+  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const keys = new Map([['42', pair.publicKey]]);
+  const decoded = 'ad_network=5450213213286189855&ad_unit=1234&reward_amount=2&reward_item=عملة&timestamp=1700000000000&transaction_id=tx2&user_id=uid-9';
+  const encoded = decoded.replace('عملة', encodeURIComponent('عملة'));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, pair.privateKey, new TextEncoder().encode(decoded)));
+  const url = new URL(`https://x/api/ads/ssv?${encoded}&signature=${b64url(rawToDer(sig))}&key_id=42`);
+  expect(await verifySsv(url, keys)).toEqual({ userId: 'uid-9', transactionId: 'tx2', amount: 2 });
+});

@@ -91,7 +91,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       if (!reward) {
         console.log('ssv rejected', reason, url.search.replace(/signature=[^&]*/, 'signature=…'));
         // آخر سبب رفض (بدون بيانات المستخدم) للتشخيص عبر /api/ads/ssv-status
-        await env.HUBS.get(env.HUBS.idFromName('__ssv__')).setNote(`${new Date().toISOString()} ${reason}`);
+        await env.HUBS.get(env.HUBS.idFromName('__ssv__')).setNote(`${new Date().toISOString()} ${reason} ${url.search.replace(/&signature=.*$/, '').slice(0, 300)}`);
         return json({ error: 'invalid', reason }, 400);
       }
       // طلب "التحقق من الرابط" في لوحة AdMob يأتي موقّعاً بلا معرّف مستخدم: نقبله دون مكافأة

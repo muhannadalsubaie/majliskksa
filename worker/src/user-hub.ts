@@ -132,7 +132,7 @@ export class UserHub extends DurableObject<Env> {
   }
 
   /** ملاحظة تشخيصية قصيرة (تُستخدم لآخر سبب رفض لطلبات SSV) */
-  async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 200)); }
+  async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
 
   // ───── اتصال التطبيق ─────

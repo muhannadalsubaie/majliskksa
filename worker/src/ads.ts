@@ -57,7 +57,12 @@ export async function verifySsv(url: URL, keys?: Map<string, CryptoKey>, onRejec
   const query = url.search.slice(1);
   const sigAt = query.indexOf('&signature=');
   if (sigAt < 0) return reject('no-signature');
-  const message = new TextEncoder().encode(query.slice(0, sigAt));
+  // Google توقّع نص الاستعلام بعد فك ترميز %XX (كما في مكتبتها Tink: URI.getQuery)،
+  // فنجرب النص كما هو ثم مفكوك الترميز
+  const signed = query.slice(0, sigAt);
+  let decoded = signed;
+  try { decoded = decodeURIComponent(signed); } catch { /* نبقيه كما هو */ }
+  const messages = [...new Set([signed, decoded])].map((m) => new TextEncoder().encode(m));
   const signature = url.searchParams.get('signature');
   const keyId = url.searchParams.get('key_id');
   if (!signature || !keyId) return reject('missing-params');
@@ -67,7 +72,10 @@ export async function verifySsv(url: URL, keys?: Map<string, CryptoKey>, onRejec
   if (!key) return reject(`unknown-key:${keyId}`);
   let ok = false;
   try {
-    ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(b64ToBytes(signature)), message);
+    const sig = derToRaw(b64ToBytes(signature));
+    for (const m of messages) {
+      if (await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, sig, m)) { ok = true; break; }
+    }
   } catch (e) {
     return reject(`verify-error:${(e as Error).message}`);
   }
