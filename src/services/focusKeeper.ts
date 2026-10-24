@@ -1,6 +1,8 @@
 // حارس التركيز: عندما يختفي العنصر الذي عليه التركيز (ورقة لُعبت، زر مزايدة انتهى دوره...)
-// يقفز مؤشر TalkBack/VoiceOver إلى أعلى الصفحة. هنا نحفظ جيران العنصر لحظة التركيز عليه،
+// يقفز مؤشر TalkBack/VoiceOver إلى أعلى الصفحة. نحفظ جيران العنصر لحظة الضغط عليه،
 // وإذا اختفى نعيد التركيز لأقرب جار ما زال موجوداً (الورقة المجاورة، أو العنصر بجانب الزر).
+// مهم للسرعة: التنقل بين العناصر لا يكلّف شيئاً (نحفظ العنصر فقط)، والحساب يتم عند الضغط وحده
+// حتى لا يتأخر TalkBack/VoiceOver وهو يتحرك بين العناصر.
 
 const FOCUSABLE = [
   'button', 'a[href]', 'input', 'select', 'textarea', '[tabindex]', '[role="button"]', '[role="switch"]', '[role="tab"]',
@@ -13,7 +15,7 @@ let before: HTMLElement[] = [];
 const usable = (el: HTMLElement) =>
   el.isConnected && !(el as HTMLButtonElement).disabled && el.getAttribute('aria-hidden') !== 'true' && el.offsetParent !== null;
 
-function remember(el: HTMLElement) {
+function snapshot(el: HTMLElement) {
   last = el;
   const all = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(usable);
   const i = all.indexOf(el);
@@ -23,7 +25,7 @@ function remember(el: HTMLElement) {
 
 function restore() {
   const active = document.activeElement;
-  if (!last || last === active) return;
+  if (!last || last === active || (!after.length && !before.length)) return;
   // التركيز ما زال على شيء حي غير الصفحة نفسها: لا نتدخل
   if (active && active !== document.body && active !== document.documentElement) return;
   if (usable(last)) return; // العنصر نفسه ما زال موجوداً
@@ -38,14 +40,20 @@ function restore() {
 }
 
 export function initFocusKeeper() {
+  // التنقل: نحفظ العنصر فقط (بلا أي حساب)
   document.addEventListener('focusin', (e) => {
-    if (e.target instanceof HTMLElement && e.target !== document.body) remember(e.target);
+    if (e.target instanceof HTMLElement && e.target !== document.body) { last = e.target; after = []; before = []; }
   });
+  // الضغط (قبل أن تنفذه الشاشة وقد يختفي العنصر): نحفظ جيرانه
+  document.addEventListener('click', (e) => {
+    const el = (e.target as Element | null)?.closest?.(FOCUSABLE);
+    if (el instanceof HTMLElement) snapshot(el);
+  }, true);
   // بعد أي تغيير في الصفحة نتحقق هل ضاع التركيز
   let scheduled = false;
   new MutationObserver(() => {
     if (scheduled) return;
     scheduled = true;
     requestAnimationFrame(() => { scheduled = false; restore(); });
-  }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-hidden'] });
+  }).observe(document.body, { childList: true, subtree: true });
 }
