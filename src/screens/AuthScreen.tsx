@@ -8,9 +8,8 @@ import { UsernameField } from '../components/UsernameField';
 import { Capacitor } from '@capacitor/core';
 import { connectFirebase } from '../services/firebase';
 import { announce } from '../services/announcer';
-import { api, apiPublic } from '../services/api';
+import { SITE_URL, api, apiPublic } from '../services/api';
 import type { Navigate } from '../state/navigation';
-import { SITE_URL } from '../services/api';
 
 const ERRORS: Record<string, string> = {
   'auth/invalid-credential': 'البريد أو كلمة المرور غير صحيحة',

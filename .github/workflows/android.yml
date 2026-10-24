@@ -1,4 +1,8 @@
-# بناء تطبيق أندرويد (APK للتجربة) عند كل تعديل، ونشره كإصدار "android-latest" للتنزيل المباشر.
+# بناء تطبيق أندرويد عند كل تعديل، ونشره كإصدار "android-latest" للتنزيل المباشر.
+# إن وُجد سر ANDROID_KEYSTORE_PASSWORD (كلمة مرور يختارها صاحب التطبيق ولا يعرفها غيره):
+#   - أول مرة يُنشأ مفتاح التوقيع ويُحفظ في المستودع مشفّراً بها (android/keystore/upload.jks.enc)
+#   - ويُبنى APK و AAB موقّعان بمفتاح النشر (الـ AAB هو ما يُرفع إلى Google Play)
+# وبدونه يُبنى APK تجريبي (debug) كما كان.
 name: Android APK
 
 on:
@@ -37,17 +41,52 @@ jobs:
         run: npm ci && npm run build
       - name: Sync Capacitor
         run: npx cap sync android
-      - name: Build APK
+      - name: Signing key
+        id: key
+        env:
+          PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$PASS" ]; then echo "signed=false" >> $GITHUB_OUTPUT; echo "no ANDROID_KEYSTORE_PASSWORD — debug build"; exit 0; fi
+          ENC=android/keystore/upload.jks.enc
+          if [ ! -f "$ENC" ]; then
+            mkdir -p android/keystore
+            keytool -genkeypair -v -keystore /tmp/upload.jks -alias majlisk -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=Majlisk, O=Majlisk, C=SA"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in /tmp/upload.jks -out "$ENC" -pass env:PASS
+            git config user.name "github-actions[bot]"
+            git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+            git add "$ENC"
+            git commit -m "Add encrypted Android upload key"
+            git pull --rebase -q && git push
+          fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENC" -out /tmp/upload.jks -pass env:PASS
+          echo "signed=true" >> $GITHUB_OUTPUT
+          {
+            echo "### بصمات مفتاح التوقيع (تُضاف في Firebase لتسجيل الدخول بجوجل)"
+            keytool -list -v -keystore /tmp/upload.jks -alias majlisk -storepass "$PASS" | grep -E "SHA1:|SHA256:" | sed 's/^\s*/- /'
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Build
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ steps.key.outputs.signed == 'true' && '/tmp/upload.jks' || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../majlisk.apk
+          if [ "${{ steps.key.outputs.signed }}" = "true" ]; then
+            ./gradlew assembleRelease bundleRelease -PVERSION_CODE=$((100 + ${{ github.run_number }})) --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../majlisk.apk
+            cp app/build/outputs/bundle/release/app-release.aab ../majlisk.aab
+          else
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk ../majlisk.apk
+          fi
       - name: Publish android-latest
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
           name: مجلسك — أحدث نسخة أندرويد للتجربة
-          body: "نسخة تجريبية تُبنى تلقائياً من آخر تعديل (${{ github.sha }}). نزّل majlisk.apk وثبّته على جوالك."
+          body: "تُبنى تلقائياً من آخر تعديل (${{ github.sha }}). majlisk.apk للتثبيت على الجوال، و majlisk.aab (عند وجود مفتاح التوقيع) للرفع إلى Google Play."
           prerelease: true
-          files: majlisk.apk
+          files: |
+            majlisk.apk
+            majlisk.aab
