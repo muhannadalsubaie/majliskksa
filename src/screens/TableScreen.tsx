@@ -161,7 +161,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
         <h1 id="table-loading" className="sr-only">الطاولة</h1>
         <div className="spinner" role="progressbar" aria-label="جارٍ الاتصال بالطاولة" />
         <p role="status">{connected ? 'جارٍ التحميل…' : 'جارٍ الاتصال بالطاولة…'}</p>
-        <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
       </main>
     );
   }

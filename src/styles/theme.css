@@ -141,3 +141,6 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .tabs [role="tab"] { flex: 1; background: none; color: var(--text-dim); border-radius: var(--radius) var(--radius) 0 0; padding: 12px 8px; border-bottom: 3px solid transparent; margin-bottom: -2px; }
 .tabs [role="tab"][aria-selected="true"] { color: var(--gold); border-bottom-color: var(--gold); background: var(--green-800); }
 .badge { display: inline-block; min-width: 22px; padding: 0 6px; margin-inline-start: 6px; border-radius: 11px; background: var(--gold); color: var(--green-900); font-size: 14px; }
+/* زر الرجوع: صغير في كل الشاشات والقوائم (مع مساحة لمس كافية) */
+button.back-btn { padding: 6px 14px; min-height: 40px; font-size: 14px; flex: 0 0 auto; align-self: flex-start; width: auto; }
+.topbar button.back-btn, .topbar span > button.back-btn { align-self: center; }

@@ -103,7 +103,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
             </li>
           ))}
         </ul>
-        <button className="secondary" onClick={() => setPage('main')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => setPage('main')}>رجوع</button>
       </>
     );
   } else if (page === 'players') {
@@ -126,7 +126,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
         {view.spectators.length
           ? <ul className="stack" style={{ margin: 0 }}>{view.spectators.map((s) => <li key={s.uid}>{s.username}</li>)}</ul>
           : <p className="note">لا يوجد مشاهدون</p>}
-        <button className="secondary" onClick={() => setPage('main')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => setPage('main')}>رجوع</button>
       </>
     );
   } else {
@@ -145,7 +145,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
         ) : (
           <p>لا يوجد مشاهدون للاستبدال. ادعُ صديقاً أولاً، وبعد دخوله يظهر هنا.</p>
         )}
-        <button className="secondary" onClick={() => setPage('players')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => setPage('players')}>رجوع</button>
       </>
     );
   }

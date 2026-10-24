@@ -27,7 +27,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
     <main className="screen" aria-labelledby="settings-title">
       <header className="topbar">
         <h1 id="settings-title">الإعدادات</h1>
-        <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
       </header>
 
       <section aria-labelledby="sec-sound" className="stack">

@@ -95,7 +95,7 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
             <AddPersonIcon />
             <span>إضافة صديق</span>
           </button>
-          <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
+          <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
         </span>
       </header>
 

@@ -6,7 +6,7 @@ export function Placeholder({ title, navigate }: { title: string; navigate: Navi
     <main className="screen" aria-labelledby="ph-title">
       <header className="topbar">
         <h1 id="ph-title">{title}</h1>
-        <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
       </header>
       <p>قيد البناء.</p>
     </main>

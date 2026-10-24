@@ -141,7 +141,7 @@ export function SeatsLobby({ view, uid, send }: Props) {
                 </div>
               </>
             )}
-            <button className="secondary" onClick={() => setPanel(null)}>رجوع</button>
+            <button className="secondary back-btn" onClick={() => setPanel(null)}>رجوع</button>
           </div>
         </div>
       )}

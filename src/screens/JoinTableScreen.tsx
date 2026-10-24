@@ -42,7 +42,7 @@ export function JoinTableScreen({ navigate, openTable }: { navigate: Navigate; o
     <main className="screen" aria-labelledby="join-title">
       <header className="topbar">
         <h1 id="join-title">الطاولات النشطة</h1>
-        <button className="secondary" onClick={() => navigate('menu')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
       </header>
       <p className="note" style={{ fontSize: 16 }}>الانضمام بـ{COINS.joinTable} عملة. إن كانت المقاعد ممتلئة تدخل مشاهداً.</p>
       {rows === null && <p role="status">جارٍ التحميل…</p>}
