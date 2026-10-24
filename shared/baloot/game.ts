@@ -146,7 +146,23 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
 
 const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' || a.suit === (b as typeof a).suit);
 
+/**
+ * بعد الشراء: إن كان الدبل ممكناً يبدأ الدبل والكل ما زال بخمس أوراق (وورقة الأرض على الطاولة)،
+ * ولا تُوزّع بقية الأوراق إلا بعد انتهاء الدبل. وإلا تُوزّع مباشرة ويبدأ اللعب.
+ */
 function finalizeContract(s: GameState, contract: Contract): GameState {
+  const buyerTeam = teamOf(contract.buyer);
+  const opp = otherTeam(buyerTeam);
+  const canDouble = contract.mode === 'hokm'
+    || (s.scores[buyerTeam] > SUN_DOUBLE_THRESHOLD && s.scores[opp] < SUN_DOUBLE_THRESHOLD);
+  const base: GameState = { ...s, contract, turn: nextSeat(s.dealer), doubling: freshDoubling() };
+  if (canDouble) return { ...base, phase: 'doubling', doubling: { ...freshDoubling(), awaitingTeam: opp } };
+  return dealRest(base);
+}
+
+/** توزيع بقية الأوراق: ورقة الأرض لصاحبها، والباقي حتى يصبح مع كل لاعب ثماني أوراق، ثم يبدأ اللعب */
+function dealRest(s: GameState): GameState {
+  const contract = s.contract!;
   const stock = [...s.stock];
   const hands = s.hands.map((h) => [...h]);
   hands[contract.qabaTo].push(s.qaba!);
@@ -155,19 +171,7 @@ function finalizeContract(s: GameState, contract: Contract): GameState {
     const count = seat === contract.qabaTo ? 2 : 3;
     hands[seat].push(...stock.splice(0, count));
   }
-  const next: GameState = {
-    ...s, hands, stock, contract, initialHands: hands.map((h) => [...h]),
-    turn: nextSeat(s.dealer), phase: 'playing', doubling: freshDoubling(),
-  };
-  const buyerTeam = teamOf(contract.buyer);
-  const opp = otherTeam(buyerTeam);
-  const canDouble = contract.mode === 'hokm'
-    || (s.scores[buyerTeam] > SUN_DOUBLE_THRESHOLD && s.scores[opp] < SUN_DOUBLE_THRESHOLD);
-  if (canDouble) {
-    next.phase = 'doubling';
-    next.doubling = { ...freshDoubling(), awaitingTeam: opp };
-  }
-  return next;
+  return { ...s, hands, stock, initialHands: hands.map((h) => [...h]), turn: nextSeat(s.dealer), phase: 'playing' };
 }
 
 function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
@@ -265,14 +269,14 @@ function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
   }
   const finished = !hokm || d.gahwa;
   d.awaitingTeam = finished ? null : otherTeam(teamOf(seat));
-  return { ...s, doubling: d, phase: finished ? 'playing' : 'doubling' };
+  return finished ? dealRest({ ...s, doubling: d }) : { ...s, doubling: d, phase: 'doubling' };
 }
 
 function applyDoublePass(s: GameState, seat: Seat): GameState {
   if (s.phase !== 'doubling' || s.doubling.awaitingTeam !== teamOf(seat)) fail('ليس دورك في الدبل');
   const passed = [...new Set([...s.doubling.passed, seat])];
   if (passed.length < 2) return { ...s, doubling: { ...s.doubling, passed } };
-  return { ...s, phase: 'playing', doubling: { ...s.doubling, passed, awaitingTeam: null } };
+  return dealRest({ ...s, doubling: { ...s.doubling, passed, awaitingTeam: null } });
 }
 
 export function canDeclareProject(s: GameState, seat: Seat): boolean {

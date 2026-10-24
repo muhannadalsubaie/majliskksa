@@ -105,7 +105,14 @@ describe('game flow', () => {
     expect(() => applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: qabaSuit } })).toThrow(IllegalAction);
     s = applyAction(s, { type: 'bid', seat: 1, bid: choices[0] });
     expect(s.contract).toMatchObject({ mode: 'hokm', trump: suit, buyer: 1, qabaTo: 1 });
+    // الدبل قبل بقية الورق: الكل ما زال بخمس أوراق
+    expect(s.phase).toBe('doubling');
+    expect(s.hands.map((h) => h.length)).toEqual([5, 5, 5, 5]);
+    // الخصم (0 و2) يمرر الدبل → تُوزّع البقية ويبدأ اللعب
+    for (const seat of [0, 2] as Seat[]) s = applyAction(s, { type: 'doublePass', seat });
+    expect(s.phase).toBe('playing');
     expect(s.hands.map((h) => h.length)).toEqual([8, 8, 8, 8]);
+    expect(s.hands[1]).toContainEqual(expect.objectContaining({ suit: qabaSuit }));
   });
 
   it('حكم ثاني: anyone may take sun instead', () => {

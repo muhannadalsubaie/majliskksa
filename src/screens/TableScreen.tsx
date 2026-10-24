@@ -320,7 +320,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               aria-label={shownTrick.length ? `وسط الطاولة: ${trickSummary()}` : 'وسط الطاولة: لا توجد أوراق'}
               onClick={() => readTrickRef.current('left')}
             >
-              {g.phase === 'bidding' && g.qaba && (
+              {(g.phase === 'bidding' || g.phase === 'doubling') && g.qaba && (
                 <div className="trick-slot qaba-slot">
                   <SpokenCard text={`ورقة الأرض: ${cardLabel(g.qaba)}`} card={g.qaba} caption="ورقة الأرض" />
                 </div>

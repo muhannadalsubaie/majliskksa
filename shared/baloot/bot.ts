@@ -138,9 +138,11 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
 function chooseDouble(s: GameState, seat: Seat, p: BotParams): Action {
   const option = availableDouble(s, seat);
   const c = s.contract!;
-  const hand = s.hands[seat];
-  // الخصم يقيس قوته ضد لون الحكم نفسه؛ المشتري يقيس قوة يده
-  const strength = c.mode === 'hokm' ? hokmStrength(hand, c.trump!) : sunStrength(hand);
+  // الدبل قبل توزيع بقية الورق: المشتري (أو صاحب القبلة) يعرف أن ورقة الأرض له
+  const hand = c.qabaTo === seat && s.hands[seat].length < 8 && s.qaba ? [...s.hands[seat], s.qaba] : s.hands[seat];
+  // الخصم يقيس قوته ضد لون الحكم نفسه؛ المشتري يقيس قوة يده — مقدّرة لثماني أوراق
+  const raw = c.mode === 'hokm' ? hokmStrength(hand, c.trump!) : sunStrength(hand);
+  const strength = raw * (8 / Math.max(hand.length, 1));
   const need = option?.label === 'دبل' ? p.double : option?.label === 'قهوة' ? p.raise + 2 : p.raise;
   if (option && strength >= need) {
     // مقفل إذا كانت أوراق الحكم القوية عندنا (يمنع المشتري من سحب الحكم)

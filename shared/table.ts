@@ -280,6 +280,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         const c = after.contract;
         events.push(`${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
         if (c.qabaTo !== c.buyer) events.push(`القبلة لـ${nameOf(t, c.qabaTo)}`);
+        if (after.phase === 'doubling') events.push(`الدبل لـ${teamName(t, after.doubling.awaitingTeam!)} قبل توزيع بقية الورق`);
+        else events.push('وُزّعت بقية الورق، بدأ اللعب');
       }
       if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
         events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار الحكم`);
@@ -292,10 +294,11 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
       const lock = after.contract!.mode === 'hokm' && !d.gahwa ? (d.locked ? ' مقفل' : ' مفتوح') : '';
       events.push(`${who}: ${label}${lock}`);
+      if (after.phase === 'playing') events.push('وُزّعت بقية الورق، بدأ اللعب');
       break;
     }
     case 'doublePass':
-      if (after.phase === 'playing') events.push('بدأ اللعب');
+      if (after.phase === 'playing') events.push('وُزّعت بقية الورق، بدأ اللعب');
       break;
     case 'declareProject': {
       const mine = after.declared.find((d) => d.seat === action.seat)!;
