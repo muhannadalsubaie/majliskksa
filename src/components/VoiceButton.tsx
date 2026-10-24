@@ -12,6 +12,17 @@ const LONG_PRESS_MS = 600;
  * لوحة المفاتيح: Enter = كتم/فتح، Shift+Enter = انضمام/مغادرة.
  * لا انضمام تلقائي، ويبدأ الميكروفون مكتوماً (استماع فقط).
  */
+/** أيقونة ميكروفون (مع خط مائل عندما يكون مغلقاً) — للزينة فقط، النص هو ما يُقرأ */
+function MicIcon({ off }: { off: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
+      {off && <path d="M3 3l18 18" />}
+    </svg>
+  );
+}
+
 export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
   const voice = useVoice();
   const timer = useRef<number | null>(null);
@@ -87,7 +98,8 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
         }}
         onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); toggleJoin(); } }}
       >
-        {status}
+        <MicIcon off={!voice.joined || voice.muted} />
+        <span>{status}</span>
       </button>
     </div>
   );
