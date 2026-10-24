@@ -82,6 +82,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // مكافأة إعلان: Google تستدعي هذا الرابط (موقّعاً) بعد مشاهدة الإعلان كاملاً
+    if (pathname === '/voice-status') {
+      return json({ lastError: await env.HUBS.get(env.HUBS.idFromName('__voice__')).getNote() });
+    }
+
     if (pathname === '/ads/ssv-status') {
       return json({ lastRejection: await env.HUBS.get(env.HUBS.idFromName('__ssv__')).getNote() });
     }
@@ -293,6 +297,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       } catch (e) {
         const code = (e as Error).message;
         console.error('voice', code);
+        // آخر خطأ صوتي (بلا بيانات مستخدم) للتشخيص عبر /api/voice-status
+        if (code.startsWith('realtime:')) {
+          await env.HUBS.get(env.HUBS.idFromName('__voice__')).setNote(`${new Date().toISOString()} ${b.op} ${code}`).catch(() => {});
+        }
         return json({ error: code.startsWith('realtime:') ? 'voice-failed' : code }, 400);
       }
     }

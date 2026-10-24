@@ -22,3 +22,5 @@ jobs:
           curl -s -w "\nHTTP %{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" "https://rtc.live.cloudflare.com/v1/apps/$APP/sessions/new"
           echo "--- POST sessions/new (empty json)"
           curl -s -w "\nHTTP %{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" --data '{}' "https://rtc.live.cloudflare.com/v1/apps/$APP/sessions/new"
+      - name: Last voice error recorded by the server
+        run: curl -s https://majlisk-api.majlisk.workers.dev/api/voice-status; echo

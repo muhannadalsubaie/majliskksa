@@ -20,7 +20,10 @@ export class Realtime {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${BASE}/${this.appId}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${this.secret}`, 'Content-Type': 'application/json' },
+      // بلا جسم لا نرسل Content-Type: الخدمة ترفض JSON فارغاً (decoding_error)
+      headers: body === undefined
+        ? { Authorization: `Bearer ${this.secret}` }
+        : { Authorization: `Bearer ${this.secret}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as T & { errorCode?: string; errorDescription?: string };
