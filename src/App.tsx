@@ -82,7 +82,7 @@ export default function App() {
     <>
       {content}
       {pendingInvite && !needsUsername && <InviteDialog invite={pendingInvite} onJoined={openTable} />}
-      <div ref={liveRef} className="sr-only" role="log" aria-live="polite" aria-relevant="additions" aria-label="إعلانات اللعبة" />
+      <div ref={liveRef} className="sr-only" />
     </>
   );
 }

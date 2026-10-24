@@ -47,30 +47,8 @@ export function onSystemReaderChange(fn: (on: boolean) => void) {
   return () => { listeners.delete(fn); };
 }
 
-// طابور الإعلانات: TalkBack/VoiceOver يقطع الإعلان إذا وصل غيره قبل أن ينتهي،
-// فتضيع أوراق اللاعبين المتتالية. لذلك نجمع ما يصل خلال لحظة في جملة واحدة،
-// ولا نرسل التالي حتى يقدَّر انتهاء السابق؛ وإن تراكمت إعلانات تُدمج كلها في إعلان واحد.
-const BATCH_MS = 150;
-const MS_PER_CHAR = 55;
-const MIN_GAP_MS = 700;
-let pending: string[] = [];
-let busyUntil = 0;
-let timer: ReturnType<typeof setTimeout> | null = null;
-
-function flush() {
-  timer = null;
-  if (pending.length === 0) return;
-  const wait = busyUntil - Date.now();
-  if (wait > 0) { timer = setTimeout(flush, wait); return; }
-  const text = pending.join('. ');
-  pending = [];
-  busyUntil = Date.now() + Math.max(MIN_GAP_MS, text.length * MS_PER_CHAR);
+/** يرسل نصاً لقارئ شاشة النظام مباشرة (الترتيب والتباعد يتولاهما announcer) */
+export function systemAnnounce(text: string) {
   if (platform === 'android') Announce.announce({ text }).catch(() => {});
   else ScreenReader.speak({ value: text, language: 'ar' }).catch(() => {});
-}
-
-/** يرسل الإعلان لقارئ شاشة النظام (بالترتيب ودون أن يقطع إعلانٌ إعلاناً) */
-export function systemAnnounce(text: string) {
-  pending.push(text);
-  if (!timer) timer = setTimeout(flush, BATCH_MS);
 }
