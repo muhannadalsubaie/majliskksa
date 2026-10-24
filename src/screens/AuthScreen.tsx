@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   GoogleAuthProvider, createUserWithEmailAndPassword, sendPasswordResetEmail,
-  signInWithEmailAndPassword, signInWithPopup,
+  signInWithCredential, signInWithEmailAndPassword, signInWithPopup,
 } from 'firebase/auth';
 import { USERNAME_ERRORS, validateUsername } from '../../shared/username';
 import { UsernameField } from '../components/UsernameField';
@@ -21,7 +21,6 @@ const ERRORS: Record<string, string> = {
   'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
   ...USERNAME_ERRORS,
-  'google-native': 'الدخول بحساب Google داخل التطبيق قيد التجهيز. ادخل بالبريد وكلمة المرور، وإن كان حسابك من Google فاضغط "نسيت كلمة المرور" لتعيين كلمة مرور له.',
   timeout: 'تعذّر الاتصال، تحقق من الإنترنت وحاول مرة أخرى',
 };
 
@@ -75,11 +74,17 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
   };
 
   const google = () => run(async () => {
-    // داخل تطبيق الجوال تحتاج Google إضافة دخول أصلية (قيد التجهيز)
-    if (Capacitor.isNativePlatform()) throw { code: 'google-native' };
     const { auth } = await connectFirebase();
-    // ملاحظة: داخل تطبيق الجوال (Capacitor) سنستبدل النافذة المنبثقة بإضافة دخول أصلية
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    if (Capacitor.isNativePlatform()) {
+      // داخل التطبيق: نافذة اختيار حساب Google الأصلية في الجهاز، ثم ندخل بنفس الحساب في Firebase
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+      const r = await FirebaseAuthentication.signInWithGoogle().catch(() => { throw { code: 'auth/popup-closed-by-user' }; });
+      const idToken = r.credential?.idToken;
+      if (!idToken) throw { code: 'auth/popup-closed-by-user' };
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+    } else {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    }
     announce('تم تسجيل الدخول');
     navigate('menu');
   });
