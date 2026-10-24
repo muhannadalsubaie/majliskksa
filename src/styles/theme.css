@@ -133,3 +133,11 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .menu-logo { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px 0; }
 .menu-logo img { width: min(44vw, 180px); height: auto; }
 .menu-nav { padding-bottom: env(safe-area-inset-bottom); }
+
+/* زر بأيقونة ونص قصير تحتها */
+.icon-btn { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 12px; font-size: 13px; }
+/* تبويبات */
+.tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--green-700); }
+.tabs [role="tab"] { flex: 1; background: none; color: var(--text-dim); border-radius: var(--radius) var(--radius) 0 0; padding: 12px 8px; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.tabs [role="tab"][aria-selected="true"] { color: var(--gold); border-bottom-color: var(--gold); background: var(--green-800); }
+.badge { display: inline-block; min-width: 22px; padding: 0 6px; margin-inline-start: 6px; border-radius: 11px; background: var(--gold); color: var(--green-900); font-size: 14px; }
