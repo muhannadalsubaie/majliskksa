@@ -31,7 +31,7 @@ const rng = () => Math.random();
 const VOICE_TRACK = 'mic';
 
 export interface VoiceRequest {
-  op: 'publish' | 'pull' | 'renegotiate' | 'close' | 'mute' | 'leave';
+  op: 'session' | 'publish' | 'pull' | 'renegotiate' | 'close' | 'mute' | 'leave';
   sessionId?: unknown;
   offer?: unknown;
   answer?: unknown;
@@ -205,8 +205,10 @@ export class TableRoom extends DurableObject<Env> {
    */
   private async accountVoice(t: TableData): Promise<TableData> {
     const now = Date.now();
-    const n = Object.keys(t.voice ?? {}).length;
-    const listening = n * (n - 1);
+    const members = Object.values(t.voice ?? {});
+    const n = members.length;
+    const mics = members.filter((m) => m.mic !== false).length;
+    const listening = mics * (n - 1);
     const since = t.voiceSince ?? now;
     if (listening > 0 && now > since) {
       await this.usage().addVoiceUsage(((now - since) / 1000) * listening).catch((e) => console.error('voice usage', e));
@@ -232,21 +234,29 @@ export class TableRoom extends DurableObject<Env> {
     };
 
     switch (req.op) {
-      case 'publish': {
-        if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
-        // السقف الشهري: نحسب ما مضى ثم نرفض الانضمام إن تجاوزناه
+      case 'session': {
+        // الانضمام التلقائي عند دخول الطاولة: استماع فقط، بلا ميكروفون ولا إعلان
         const acc = await this.accountVoice(t);
         if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
-        const r = await rt.publish(req.offer, req.mid, VOICE_TRACK);
-        const next = { ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId: r.sessionId, muted: true } } };
-        await this.save(next);
-        this.broadcast([`${name} انضم للمحادثة الصوتية`]);
-        return r;
+        const sessionId = await rt.newSession();
+        await this.save({ ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } });
+        this.broadcast([]);
+        return { sessionId };
+      }
+      case 'publish': {
+        // أول مرة يفتح الميكروفون: ننشره في جلسته
+        const sessionId = own(req.sessionId);
+        if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
+        const answer = await rt.pushTrack(sessionId, req.offer, req.mid, VOICE_TRACK);
+        const acc = await this.accountVoice(t);
+        await this.save({ ...acc, voice: { ...acc.voice, [uid]: { sessionId, muted: false, mic: true } } });
+        this.broadcast([]);
+        return { answer };
       }
       case 'pull': {
         const sessionId = own(req.sessionId);
         const remote = typeof req.uid === 'string' ? t.voice?.[req.uid] : undefined;
-        if (!remote || req.uid === uid) throw new Error('bad-request');
+        if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
         return rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
       }
       case 'renegotiate': {
@@ -268,7 +278,7 @@ export class TableRoom extends DurableObject<Env> {
       case 'leave': {
         if (!mine) return { ok: true };
         await this.save(withoutVoice(await this.accountVoice(t), uid));
-        this.broadcast([`${name} غادر المحادثة الصوتية`]);
+        this.broadcast([]);
         return { ok: true };
       }
       default:
@@ -404,9 +414,8 @@ export class TableRoom extends DurableObject<Env> {
     const stillHere = this.ctx.getWebSockets().some((w) => w !== ws && w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
     const t = await this.load();
     if (t?.voice?.[uid] && !stillHere) {
-      const name = memberName(t, uid);
       await this.save(withoutVoice(await this.accountVoice(t), uid));
-      this.broadcast(name ? [`${name} غادر المحادثة الصوتية`] : []);
+      this.broadcast([]);
     }
     // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
     const current = this.table;

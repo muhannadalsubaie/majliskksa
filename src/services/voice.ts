@@ -50,62 +50,81 @@ async function request<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-/** الانضمام: طلب إذن الميكروفون، نشره مكتوماً، ثم سحب أصوات الموجودين */
-export function joinVoice(id: string, uid: string, quiet = false): Promise<void> {
+/**
+ * الانضمام (تلقائي عند دخول الطاولة): جلسة استماع فقط بلا ميكروفون — لا يُطلب إذن الميكروفون
+ * ولا يُسمع صوتك حتى تفتحه بنفسك أول مرة.
+ */
+export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 'rejoin' = 'manual'): Promise<void> {
   return serial(async () => {
     if (state.joined || state.busy) return;
     set({ busy: true });
     tableId = id;
     myUid = uid;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      mic = stream.getAudioTracks()[0];
-      mic.enabled = false; // يبدأ مكتوماً
       pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], bundlePolicy: 'max-bundle' });
       pc.ontrack = (e) => playRemote(e.transceiver.mid, e.track);
-      const tx = pc.addTransceiver(mic, { direction: 'sendonly' });
-      await pc.setLocalDescription(await pc.createOffer());
-      const r = await request<{ sessionId: string; answer: Desc }>({
-        op: 'publish', offer: pc.localDescription!.toJSON(), mid: tx.mid,
-      });
+      const r = await request<{ sessionId: string }>({ op: 'session' });
       sessionId = r.sessionId;
       // نضيف أنفسنا محلياً حتى لا تبدو القائمة القديمة وكأن الخادم أخرجنا
-      members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true }];
-      await pc.setRemoteDescription(r.answer);
+      members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true, mic: false }];
       set({ joined: true, muted: true, busy: false });
-      announce(quiet ? 'عدت للمحادثة الصوتية، الميكروفون مكتوم' : 'انضممت للمحادثة الصوتية، الميكروفون مكتوم. اضغط زر الصوت لفتحه');
+      if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، وميكروفونك مقفل. اضغط زر الصوت لفتحه');
     } catch (e) {
       cleanup();
-      const msg = (e as Error).name === 'NotAllowedError'
-        ? 'لم يُسمح باستخدام الميكروفون. فعّله من إعدادات الجهاز للتطبيق'
-        : (e as Error).message === 'voice-not-configured'
-          ? 'المحادثة الصوتية غير مفعّلة بعد'
-          : (e as Error).message === 'voice-limit'
-            ? 'المحادثة الصوتية وصلت لحدها هذا الشهر، وترجع بداية الشهر الجاي'
-            : 'تعذّر الانضمام للمحادثة الصوتية، حاول مرة أخرى';
-      announce(msg);
+      const code = (e as Error).message;
+      // الانضمام التلقائي يفشل بصمت إن كانت الخدمة غير مفعّلة أو وصلت حدها
+      if (mode === 'manual') {
+        announce(code === 'voice-not-configured' ? 'المحادثة الصوتية غير مفعّلة بعد'
+          : code === 'voice-limit' ? 'المحادثة الصوتية وصلت لحدها هذا الشهر، وترجع بداية الشهر الجاي'
+            : 'تعذّر الانضمام للمحادثة الصوتية، حاول مرة أخرى');
+      }
       return;
     }
   }).then(() => syncVoice(members));
 }
 
-export function leaveVoice(): Promise<void> {
+export function leaveVoice(quiet = false): Promise<void> {
   return serial(async () => {
     if (!state.joined) return;
     await request({ op: 'leave' }).catch(() => {});
     cleanup();
-    announce('غادرت المحادثة الصوتية');
+    if (!quiet) announce('غادرت المحادثة الصوتية');
   });
 }
 
+/** فتح/كتم الميكروفون. أول فتح يطلب إذن الميكروفون وينشره في الجلسة. */
 export function setVoiceMuted(muted: boolean): Promise<void> {
-  if (!state.joined || !mic) return Promise.resolve();
-  mic.enabled = !muted;
-  set({ muted });
-  announce(muted ? 'تم كتم الميكروفون' : 'الميكروفون مفتوح');
-  return request({ op: 'mute', sessionId, muted }).then(() => {}, () => {});
+  if (!state.joined) return Promise.resolve();
+  if (mic) {
+    mic.enabled = !muted;
+    set({ muted });
+    announce(muted ? 'تم كتم الميكروفون' : 'الميكروفون مفتوح');
+    return request({ op: 'mute', sessionId, muted }).then(() => {}, () => {});
+  }
+  if (muted) return Promise.resolve();
+  return serial(async () => {
+    if (!pc || !sessionId || mic) return;
+    set({ busy: true });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      mic = stream.getAudioTracks()[0];
+      const tx = pc.addTransceiver(mic, { direction: 'sendonly' });
+      await pc.setLocalDescription(await pc.createOffer());
+      const r = await request<{ answer: Desc }>({ op: 'publish', sessionId, offer: pc.localDescription!.toJSON(), mid: tx.mid });
+      await pc.setRemoteDescription(r.answer);
+      set({ muted: false, busy: false });
+      announce('الميكروفون مفتوح');
+    } catch (e) {
+      mic?.stop();
+      mic = null;
+      set({ busy: false, muted: true });
+      announce((e as Error).name === 'NotAllowedError'
+        ? 'لم يُسمح باستخدام الميكروفون. فعّله من إعدادات الجهاز للتطبيق'
+        : 'تعذّر فتح الميكروفون، حاول مرة أخرى');
+    }
+  });
 }
 
 /** يطابق الأصوات المسحوبة مع قائمة المنضمين: يسحب الجدد ويغلق من غادر */
@@ -118,7 +137,7 @@ export function syncVoice(list: TableView['voice']) {
     if (!pc || !sessionId) return;
     // المفتاح uid + الجلسة: من أعاد الانضمام بجلسة جديدة نسحب صوته من جديد
     const key = (m: { uid: string; sessionId: string }) => `${m.uid}:${m.sessionId}`;
-    const others = new Map(members.filter((m) => m.uid !== myUid).map((m) => [key(m), m]));
+    const others = new Map(members.filter((m) => m.uid !== myUid && m.mic).map((m) => [key(m), m]));
     const gone = [...pulled.keys()].filter((k) => !others.has(k));
     if (gone.length) {
       const mids = gone.map((k) => pulled.get(k)!);
@@ -152,7 +171,7 @@ function rejoin(): Promise<void> {
   rejoining = true;
   const id = tableId;
   cleanup();
-  return joinVoice(id, myUid, true).finally(() => { rejoining = false; });
+  return joinVoice(id, myUid, 'rejoin').finally(() => { rejoining = false; });
 }
 
 // بعد مكالمة هاتفية قد يتوقف الميكروفون أو ينقطع اتصال الصوت: نصلحه عند العودة للتطبيق
@@ -195,7 +214,8 @@ function cleanup() {
 
 /** عند الخروج من شاشة الطاولة: نغادر المحادثة بهدوء */
 export function disposeVoice() {
-  if (state.joined) void leaveVoice();
+  // عبر الطابور: حتى لو كان الانضمام التلقائي ما زال جارياً نغادر بعده
+  void leaveVoice(true);
 }
 
 export function useVoice(): VoiceState {

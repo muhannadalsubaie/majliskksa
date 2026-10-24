@@ -19,7 +19,11 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
 
   // أصوات المنضمين تتبع حالة الطاولة
   useEffect(() => { void syncVoice(view.voice); }, [view.voice]);
-  useEffect(() => () => disposeVoice(), []);
+  // كل من يدخل الطاولة ينضم تلقائياً مستمعاً، وميكروفونه مقفل حتى يفتحه بنفسه
+  useEffect(() => {
+    void joinVoice(view.id, uid, 'auto');
+    return () => disposeVoice();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleJoin = () => {
     if (voice.busy) return;
@@ -39,7 +43,8 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
     timer.current = window.setTimeout(() => { handled.current = true; toggleJoin(); }, LONG_PRESS_MS);
   };
 
-  const others = view.voice.filter((m) => m.uid !== uid);
+  // الكل ينضم تلقائياً، فنعرض فقط من فتح ميكروفونه
+  const others = view.voice.filter((m) => m.uid !== uid && m.mic && !m.muted);
   const label = voice.busy ? 'المحادثة الصوتية: جارٍ الانضمام'
     : !voice.joined ? 'المحادثة الصوتية: غير منضم. اضغط مطولاً للانضمام'
       : voice.muted ? 'المحادثة الصوتية: الميكروفون مكتوم. اضغط لفتحه، أو مطولاً للمغادرة'
@@ -49,7 +54,7 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
     <div className="voice-dock">
       {others.length > 0 && (
         <p className="voice-people">
-          في المحادثة: {others.map((m) => `${m.username}${m.muted ? ' (مكتوم)' : ''}`).join('، ')}
+          الميكروفون مفتوح عند: {others.map((m) => m.username).join('، ')}
         </p>
       )}
       <button

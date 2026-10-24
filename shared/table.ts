@@ -71,7 +71,8 @@ export function replaceWithBot(t: TableData, uid: string, rng: () => number = Ma
   return { ...base, seats, spectators, botCount: n };
 }
 
-export interface VoiceMember { sessionId: string; muted: boolean }
+/** mic: نشر ميكروفونه (يبدأ الجميع مستمعين فقط حتى يفتح أحدهم الميكروفون أول مرة) */
+export interface VoiceMember { sessionId: string; muted: boolean; mic?: boolean }
 
 /** اسم أي حاضر بالطاولة (لاعب أو مشاهد) */
 export function memberName(t: TableData, uid: string): string | null {
@@ -430,7 +431,7 @@ export interface TableView {
   seatUids: string[];
   spectators: { uid: string; username: string }[];
   /** من في المحادثة الصوتية */
-  voice: { uid: string; username: string; sessionId: string; muted: boolean }[];
+  voice: { uid: string; username: string; sessionId: string; muted: boolean; mic: boolean }[];
   game: GameView | null;
 }
 
@@ -478,7 +479,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     }),
     seatUids: t.seats.map((m) => m?.uid ?? ''),
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
-    voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted })),
+    voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted, mic: v.mic !== false })),
     game,
   };
 }
