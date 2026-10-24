@@ -83,10 +83,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // مكافأة إعلان: Google تستدعي هذا الرابط (موقّعاً) بعد مشاهدة الإعلان كاملاً
     if (pathname === '/ads/ssv') {
       const reward = await verifySsv(url);
-      if (!reward || !reward.userId) return json({ error: 'invalid' }, 400);
+      if (!reward) return json({ error: 'invalid' }, 400);
+      // طلب "التحقق من الرابط" في لوحة AdMob يأتي موقّعاً بلا معرّف مستخدم: نقبله دون مكافأة
+      if (!reward.userId) return json({ ok: true, verdict: 'no-user' });
       const verdict = await env.HUBS.get(env.HUBS.idFromName(reward.userId)).claimAdReward(reward.transactionId, MAX_ADS_PER_DAY);
       if (verdict === 'ok') {
-        await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).adjustCoins(reward.userId, COINS.watchAdReward);
+        try {
+          await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).adjustCoins(reward.userId, COINS.watchAdReward);
+        } catch {
+          return json({ ok: true, verdict: 'no-profile' }); // مستخدم غير موجود (مثل اختبار اللوحة بمعرّف وهمي)
+        }
       }
       return json({ ok: true, verdict }); // نرد 200 دائماً حتى لا تعيد Google المحاولة
     }
