@@ -131,6 +131,10 @@ export class UserHub extends DurableObject<Env> {
     return log?.day === day ? Math.max(0, maxPerDay - log.count) : maxPerDay;
   }
 
+  /** ملاحظة تشخيصية قصيرة (تُستخدم لآخر سبب رفض لطلبات SSV) */
+  async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 200)); }
+  async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
+
   // ───── اتصال التطبيق ─────
 
   async fetch(request: Request): Promise<Response> {

@@ -81,9 +81,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // مكافأة إعلان: Google تستدعي هذا الرابط (موقّعاً) بعد مشاهدة الإعلان كاملاً
+    if (pathname === '/ads/ssv-status') {
+      return json({ lastRejection: await env.HUBS.get(env.HUBS.idFromName('__ssv__')).getNote() });
+    }
+
     if (pathname === '/ads/ssv') {
-      const reward = await verifySsv(url);
-      if (!reward) return json({ error: 'invalid' }, 400);
+      let reason = '';
+      const reward = await verifySsv(url, undefined, (r) => { reason = r; }).catch((e) => { reason = `error:${(e as Error).message}`; return null; });
+      if (!reward) {
+        console.log('ssv rejected', reason, url.search.replace(/signature=[^&]*/, 'signature=…'));
+        // آخر سبب رفض (بدون بيانات المستخدم) للتشخيص عبر /api/ads/ssv-status
+        await env.HUBS.get(env.HUBS.idFromName('__ssv__')).setNote(`${new Date().toISOString()} ${reason}`);
+        return json({ error: 'invalid', reason }, 400);
+      }
       // طلب "التحقق من الرابط" في لوحة AdMob يأتي موقّعاً بلا معرّف مستخدم: نقبله دون مكافأة
       if (!reward.userId) return json({ ok: true, verdict: 'no-user' });
       const verdict = await env.HUBS.get(env.HUBS.idFromName(reward.userId)).claimAdReward(reward.transactionId, MAX_ADS_PER_DAY);

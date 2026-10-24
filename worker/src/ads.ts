@@ -33,8 +33,8 @@ export function derToRaw(der: Uint8Array): Uint8Array {
   return raw;
 }
 
-async function googleKeys(): Promise<Map<string, CryptoKey>> {
-  if (keyCache && Date.now() - keyCache.at < 12 * 3600_000) return keyCache.keys;
+async function googleKeys(fresh = false): Promise<Map<string, CryptoKey>> {
+  if (!fresh && keyCache && Date.now() - keyCache.at < 12 * 3600_000) return keyCache.keys;
   const res = await fetch(KEYS_URL);
   if (!res.ok) throw new Error(`keys ${res.status}`);
   const data = (await res.json()) as { keys: { keyId: number; base64: string }[] };
@@ -52,18 +52,26 @@ export interface SsvReward { userId: string; transactionId: string; amount: numb
  * يتحقق من رابط SSV. يرجع بيانات المكافأة إن كان التوقيع صحيحاً، وإلا null.
  * `keys` قابلة للحقن في الاختبارات.
  */
-export async function verifySsv(url: URL, keys?: Map<string, CryptoKey>): Promise<SsvReward | null> {
+export async function verifySsv(url: URL, keys?: Map<string, CryptoKey>, onReject?: (reason: string) => void): Promise<SsvReward | null> {
+  const reject = (reason: string) => { onReject?.(reason); return null; };
   const query = url.search.slice(1);
   const sigAt = query.indexOf('&signature=');
-  if (sigAt < 0) return null;
+  if (sigAt < 0) return reject('no-signature');
   const message = new TextEncoder().encode(query.slice(0, sigAt));
   const signature = url.searchParams.get('signature');
   const keyId = url.searchParams.get('key_id');
-  if (!signature || !keyId) return null;
-  const key = (keys ?? (await googleKeys())).get(keyId);
-  if (!key) return null;
-  const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(b64ToBytes(signature)), message);
-  if (!ok) return null;
+  if (!signature || !keyId) return reject('missing-params');
+  // مفتاح جديد لم نره بعد (Google تدوّر مفاتيحها): نعيد تحميل القائمة مرة
+  let key = (keys ?? (await googleKeys())).get(keyId);
+  if (!key && !keys) key = (await googleKeys(true)).get(keyId);
+  if (!key) return reject(`unknown-key:${keyId}`);
+  let ok = false;
+  try {
+    ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(b64ToBytes(signature)), message);
+  } catch (e) {
+    return reject(`verify-error:${(e as Error).message}`);
+  }
+  if (!ok) return reject('bad-signature');
   return {
     userId: url.searchParams.get('user_id') ?? '',
     transactionId: url.searchParams.get('transaction_id') ?? '',
