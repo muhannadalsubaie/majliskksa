@@ -25,6 +25,17 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+/** true/false = الجواب من الخادم، null = لا شبكة (نستمر بالمحاولة) */
+async function isMember(tableId: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${API_URL}/tables/${tableId}/member`, { headers: { Authorization: `Bearer ${await getToken()}` } });
+    if (!res.ok) return null;
+    return Boolean(((await res.json()) as { member?: boolean }).member);
+  } catch {
+    return null;
+  }
+}
+
 export const createTable = (isPrivate: boolean) => post<{ id: string }>('/tables', { isPrivate }).then((r) => r.id);
 export const joinTable = (id: string, invite?: string) => post<{ ok: true }>(`/tables/${id}/join`, { invite });
 
@@ -45,7 +56,8 @@ export type ClientMessage =
   | { type: 'start' }
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
-  | { type: 'vacate'; seat: number };
+  | { type: 'vacate'; seat: number }
+  | { type: 'botNow'; seat: number };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {
@@ -83,19 +95,36 @@ export function useTable(tableId: string) {
           announce('أُغلقت الطاولة');
         }
       };
-      ws.onclose = () => {
+      ws.onclose = async () => {
         if (wsRef.current === ws) setConnected(false);
-        if (cancelled || closedByUs.current) return;
-        // رُفض الاتصال لأن الطاولة لم تعد موجودة
-        if (!wsRef.current || (ws.readyState === WebSocket.CLOSED && retry >= 3)) { setClosed(true); return; }
-        retry = Math.min(retry + 1, 5);
+        if (cancelled || closedByUs.current || wsRef.current !== ws) return;
+        retry = Math.min(retry + 1, 6);
+        // بعد عدة محاولات: هل الطاولة أُغلقت أو أُخرجنا منها؟ أم الشبكة فقط (مكالمة، تنقل بين الشبكات)؟
+        if (retry >= 3) {
+          const member = await isMember(tableId);
+          if (cancelled) return;
+          if (member === false) { setClosed(true); return; }
+        }
         timer = setTimeout(connect, 1000 * retry);
       };
     };
     void connect();
+    // العودة للتطبيق (بعد مكالمة أو تطبيق آخر): نعيد الاتصال فوراً بدل انتظار المحاولة التالية
+    const onVisible = () => {
+      if (document.hidden || cancelled || closedByUs.current) return;
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      clearTimeout(timer);
+      retry = 0;
+      void connect();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onVisible);
     return () => {
       cancelled = true;
       closedByUs.current = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onVisible);
       clearTimeout(timer);
       wsRef.current?.close();
       wsRef.current = null;

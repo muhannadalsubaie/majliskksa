@@ -43,6 +43,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
     const tags = [
       i === view.mySeat ? 'أنت' : '',
       s.isBot ? 'روبوت' : '',
+      s.away ? 'انقطع اتصاله' : '',
       view.mySeat !== null && i !== view.mySeat && teamOf(i) === teamOf(me) ? 'شريكك' : '',
     ].filter(Boolean);
     return `${s.username}${tags.length ? ` (${tags.join('، ')})` : ''}`;
@@ -123,6 +124,11 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           {([0, 1, 2, 3] as Seat[]).map((i) => (
             <li key={i} className="seat-row">
               <span>{seatLabel(i)}</span>
+              {isOwner && view.seats[i]?.away && (
+                <button onClick={() => send({ type: 'botNow', seat: i })} aria-label={`روبوت مكان ${view.seats[i]!.username} الآن`}>
+                  روبوت الآن
+                </button>
+              )}
               {isOwner && i !== view.mySeat && (
                 <button className="secondary" onClick={() => setPage({ replace: i })} aria-label={`استبدال ${view.seats[i]?.username ?? 'المقعد الفارغ'}`}>
                   استبدال

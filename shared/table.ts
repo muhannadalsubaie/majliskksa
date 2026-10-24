@@ -6,7 +6,7 @@ import {
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
-import { BOT_THINK_MS } from './economy';
+import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
 
@@ -27,6 +27,48 @@ export interface TableData {
   voice?: Record<string, VoiceMember>;
   /** آخر لحظة حُسب فيها استهلاك الصوت (للسقف الشهري) */
   voiceSince?: number;
+  /** لاعبون انقطع اتصالهم أثناء المباراة: uid → وقت الانقطاع (مقعدهم محجوز 3 دقائق) */
+  away?: Record<string, number>;
+}
+
+const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOver');
+
+/** انقطع اتصال لاعب جالس أثناء المباراة: نحجز مقعده */
+export function markAway(t: TableData, uid: string, now: number): TableData {
+  if (!gameActive(t) || seatOf(t, uid) === null || t.away?.[uid] !== undefined) return t;
+  return { ...t, away: { ...(t.away ?? {}), [uid]: now } };
+}
+
+/** عاد اللاعب قبل انتهاء المهلة */
+export function markBack(t: TableData, uid: string): TableData {
+  if (t.away?.[uid] === undefined) return t;
+  const away = { ...t.away };
+  delete away[uid];
+  return { ...t, away };
+}
+
+/** من انتهت مهلته (يُستبدل بروبوت) */
+export function awayExpired(t: TableData, now: number): string[] {
+  return Object.entries(t.away ?? {}).filter(([, at]) => now - at >= BOT_REPLACE_AFTER_MS).map(([uid]) => uid);
+}
+
+/** أقرب موعد لانتهاء مهلة لاعب منقطع (null إن لم يوجد) */
+export function nextAwayDeadline(t: TableData): number | null {
+  const times = Object.values(t.away ?? {});
+  return times.length ? Math.min(...times) + BOT_REPLACE_AFTER_MS : null;
+}
+
+/** يحل روبوت مكان لاعب منقطع، ويصبح اللاعب مشاهداً (يستطيع المالك إعادته لاحقاً) */
+export function replaceWithBot(t: TableData, uid: string, rng: () => number = Math.random): TableData {
+  const seat = seatOf(t, uid);
+  const base = withoutVoice(markBack(t, uid), uid);
+  if (seat === null) return base;
+  const human = base.seats[seat]!;
+  const n = base.botCount + 1;
+  const seats = [...base.seats];
+  seats[seat] = { uid: `bot-${n}`, username: botName(base, rng), isBot: true };
+  const spectators = base.spectators.some((m) => m.uid === uid) ? base.spectators : [...base.spectators, human];
+  return { ...base, seats, spectators, botCount: n };
 }
 
 export interface VoiceMember { sessionId: string; muted: boolean }
@@ -108,7 +150,7 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
 export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean } {
-  const t = withoutVoice(t0, uid);
+  const t = markBack(withoutVoice(t0, uid), uid);
   const seat = seatOf(t, uid);
   if (seat === null) return { table: { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) }, botReplaced: false };
   const seats = [...t.seats];
@@ -166,7 +208,8 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
   seats[seat] = incoming;
   let spectators = t.spectators.filter((m) => m.uid !== spectatorUid);
   if (outgoing && !outgoing.isBot) spectators = [...spectators, outgoing];
-  return { ...t, seats, spectators };
+  const cleared = outgoing && !outgoing.isBot ? markBack(t, outgoing.uid) : t;
+  return { ...cleared, seats, spectators };
 }
 
 export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
@@ -379,7 +422,8 @@ export interface TableView {
   ownerUid: string;
   isPrivate: boolean;
   mySeat: Seat | null;
-  seats: ({ username: string; isBot: boolean } | null)[];
+  /** away: انقطع اتصاله ومقعده محجوز (awayUntil = متى يحل الروبوت مكانه) */
+  seats: ({ username: string; isBot: boolean; away?: boolean; awayUntil?: number } | null)[];
   /** معرّفات الجالسين (لترتيب المقاعد من قبل المالك) — فارغ للمقعد الفارغ */
   seatUids: string[];
   spectators: { uid: string; username: string }[];
@@ -416,7 +460,11 @@ export function viewFor(t: TableData, uid: string): TableView {
   }
   return {
     id: t.id, ownerUid: t.ownerUid, isPrivate: t.isPrivate, mySeat,
-    seats: t.seats.map((m) => (m ? { username: m.username, isBot: m.isBot } : null)),
+    seats: t.seats.map((m) => {
+      if (!m) return null;
+      const at = t.away?.[m.uid];
+      return at !== undefined ? { username: m.username, isBot: m.isBot, away: true, awayUntil: at + BOT_REPLACE_AFTER_MS } : { username: m.username, isBot: m.isBot };
+    }),
     seatUids: t.seats.map((m) => m?.uid ?? ''),
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
     voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted })),

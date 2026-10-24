@@ -2,10 +2,10 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
-import { COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
+import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  memberName, runAutoStep, seatOf, start, viewFor, withoutVoice,
+  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
 import { Realtime, type SessionDescription } from './realtime';
 import type { Env } from './env';
@@ -22,7 +22,8 @@ type ClientMessage =
   | { type: 'start' }
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
-  | { type: 'vacate'; seat: number };
+  | { type: 'vacate'; seat: number }
+  | { type: 'botNow'; seat: number };
 
 const rng = () => Math.random();
 
@@ -91,7 +92,10 @@ export class TableRoom extends DurableObject<Env> {
 
   /** مهلة الإغلاق (قصيرة في التطوير المحلي للاختبار) */
   private grace() {
-    return this.env.DEV_AUTH === '1' ? 3000 : EMPTY_GRACE_MS;
+    if (this.env.DEV_AUTH === '1') return 3000;
+    // أثناء المباراة ننتظر أطول من مهلة حجز المقعد، حتى لا تُغلق الطاولة على لاعب في مكالمة
+    const g = this.table?.game;
+    return g && g.phase !== 'matchOver' ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
   }
 
   private db() {
@@ -282,6 +286,11 @@ export class TableRoom extends DurableObject<Env> {
     pair[1].serializeAttachment({ uid });
     const t = await this.load();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
+    // عاد لاعب منقطع قبل انتهاء المهلة: يستعيد مقعده
+    if (t?.away?.[uid] !== undefined) {
+      await this.save(markBack(t, uid));
+      this.broadcast([`عاد ${memberName(t, uid) ?? 'لاعب'} إلى الطاولة`]);
+    }
     await this.ctx.storage.delete('emptySince');
     await this.schedule();
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -350,6 +359,19 @@ export class TableRoom extends DurableObject<Env> {
         await this.publish(next);
         break;
       }
+      case 'botNow': {
+        // المالك لا يريد انتظار لاعب منقطع: روبوت مكانه الآن (بعملة من المالك)
+        if (!isOwner) throw new Error('not-owner');
+        if (!isSeat(msg.seat)) throw new Error('bad-request');
+        const who = t.seats[msg.seat];
+        if (!who || who.isBot || t.away?.[who.uid] === undefined) throw new Error('bad-request');
+        await this.db().adjustCoins(uid, -COINS.addBot);
+        const next = replaceWithBot(t, who.uid, rng);
+        await this.save(next);
+        this.broadcast([`حلّ ${next.seats[msg.seat]!.username} مكان ${who.username}`]);
+        await this.publish(next);
+        break;
+      }
       case 'vacate': {
         if (!isOwner) throw new Error('not-owner');
         if (!isSeat(msg.seat)) throw new Error('bad-request');
@@ -385,6 +407,16 @@ export class TableRoom extends DurableObject<Env> {
       const name = memberName(t, uid);
       await this.save(withoutVoice(await this.accountVoice(t), uid));
       this.broadcast(name ? [`${name} غادر المحادثة الصوتية`] : []);
+    }
+    // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
+    const current = this.table;
+    if (current && !stillHere) {
+      const next = markAway(current, uid, Date.now());
+      if (next !== current) {
+        await this.save(next);
+        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}، مقعده محجوز ثلاث دقائق`]);
+        await this.schedule();
+      }
     }
     // آخر متصل خرج: نبدأ مهلة الإغلاق
     if (this.connectedCount(ws) === 0) {
@@ -428,7 +460,12 @@ export class TableRoom extends DurableObject<Env> {
     }
     const step = t ? nextAutoStep(t, rng) : null;
     // في التطوير المحلي نسرّع الروبوتات للاختبار
-    if (step) await this.ctx.storage.setAlarm(Date.now() + (this.env.DEV_AUTH === '1' ? 5 : step.delayMs));
+    const botAt = step ? Date.now() + (this.env.DEV_AUTH === '1' ? 5 : step.delayMs) : null;
+    if (botAt) await this.ctx.storage.put('botAt', botAt);
+    else await this.ctx.storage.delete('botAt');
+    const awayAt = t ? nextAwayDeadline(t) : null;
+    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity);
+    if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
 
@@ -445,14 +482,30 @@ export class TableRoom extends DurableObject<Env> {
       await this.schedule();
       return;
     }
-    const step = nextAutoStep(t, rng);
+    // انتهت مهلة لاعب منقطع: روبوت مكانه (عملة من المالك إن توفرت — اللعب لا يتوقف لأجلها)
+    let cur = t;
+    for (const uid of awayExpired(cur, Date.now())) {
+      const seat = seatOf(cur, uid);
+      const name = memberName(cur, uid) ?? 'لاعب';
+      cur = replaceWithBot(cur, uid, rng);
+      await this.save(cur);
+      if (seat !== null) {
+        await this.db().adjustCoins(cur.ownerUid, -COINS.addBot).catch(() => {});
+        this.broadcast([`انتهت مهلة ${name}، وحلّ مكانه ${cur.seats[seat]!.username}`]);
+      }
+      await this.publish(cur);
+    }
+    // دور الروبوت (قد يوقظنا المنبه مبكراً لمهلة منقطع، فلا نسبق وقت تفكيره)
+    const botAt = await this.ctx.storage.get<number>('botAt');
+    const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
     if (step) {
-      const r = runAutoStep(t, step, rng);
+      const r = runAutoStep(cur, step, rng);
       await this.save(r.table);
       this.broadcast(r.events);
       if (r.table.game?.phase === 'matchOver') await this.publish(r.table);
     }
-    await this.schedule();
+    if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
+    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity));
   }
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */

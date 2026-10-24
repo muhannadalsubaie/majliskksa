@@ -278,6 +278,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ok: true });
     }
 
+    // هل ما زلت عضواً في الطاولة؟ (يستخدمه التطبيق ليفرّق بين انقطاع الشبكة وإغلاق الطاولة)
+    const memberMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/member$/);
+    if (memberMatch) {
+      return json({ member: await env.TABLES.get(env.TABLES.idFromString(memberMatch[1])).isMember(user.uid) });
+    }
+
     // المحادثة الصوتية: تمرير طلبات WebRTC إلى Cloudflare Realtime عبر غرفة الطاولة
     const voiceMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/voice$/);
     if (voiceMatch && request.method === 'POST') {

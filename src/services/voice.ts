@@ -51,7 +51,7 @@ async function request<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 /** الانضمام: طلب إذن الميكروفون، نشره مكتوماً، ثم سحب أصوات الموجودين */
-export function joinVoice(id: string, uid: string): Promise<void> {
+export function joinVoice(id: string, uid: string, quiet = false): Promise<void> {
   return serial(async () => {
     if (state.joined || state.busy) return;
     set({ busy: true });
@@ -71,9 +71,11 @@ export function joinVoice(id: string, uid: string): Promise<void> {
         op: 'publish', offer: pc.localDescription!.toJSON(), mid: tx.mid,
       });
       sessionId = r.sessionId;
+      // نضيف أنفسنا محلياً حتى لا تبدو القائمة القديمة وكأن الخادم أخرجنا
+      members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true }];
       await pc.setRemoteDescription(r.answer);
       set({ joined: true, muted: true, busy: false });
-      announce('انضممت للمحادثة الصوتية، الميكروفون مكتوم. اضغط زر الصوت لفتحه');
+      announce(quiet ? 'عدت للمحادثة الصوتية، الميكروفون مكتوم' : 'انضممت للمحادثة الصوتية، الميكروفون مكتوم. اضغط زر الصوت لفتحه');
     } catch (e) {
       cleanup();
       const msg = (e as Error).name === 'NotAllowedError'
@@ -109,27 +111,30 @@ export function setVoiceMuted(muted: boolean): Promise<void> {
 /** يطابق الأصوات المسحوبة مع قائمة المنضمين: يسحب الجدد ويغلق من غادر */
 export function syncVoice(list: TableView['voice']) {
   members = list;
-  if (!state.joined) return Promise.resolve();
+  if (!state.joined || state.busy) return Promise.resolve();
+  // أخرجنا الخادم من المحادثة (انقطع اتصالنا بالطاولة أثناء مكالمة مثلاً): نعود تلقائياً مكتومين
+  if (!members.some((m) => m.uid === myUid)) return rejoin();
   return serial(async () => {
     if (!pc || !sessionId) return;
-    const others = new Map(members.filter((m) => m.uid !== myUid).map((m) => [m.uid, m]));
-    // من غادر (أو أعاد الانضمام بجلسة جديدة)
-    const gone = [...pulled.keys()].filter((u) => !others.has(u));
+    // المفتاح uid + الجلسة: من أعاد الانضمام بجلسة جديدة نسحب صوته من جديد
+    const key = (m: { uid: string; sessionId: string }) => `${m.uid}:${m.sessionId}`;
+    const others = new Map(members.filter((m) => m.uid !== myUid).map((m) => [key(m), m]));
+    const gone = [...pulled.keys()].filter((k) => !others.has(k));
     if (gone.length) {
-      const mids = gone.map((u) => pulled.get(u)!);
-      gone.forEach((u) => pulled.delete(u));
+      const mids = gone.map((k) => pulled.get(k)!);
+      gone.forEach((k) => pulled.delete(k));
       mids.forEach(stopPlayer);
       await request({ op: 'close', sessionId, mids }).catch(() => {});
     }
-    for (const uid of others.keys()) {
-      if (pulled.has(uid)) continue;
+    for (const [k, m] of others) {
+      if (pulled.has(k)) continue;
       try {
         const r = await request<{ requiresImmediateRenegotiation?: boolean; sessionDescription?: Desc; tracks?: { mid?: string }[] }>(
-          { op: 'pull', sessionId, uid },
+          { op: 'pull', sessionId, uid: m.uid },
         );
         const mid = r.tracks?.[0]?.mid;
         if (!mid) continue;
-        pulled.set(uid, mid);
+        pulled.set(k, mid);
         if (r.requiresImmediateRenegotiation && r.sessionDescription) {
           await pc.setRemoteDescription(r.sessionDescription);
           await pc.setLocalDescription(await pc.createAnswer());
@@ -137,6 +142,25 @@ export function syncVoice(list: TableView['voice']) {
         }
       } catch { /* نحاول مع التحديث التالي */ }
     }
+  });
+}
+
+/** إعادة الانضمام بهدوء بعد انقطاع (الميكروفون يعود مكتوماً) */
+let rejoining = false;
+function rejoin(): Promise<void> {
+  if (rejoining || !tableId) return Promise.resolve();
+  rejoining = true;
+  const id = tableId;
+  cleanup();
+  return joinVoice(id, myUid, true).finally(() => { rejoining = false; });
+}
+
+// بعد مكالمة هاتفية قد يتوقف الميكروفون أو ينقطع اتصال الصوت: نصلحه عند العودة للتطبيق
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !state.joined || state.busy) return;
+    const broken = mic?.readyState === 'ended' || !pc || ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
+    if (broken) void rejoin();
   });
 }
 

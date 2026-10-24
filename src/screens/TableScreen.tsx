@@ -215,6 +215,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                     <span className="player-name">
                       {name(seat)}
                       {view.seats[seat]?.isBot ? ' (روبوت)' : ''}
+                      {view.seats[seat]?.away ? ' (انقطع الاتصال)' : ''}
                       {r === 2 ? ' (شريكك)' : ''}
                     </span>
                     <span className="sr-only">، </span>
