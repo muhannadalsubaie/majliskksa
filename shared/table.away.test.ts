@@ -40,3 +40,32 @@ it('does not hold seats outside a running match', () => {
   const lobby = newTable('t', { uid: 'a', username: 'أحمد' }, false, 0);
   expect(markAway(lobby, 'a', 0)).toBe(lobby);
 });
+
+it('reveals a project in the second trick, right after its owner plays', async () => {
+  const { addBot, nextAutoStep, runAutoStep } = await import('./table');
+  let found = false;
+  for (let seed = 1; seed < 60 && !found; seed++) {
+    let t = newTable('t', { uid: 'a', username: 'أحمد' }, false, 0);
+    t = addBot(t, 1); t = addBot(t, 2); t = addBot(t, 3);
+    t = { ...t, seats: t.seats.map((m, i) => (i === 0 ? { uid: 'bot-x', username: 'روبوت', isBot: true } : m)) };
+    t = start(t, seededRng(seed));
+    const rng = seededRng(seed + 100);
+    for (let i = 0; i < 80 && t.game && t.game.trickNo < 2; i++) {
+      const step = nextAutoStep(t, rng);
+      if (!step) break;
+      const before = t.game!.trickNo;
+      const r = runAutoStep(t, step, rng);
+      const reveal = r.events.findIndex((e) => e.startsWith('مشروع ') && e.includes('—'));
+      if (reveal >= 0) {
+        expect(before).toBe(1); // اللفة الثانية
+        expect(step.kind).toBe('bot');
+        const owner = t.seats[(step as { seat: number }).seat]!.username;
+        expect(r.events[reveal]).toContain(owner);
+        expect(r.events[reveal - 1].startsWith(`${owner}: `)).toBe(true); // بعد ورقته مباشرة
+        found = true;
+      }
+      t = r.table;
+    }
+  }
+  expect(found).toBe(true);
+});

@@ -137,7 +137,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     const lines = g.declared.map((d) => {
       const who = d.seat === mySeat ? 'أنت' : name(d.seat);
       const items = d.kinds.map((k, i) => (d.cards?.[i] ? `${k}: ${d.cards[i]}` : k));
-      return `${who}: ${items.join('، و')}`;
+      return `${who}: ${items.join('، و')}${d.cancelled ? '، ملغى' : ''}`;
     });
     if (g.balootSeat !== null) lines.push(`${g.balootSeat === mySeat ? 'أنت' : name(g.balootSeat)}: بلوت`);
     if (!lines.length) return 'لا توجد مشاريع معلنة';

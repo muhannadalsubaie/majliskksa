@@ -310,22 +310,20 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
       if (newly) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       events.push(`${who}: ${cardLabel(action.card)}`);
+      // كشف المشروع في اللفة الثانية: بعد أن يلعب صاحبه ورقته تُنطق أوراق مشروعه
+      // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)
+      const mineDeclared = before.trickNo === 1 ? after.declared.find((d) => d.seat === action.seat) : undefined;
+      if (mineDeclared && after.projects) {
+        if (after.projects.winningTeam === teamOf(action.seat)) {
+          for (const p of mineDeclared.projects) {
+            events.push(`مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`);
+          }
+        } else {
+          events.push(`أُلغي مشروع ${who}`);
+        }
+      }
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
-        if (before.trickNo === 0 && after.projects?.winningTeam != null) {
-          const winTeam = after.projects.winningTeam;
-          // كشف المشاريع: أوراق مشاريع الفريق الفائز، وإلغاء مشاريع الآخر
-          for (const d of after.declared) {
-            const owner = nameOf(t, d.seat);
-            if (teamOf(d.seat) === winTeam) {
-              for (const p of d.projects) {
-                events.push(`مشروع ${owner}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`);
-              }
-            } else {
-              events.push(`أُلغي مشروع ${owner}`);
-            }
-          }
-        }
       }
       if (after.lastHand && !before.lastHand) {
         const r = after.lastHand;
@@ -407,7 +405,7 @@ export interface GameView {
   balootSeat: Seat | null;
   projects: GameState['projects'];
   /** cards: أوراق كل مشروع (بعد الأكلة الأولى فقط) */
-  declared: { seat: Seat; kinds: string[]; cards?: string[] }[];
+  declared: { seat: Seat; kinds: string[]; cards?: string[]; cancelled?: boolean }[];
   actions: {
     bids: Bid[];
     double: ReturnType<typeof availableDouble>;
@@ -447,12 +445,17 @@ export function viewFor(t: TableData, uid: string): TableView {
       myHand: playing ? g.hands[mySeat] : [],
       balootSeat: g.balootSeat,
       projects: g.trickNo > 0 ? g.projects : null,
-      // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف بعد الأكلة الأولى فقط
-      declared: g.declared.map((d) => ({
-        seat: d.seat,
-        kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
-        cards: g.trickNo > 0 ? d.projects.map((p) => p.cards.map(cardLabel).join('، ')) : undefined,
-      })),
+      // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
+      declared: g.declared.map((d) => {
+        const shown = g.trickNo > 1 || (g.trickNo === 1 && g.trick.some((p) => p.seat === d.seat));
+        const won = g.projects?.winningTeam === teamOf(d.seat);
+        return {
+          seat: d.seat,
+          kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
+          cards: shown && won ? d.projects.map((p) => p.cards.map(cardLabel).join('، ')) : undefined,
+          cancelled: shown && !won ? true : undefined,
+        };
+      }),
       actions: {
         bids: playing ? availableBids(g, mySeat) : [],
         double: playing ? availableDouble(g, mySeat) : null,
