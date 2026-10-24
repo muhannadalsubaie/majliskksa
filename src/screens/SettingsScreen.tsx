@@ -4,7 +4,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Switch } from '../components/Switch';
 import { isMuted, setMuted } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
-import { announce, isSpeechEnabled, setSpeechEnabled } from '../services/announcer';
+import { ANNOUNCE_PACES, type AnnouncePace, announce, getAnnouncePace, isSpeechEnabled, setAnnouncePace, setSpeechEnabled } from '../services/announcer';
 import { deleteMyAccount } from '../services/tables';
 import { SITE_URL } from '../services/api';
 import { isScreenReaderSettingOn, setScreenReader } from '../services/screenReader';
@@ -17,6 +17,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
   const [reader, setReader] = useState(isScreenReaderSettingOn());
   const [muted, setMutedState] = useState(isMuted());
   const [rate, setRate] = useState(getSpeechRate());
+  const [pace, setPace] = useState<AnnouncePace>(getAnnouncePace());
 
   const changeRate = (delta: number) => {
     const r = setSpeechRate(rate + delta);
@@ -67,6 +68,23 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
 
       <section aria-labelledby="sec-speech" className="stack">
         <h2 id="sec-speech">نطق الأحداث</h2>
+        <h3 id="pace-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة إعلانات اللعب</h3>
+        <p className="note" style={{ margin: 0 }}>
+          كم ينتظر التطبيق بين إعلان وآخر حتى لا يقطع قارئ الشاشة جملته. اختر ما يناسب سرعة نطق TalkBack أو VoiceOver عندك: كلما كانت أسرع وصلتك الحركات أسرع.
+        </p>
+        <div className="rate-row" role="radiogroup" aria-labelledby="pace-title" style={{ flexWrap: 'wrap' }}>
+          {ANNOUNCE_PACES.map((p) => (
+            <button
+              key={p.id}
+              role="radio"
+              aria-checked={pace === p.id}
+              className={pace === p.id ? '' : 'secondary'}
+              onClick={() => { setPace(p.id); setAnnouncePace(p.id); announce(`سرعة الإعلانات ${p.label}`); }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <Switch
           label="نطق أحداث اللعبة بصوت التطبيق"
           checked={speech}

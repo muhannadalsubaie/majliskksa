@@ -14,11 +14,34 @@ let regions: HTMLElement[] = [];
 let active = 0;
 let speechEnabled = loadSpeechSetting();
 
-// تقدير وقت النطق بالعربية (~13 حرفاً في الثانية بالسرعة العادية) مع هامش، حتى تكتمل
-// الجملة قبل التي بعدها — الأفضل أن يتأخر الإعلان التالي قليلاً على أن يقطع ما قبله
-const BATCH_MS = 150;
-const MS_PER_CHAR = 75;
-const MIN_GAP_MS = 900;
+// الأحداث التي تصل في نفس اللحظة (رسالة واحدة من الخادم) تُدمج في إعلان واحد، ويُرسل فوراً.
+// بعده ننتظر بقدر ما يحتاجه قارئ الشاشة لينطقه قبل الإعلان التالي حتى لا يقطعه؛ وهذا الانتظار
+// يتبع "سرعة الإعلانات" في الإعدادات لتطابق سرعة نطق TalkBack/VoiceOver عند المستخدم.
+const BATCH_MS = 0;
+export const ANNOUNCE_PACES = [
+  { id: 'slow', label: 'بطيئة', msPerChar: 85, minGap: 900 },
+  { id: 'normal', label: 'عادية', msPerChar: 65, minGap: 700 },
+  { id: 'fast', label: 'سريعة', msPerChar: 45, minGap: 450 },
+  { id: 'fastest', label: 'سريعة جداً', msPerChar: 30, minGap: 300 },
+] as const;
+export type AnnouncePace = (typeof ANNOUNCE_PACES)[number]['id'];
+const PACE_KEY = 'majlisk.announcePace';
+let pace: AnnouncePace = loadPace();
+
+function loadPace(): AnnouncePace {
+  try {
+    const v = localStorage.getItem(PACE_KEY);
+    return ANNOUNCE_PACES.some((p) => p.id === v) ? (v as AnnouncePace) : 'fast';
+  } catch { return 'fast'; }
+}
+
+export function getAnnouncePace() { return pace; }
+
+export function setAnnouncePace(p: AnnouncePace) {
+  pace = p;
+  try { localStorage.setItem(PACE_KEY, p); } catch { /* ignore */ }
+}
+
 let pending: string[] = [];
 let busyUntil = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -47,7 +70,7 @@ function deliver(text: string) {
   regions.forEach((r) => { r.textContent = ''; });
   active = 1 - active;
   const target = regions[active];
-  setTimeout(() => { target.textContent = text; }, 100);
+  setTimeout(() => { target.textContent = text; }, 30);
 }
 
 function flush() {
@@ -57,7 +80,8 @@ function flush() {
   if (wait > 0) { timer = setTimeout(flush, wait); return; }
   const text = pending.join('. ');
   pending = [];
-  busyUntil = Date.now() + Math.max(MIN_GAP_MS, text.length * MS_PER_CHAR);
+  const p = ANNOUNCE_PACES.find((x) => x.id === pace)!;
+  busyUntil = Date.now() + Math.max(p.minGap, text.length * p.msPerChar);
   deliver(text);
 }
 
