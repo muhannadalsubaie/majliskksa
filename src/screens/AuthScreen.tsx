@@ -19,6 +19,7 @@ const ERRORS: Record<string, string> = {
   'auth/missing-password': 'أدخل كلمة المرور',
   'auth/too-many-requests': 'محاولات كثيرة، حاول بعد قليل',
   'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
+  'google-native': 'الدخول بحساب Google داخل التطبيق قيد التفعيل. ادخل بالبريد وكلمة المرور مؤقتاً.',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
   ...USERNAME_ERRORS,
   timeout: 'تعذّر الاتصال، تحقق من الإنترنت وحاول مرة أخرى',
@@ -77,6 +78,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
     const { auth } = await connectFirebase();
     if (Capacitor.isNativePlatform()) {
       // داخل التطبيق: نافذة اختيار حساب Google الأصلية في الجهاز، ثم ندخل بنفس الحساب في Firebase
+      if (!Capacitor.isPluginAvailable('FirebaseAuthentication')) throw { code: 'google-native' };
       const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
       const r = await FirebaseAuthentication.signInWithGoogle().catch(() => { throw { code: 'auth/popup-closed-by-user' }; });
       const idToken = r.credential?.idToken;

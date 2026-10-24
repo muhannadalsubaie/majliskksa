@@ -1,11 +1,20 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import { existsSync } from 'node:fs';
+
+// إضافة الدخول بـ Google تحتاج ملف إعدادات Firebase للأندرويد؛ بدونه نستبعدها حتى لا يتعطل التطبيق
+const hasGoogleServices = existsSync('android/app/google-services.json');
 
 const config: CapacitorConfig = {
   appId: 'com.majlisk.app',
   appName: 'مجلسك',
   webDir: 'dist',
   backgroundColor: '#0d2b20',
-  android: { backgroundColor: '#0d2b20' },
+  android: {
+    backgroundColor: '#0d2b20',
+    ...(hasGoogleServices ? {} : {
+      includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader'],
+    }),
+  },
   ios: { backgroundColor: '#0d2b20', contentInset: 'always' },
   plugins: {
     // الدخول بـ Google داخل التطبيق: الإضافة تجلب حساب Google من الجهاز فقط،
