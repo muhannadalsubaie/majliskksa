@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "152865871542",
+    "project_id": "majlisk-87eef",
+    "storage_bucket": "majlisk-87eef.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:152865871542:android:0da49107336c0f0d4a7817",
+        "android_client_info": {
+          "package_name": "com.majlisk.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "152865871542-f369j9ud2qt8e5nuqspoatu96tfg68qi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.majlisk.app",
+            "certificate_hash": "7149f40bccf504f275e400064fbff7c3b872cd74"
+          }
+        },
+        {
+          "client_id": "152865871542-ij7o20r1vvr8baohsbsn6odaphh9niiv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0w2ECqZgz8yWpid9vgKsnVuXGnRypL8A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "152865871542-ij7o20r1vvr8baohsbsn6odaphh9niiv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
