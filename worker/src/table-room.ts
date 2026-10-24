@@ -5,8 +5,9 @@ import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  runAutoStep, seatOf, start, viewFor,
+  memberName, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
+import { Realtime, type SessionDescription } from './realtime';
 import type { Env } from './env';
 import { Firestore } from './firestore';
 
@@ -24,6 +25,24 @@ type ClientMessage =
   | { type: 'vacate'; seat: number };
 
 const rng = () => Math.random();
+
+/** اسم مسار الميكروفون داخل جلسة كل شخص */
+const VOICE_TRACK = 'mic';
+
+export interface VoiceRequest {
+  op: 'publish' | 'pull' | 'renegotiate' | 'close' | 'mute' | 'leave';
+  sessionId?: unknown;
+  offer?: unknown;
+  answer?: unknown;
+  mid?: unknown;
+  mids?: unknown;
+  uid?: unknown;
+  muted?: unknown;
+}
+
+const isSdp = (d: unknown, type: 'offer' | 'answer'): d is SessionDescription =>
+  typeof d === 'object' && d !== null && (d as SessionDescription).type === type
+  && typeof (d as SessionDescription).sdp === 'string' && (d as SessionDescription).sdp.length < 20_000;
 
 const isSeat = (n: unknown): n is Seat => n === 0 || n === 1 || n === 2 || n === 3;
 const isSuit = (s: unknown): s is Suit => SUITS.includes(s as Suit);
@@ -170,6 +189,67 @@ export class TableRoom extends DurableObject<Env> {
     return !!t && (seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid));
   }
 
+  // ───── المحادثة الصوتية (Cloudflare Realtime) ─────
+
+  /**
+   * كل طلبات الصوت تمر من هنا: الغرفة تعرف من في الطاولة ومن يملك أي جلسة،
+   * فلا يستطيع أحد سحب صوت طاولة ليس فيها أو التحكم بجلسة غيره.
+   */
+  async voice(uid: string, req: VoiceRequest): Promise<unknown> {
+    const t = await this.load();
+    if (!t) throw new Error('not-found');
+    const name = memberName(t, uid);
+    if (!name) throw new Error('not-a-member');
+    if (!this.env.REALTIME_APP_ID || !this.env.REALTIME_APP_SECRET) throw new Error('voice-not-configured');
+    const rt = new Realtime(this.env.REALTIME_APP_ID, this.env.REALTIME_APP_SECRET);
+    const mine = t.voice?.[uid];
+    const own = (sessionId: unknown) => {
+      if (!mine || mine.sessionId !== sessionId) throw new Error('bad-session');
+      return mine.sessionId;
+    };
+
+    switch (req.op) {
+      case 'publish': {
+        if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
+        const r = await rt.publish(req.offer, req.mid, VOICE_TRACK);
+        const next = { ...t, voice: { ...(t.voice ?? {}), [uid]: { sessionId: r.sessionId, muted: true } } };
+        await this.save(next);
+        this.broadcast([`${name} انضم للمحادثة الصوتية`]);
+        return r;
+      }
+      case 'pull': {
+        const sessionId = own(req.sessionId);
+        const remote = typeof req.uid === 'string' ? t.voice?.[req.uid] : undefined;
+        if (!remote || req.uid === uid) throw new Error('bad-request');
+        return rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
+      }
+      case 'renegotiate': {
+        if (!isSdp(req.answer, 'answer')) throw new Error('bad-request');
+        return rt.renegotiate(own(req.sessionId), req.answer);
+      }
+      case 'close': {
+        const mids = Array.isArray(req.mids) ? req.mids.filter((m): m is string => typeof m === 'string').slice(0, 20) : [];
+        if (mids.length) await rt.close(own(req.sessionId), mids);
+        return { ok: true };
+      }
+      case 'mute': {
+        own(req.sessionId);
+        const next = { ...t, voice: { ...t.voice, [uid]: { ...mine!, muted: req.muted === true } } };
+        await this.save(next);
+        this.broadcast([]);
+        return { ok: true };
+      }
+      case 'leave': {
+        if (!mine) return { ok: true };
+        await this.save(withoutVoice(t, uid));
+        this.broadcast([`${name} غادر المحادثة الصوتية`]);
+        return { ok: true };
+      }
+      default:
+        throw new Error('bad-request');
+    }
+  }
+
   // ───── WebSocket ─────
 
   async fetch(request: Request): Promise<Response> {
@@ -275,6 +355,15 @@ export class TableRoom extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closed */ }
+    // انقطع اتصاله بالطاولة: يخرج من المحادثة الصوتية (إن لم يكن متصلاً من جهاز آخر)
+    const { uid } = ws.deserializeAttachment() as { uid: string };
+    const stillHere = this.ctx.getWebSockets().some((w) => w !== ws && w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
+    const t = await this.load();
+    if (t?.voice?.[uid] && !stillHere) {
+      const name = memberName(t, uid);
+      await this.save(withoutVoice(t, uid));
+      this.broadcast(name ? [`${name} غادر المحادثة الصوتية`] : []);
+    }
     // آخر متصل خرج: نبدأ مهلة الإغلاق
     if (this.connectedCount(ws) === 0) {
       await this.ctx.storage.put('emptySince', Date.now());

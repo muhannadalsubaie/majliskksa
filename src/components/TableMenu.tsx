@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { joinVoice, leaveVoice, useVoice } from '../services/voice';
 import type { Seat } from '../../shared/baloot/cards';
 import { teamOf } from '../../shared/baloot/cards';
 import { COINS } from '../../shared/economy';
@@ -21,6 +22,7 @@ type Page = 'main' | 'players' | 'invite' | { replace: Seat };
 /** قائمة الطاولة: اللاعبون، دعوة صديق، مشاهدة إعلان، مغادرة */
 export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
   const [page, setPage] = useState<Page>('main');
+  const voice = useVoice();
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [busy, setBusy] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -79,6 +81,13 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           )}
           <button className="secondary" onClick={() => void watchRewardedAd()}>
             مشاهدة إعلان (+{COINS.watchAdReward} 🪙)
+          </button>
+          <button
+            className="secondary"
+            onClick={() => { void (voice.joined ? leaveVoice() : joinVoice(view.id, uid)); onClose(); }}
+            disabled={voice.busy}
+          >
+            {voice.joined ? 'مغادرة المحادثة الصوتية' : 'الانضمام للمحادثة الصوتية'}
           </button>
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
           <button className="secondary" onClick={onClose}>إغلاق القائمة</button>

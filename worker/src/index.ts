@@ -4,6 +4,7 @@ import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore } from './firestore';
 import { verifySsv } from './ads';
+import type { VoiceRequest } from './table-room';
 
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
@@ -275,6 +276,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
       await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName: await usernameOf(user.uid), at: Date.now() });
       return json({ ok: true });
+    }
+
+    // المحادثة الصوتية: تمرير طلبات WebRTC إلى Cloudflare Realtime عبر غرفة الطاولة
+    const voiceMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/voice$/);
+    if (voiceMatch && request.method === 'POST') {
+      const b = (await body()) as unknown as VoiceRequest;
+      try {
+        return json(await env.TABLES.get(env.TABLES.idFromString(voiceMatch[1])).voice(user.uid, b));
+      } catch (e) {
+        const code = (e as Error).message;
+        console.error('voice', code);
+        return json({ error: code.startsWith('realtime:') ? 'voice-failed' : code }, 400);
+      }
     }
 
     // قبول/رفض دعوة طاولة

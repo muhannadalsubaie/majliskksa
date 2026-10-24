@@ -23,6 +23,23 @@ export interface TableData {
   botCount: number;
   /** دعوات صالحة (لمرة واحدة) — مدفوعة مسبقاً من المالك، وقد تحجز مقعداً محدداً */
   invites?: (string | { code: string; seat?: Seat })[];
+  /** المحادثة الصوتية: من انضم (جلسة Cloudflare Realtime الخاصة به) وهل ميكروفونه مكتوم */
+  voice?: Record<string, VoiceMember>;
+}
+
+export interface VoiceMember { sessionId: string; muted: boolean }
+
+/** اسم أي حاضر بالطاولة (لاعب أو مشاهد) */
+export function memberName(t: TableData, uid: string): string | null {
+  return t.seats.find((m) => m?.uid === uid && !m.isBot)?.username ?? t.spectators.find((m) => m.uid === uid)?.username ?? null;
+}
+
+/** يزيل الشخص من المحادثة الصوتية */
+export function withoutVoice(t: TableData, uid: string): TableData {
+  if (!t.voice?.[uid]) return t;
+  const voice = { ...t.voice };
+  delete voice[uid];
+  return { ...t, voice };
 }
 
 export function newTable(id: string, owner: { uid: string; username: string }, isPrivate: boolean, now: number): TableData {
@@ -88,7 +105,8 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
 }
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
-export function leave(t: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean } {
+export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean } {
+  const t = withoutVoice(t0, uid);
   const seat = seatOf(t, uid);
   if (seat === null) return { table: { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) }, botReplaced: false };
   const seats = [...t.seats];
@@ -363,6 +381,8 @@ export interface TableView {
   /** معرّفات الجالسين (لترتيب المقاعد من قبل المالك) — فارغ للمقعد الفارغ */
   seatUids: string[];
   spectators: { uid: string; username: string }[];
+  /** من في المحادثة الصوتية */
+  voice: { uid: string; username: string; sessionId: string; muted: boolean }[];
   game: GameView | null;
 }
 
@@ -397,6 +417,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     seats: t.seats.map((m) => (m ? { username: m.username, isBot: m.isBot } : null)),
     seatUids: t.seats.map((m) => m?.uid ?? ''),
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
+    voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted })),
     game,
   };
 }

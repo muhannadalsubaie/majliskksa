@@ -1,5 +1,6 @@
 # نشر خادم مجلسك + نسخة الويب من التطبيق على Cloudflare Workers تلقائياً.
 # أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, FIREBASE_SERVICE_ACCOUNT
+# اختياري: REALTIME_APP_SECRET (مفتاح Cloudflare Realtime للمحادثة الصوتية)
 # (معرّف الحساب موجود في worker/wrangler.jsonc)
 name: Deploy Worker
 
@@ -57,6 +58,14 @@ jobs:
             FIREBASE_SERVICE_ACCOUNT
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Voice chat secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          REALTIME_APP_SECRET: ${{ secrets.REALTIME_APP_SECRET }}
+        working-directory: worker
+        run: |
+          if [ -z "$REALTIME_APP_SECRET" ]; then echo "REALTIME_APP_SECRET not set — voice chat disabled"; exit 0; fi
+          printf '%s' "$REALTIME_APP_SECRET" | npx wrangler secret put REALTIME_APP_SECRET
       - name: Smoke test
         run: |
           sleep 5

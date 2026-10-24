@@ -30,8 +30,11 @@
     // مؤقتاً "1" أثناء التجربة بإعلانات Google التجريبية؛ تُغيّر إلى "0" عند ربط وحدة إعلان حقيقية مع SSV
     "ADS_TEST_REWARDS": "0",
     // حسابات المطوّر (عملات لا محدودة): SHA-256 للإيميل الموثّق — الإيميل نفسه لا يُكتب هنا
-    "UNLIMITED_EMAIL_SHA256": "34c088887a89d4497a11ba360b3f80ec39bfbdee8c3cffb5fb74c7f440622f1a"
+    "UNLIMITED_EMAIL_SHA256": "34c088887a89d4497a11ba360b3f80ec39bfbdee8c3cffb5fb74c7f440622f1a",
+    // المحادثة الصوتية: معرّف تطبيق Cloudflare Realtime (ليس سرياً)
+    "REALTIME_APP_ID": ""
   }
   // الأسرار (تُضبط من GitHub Actions، لا تُكتب هنا):
   //   FIREBASE_SERVICE_ACCOUNT — ملف JSON لحساب خدمة Firebase
+  //   REALTIME_APP_SECRET — مفتاح تطبيق Cloudflare Realtime (المحادثة الصوتية)
 }

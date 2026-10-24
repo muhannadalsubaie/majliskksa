@@ -12,4 +12,7 @@ export interface Env {
   DEV_AUTH?: string;
   /** "1" = نقبل مكافأة الإعلانات التجريبية بلا SSV (أثناء التطوير بإعلانات Google التجريبية فقط) */
   ADS_TEST_REWARDS?: string;
+  /** Cloudflare Realtime (المحادثة الصوتية): معرّف التطبيق (ليس سرياً) ومفتاحه (سر) */
+  REALTIME_APP_ID?: string;
+  REALTIME_APP_SECRET?: string;
 }

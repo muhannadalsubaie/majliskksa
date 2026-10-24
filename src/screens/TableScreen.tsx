@@ -320,7 +320,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
         </>
       )}
 
-      <VoiceButton channelName={`table-${tableId.slice(0, 16)}`} />
+      <VoiceButton view={view} uid={uid} />
 
       {menuOpen && !confirmLeave && (
         <TableMenu

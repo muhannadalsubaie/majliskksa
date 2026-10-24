@@ -144,3 +144,5 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 /* زر الرجوع: صغير في كل الشاشات والقوائم (مع مساحة لمس كافية) */
 button.back-btn { padding: 6px 14px; min-height: 40px; font-size: 14px; flex: 0 0 auto; align-self: flex-start; width: auto; }
 .topbar button.back-btn, .topbar span > button.back-btn { align-self: center; }
+/* أسماء من في المحادثة الصوتية — فوق زر الصوت */
+.voice-people { position: fixed; left: 16px; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 68px); max-width: min(70vw, 320px); margin: 0; padding: 6px 10px; border-radius: 10px; background: var(--green-800); border: 1px solid var(--green-700); font-size: 13px; color: var(--text-dim); }
