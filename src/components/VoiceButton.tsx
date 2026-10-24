@@ -45,10 +45,14 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
 
   // الكل ينضم تلقائياً، فنعرض فقط من فتح ميكروفونه
   const others = view.voice.filter((m) => m.uid !== uid && m.mic && !m.muted);
-  const label = voice.busy ? 'المحادثة الصوتية: جارٍ الانضمام'
-    : !voice.joined ? 'المحادثة الصوتية: غير منضم. اضغط مطولاً للانضمام'
-      : voice.muted ? 'المحادثة الصوتية: الميكروفون مكتوم. اضغط لفتحه، أو مطولاً للمغادرة'
-        : 'المحادثة الصوتية: الميكروفون مفتوح. اضغط للكتم، أو مطولاً للمغادرة';
+  // الحالة نصاً واضحاً (يُكتب على الزر ويُقرأ)، ومعها تلميح بما تفعله الضغطة
+  const status = voice.busy ? 'جارٍ الاتصال بالمحادثة الصوتية'
+    : !voice.joined ? 'أنت خارج المحادثة الصوتية'
+      : voice.muted ? 'الميكروفون مغلق' : 'الميكروفون مفتوح';
+  const hint = voice.busy ? ''
+    : !voice.joined ? 'اضغط مطولاً للانضمام'
+      : voice.muted ? 'اضغط لفتحه، أو مطولاً للخروج من المحادثة' : 'اضغط لإغلاقه، أو مطولاً للخروج من المحادثة';
+  const label = hint ? `${status}، ${hint}` : status;
 
   return (
     <div className="voice-dock">
@@ -60,7 +64,6 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
       <button
         className={`voice-btn ${!voice.joined ? 'off' : voice.muted ? 'muted' : ''}`}
         aria-label={label}
-        aria-pressed={voice.joined && !voice.muted}
         disabled={voice.busy}
         onPointerDown={onDown}
         onPointerUp={clear}
@@ -84,7 +87,7 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
         }}
         onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); toggleJoin(); } }}
       >
-        {voice.joined && !voice.muted ? '🎙️' : '🔇'}
+        {status}
       </button>
     </div>
   );

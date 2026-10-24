@@ -68,7 +68,7 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
       // نضيف أنفسنا محلياً حتى لا تبدو القائمة القديمة وكأن الخادم أخرجنا
       members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true, mic: false }];
       set({ joined: true, muted: true, busy: false });
-      if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، وميكروفونك مقفل. اضغط زر الصوت لفتحه');
+      if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، والميكروفون مغلق. اضغط زر الميكروفون لفتحه');
     } catch (e) {
       cleanup();
       const code = (e as Error).message;
@@ -88,7 +88,7 @@ export function leaveVoice(quiet = false): Promise<void> {
     if (!state.joined) return;
     await request({ op: 'leave' }).catch(() => {});
     cleanup();
-    if (!quiet) announce('غادرت المحادثة الصوتية');
+    if (!quiet) announce('أنت خارج المحادثة الصوتية');
   });
 }
 
@@ -98,7 +98,7 @@ export function setVoiceMuted(muted: boolean): Promise<void> {
   if (mic) {
     mic.enabled = !muted;
     set({ muted });
-    announce(muted ? 'تم كتم الميكروفون' : 'الميكروفون مفتوح');
+    announce(muted ? 'الميكروفون مغلق' : 'الميكروفون مفتوح');
     return request({ op: 'mute', sessionId, muted }).then(() => {}, () => {});
   }
   if (muted) return Promise.resolve();
