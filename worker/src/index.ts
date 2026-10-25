@@ -1,4 +1,4 @@
-import { COINS, MAX_ADS_PER_DAY } from '../../shared/economy';
+import { COINS, ONE_TIME_GIFTS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
@@ -170,7 +170,22 @@ async function handle(request: Request, env: Env): Promise<Response> {
       });
       // علامة حساب المطوّر تُكتب من الخادم فقط
       if (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256)) await db.update('users', user.uid, { unlimited: true });
-      return json({ created });
+      // هدايا لمرة واحدة: سجل الهدية يُنشأ مرة واحدة فقط (ذرّياً) قبل إضافة العملات، فلا تتكرر
+      let gift = 0;
+      if (!created) {
+        const profile = await db.get('users', user.uid);
+        const key = usernameKey(String(profile?.username ?? ''));
+        for (const g of ONE_TIME_GIFTS) {
+          if (!key || usernameKey(g.username) !== key) continue;
+          const holder = await db.get('usernames', key);
+          if (holder?.uid !== user.uid) continue;
+          if (await db.createIfMissing('gifts', g.id, { uid: user.uid, coins: g.coins, at: new Date() })) {
+            await db.adjustCoins(user.uid, g.coins);
+            gift += g.coins;
+          }
+        }
+      }
+      return json({ created, gift });
     }
 
     // حجز اسم مستخدم فريد — مرة واحدة لكل حساب.

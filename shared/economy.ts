@@ -1,6 +1,6 @@
 // تكاليف الاقتصاد — مصدر واحد للحقيقة، والخصم الفعلي يتم في Cloud Functions فقط.
 export const COINS = {
-  signupBonus: 15,
+  signupBonus: 30,
   createTable: 2,
   joinTable: 1,
   inviteFriend: 1,
@@ -21,3 +21,11 @@ export const MAX_ADS_PER_DAY = 10;
  * الصوت ≈ 50 كيلوبت/ث (مع هامش)، أي ~22.5 ميجا لكل ساعة استماع → 40,000 ساعة ≈ 900 جيجا.
  */
 export const VOICE_MONTHLY_LISTEN_HOURS = 40_000;
+
+/**
+ * هدايا لمرة واحدة لحسابات بعينها (باسم المستخدم). تُمنح عند أول فتح للتطبيق بعد إضافتها،
+ * ولا تتكرر أبداً (يُسجَّل منحها في الخادم).
+ */
+export const ONE_TIME_GIFTS: { id: string; username: string; coins: number }[] = [
+  { id: 'gift-burjuazi-2026-10', username: 'البرجوازي', coins: 100 },
+];

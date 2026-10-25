@@ -3,6 +3,7 @@ import {
   GoogleAuthProvider, createUserWithEmailAndPassword, sendPasswordResetEmail,
   signInWithCredential, signInWithEmailAndPassword, signInWithPopup,
 } from 'firebase/auth';
+import { COINS } from '../../shared/economy';
 import { USERNAME_ERRORS, validateUsername } from '../../shared/username';
 import { UsernameField } from '../components/UsernameField';
 import { Capacitor } from '@capacitor/core';
@@ -65,7 +66,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         // إن فشل الحجز هنا (سباق نادر) تظهر شاشة اختيار الاسم تلقائياً
         await api(cred.user, '/profile/username', { username: name }).catch(() => {});
-        announce(`أهلاً ${name.trim()}، حصلت على 15 عملة ترحيبية`);
+        announce(`أهلاً ${name.trim()}، حصلت على ${COINS.signupBonus} عملة ترحيبية`);
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         announce('تم تسجيل الدخول');

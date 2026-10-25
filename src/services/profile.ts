@@ -3,6 +3,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { connectFirebase, isFirebaseConfigured } from './firebase';
 import { API_URL, api } from './api';
+import { announce } from './announcer';
 
 export interface Profile {
   /** اسم المستخدم الفريد — فارغ إن لم يختره اللاعب بعد */
@@ -33,8 +34,12 @@ export function useProfile(): { user: User | null; profile: Profile | null } {
         unsubDoc = undefined;
         if (!u) { setProfile(null); return; }
         setProfile({ username: '', coins: null, loaded: false, unlimited: false });
-        // الخادم ينشئ ملف اللاعب مع 15 عملة ترحيبية عند أول دخول (لا يتكرر)
-        if (API_URL) void api(u, '/profile/ensure').catch(() => {});
+        // الخادم ينشئ ملف اللاعب مع العملات الترحيبية عند أول دخول (لا يتكرر)، ويمنح الهدايا لمرة واحدة
+        if (API_URL) {
+          void api<{ gift?: number }>(u, '/profile/ensure')
+            .then((r) => { if (r.gift) announce(`هدية: أُضيفت ${r.gift} عملة إلى رصيدك`); })
+            .catch(() => {});
+        }
         unsubDoc = onSnapshot(doc(db, 'users', u.uid), (snap) => {
           const data = snap.data();
           setProfile({
