@@ -13,12 +13,14 @@ import { JoinTableScreen } from './screens/JoinTableScreen';
 import { TableScreen } from './screens/TableScreen';
 import { TABLE_BACK, initBackButton } from './services/backButton';
 import { FriendsScreen } from './screens/FriendsScreen';
+import { ShopScreen } from './screens/ShopScreen';
+import { recoverPurchases } from './services/purchases';
 import { InviteDialog } from './components/InviteDialog';
 import { useHub } from './services/social';
 
 const TITLES: Record<ScreenName, string> = {
   splash: 'مجلسك', auth: 'تسجيل الدخول', menu: 'القائمة الرئيسية', createTable: 'إنشاء طاولة',
-  joinTable: 'الانضمام إلى طاولة', table: 'الطاولة', friends: 'الأصدقاء', settings: 'الإعدادات',
+  joinTable: 'الانضمام إلى طاولة', table: 'الطاولة', friends: 'الأصدقاء', settings: 'الإعدادات', shop: 'شراء عملات',
 };
 
 export default function App() {
@@ -44,12 +46,15 @@ export default function App() {
   // بعد تسجيل الخروج من أي شاشة نعود لشاشة الدخول
   useEffect(() => { if (!user && screen !== 'splash' && screen !== 'auth' && profile === null && wasSignedIn.current) setScreen('auth'); if (user) wasSignedIn.current = true; }, [user, screen, profile]);
   useEffect(() => { document.title = `${TITLES[screen]} — مجلسك`; }, [screen]);
+  // شراء دُفع ولم تُسلَّم عملاته (إغلاق مفاجئ، انقطاع): يُستكمل بعد الدخول
+  const signedIn = Boolean(user && profile?.username);
+  useEffect(() => { if (signedIn) void recoverPurchases(); }, [signedIn]);
   // زر الرجوع في الجهاز: يرجع للصفحة السابقة داخل التطبيق
   const screenRef = useRef(screen);
   screenRef.current = screen;
   useEffect(() => initBackButton(() => {
     switch (screenRef.current) {
-      case 'settings': case 'friends': case 'createTable': case 'joinTable':
+      case 'settings': case 'friends': case 'createTable': case 'joinTable': case 'shop':
         setScreen('menu');
         return true;
       case 'table':
@@ -70,6 +75,7 @@ export default function App() {
     case 'createTable': content = <CreateTableScreen navigate={setScreen} openTable={openTable} coins={profile?.unlimited ? Infinity : profile?.coins ?? null} />; break;
     case 'joinTable': content = <JoinTableScreen navigate={setScreen} openTable={openTable} />; break;
     case 'friends': content = <FriendsScreen navigate={setScreen} hub={hub} />; break;
+    case 'shop': content = <ShopScreen navigate={setScreen} profile={profile} />; break;
     case 'table': {
       const uid = devUser ?? user?.uid ?? '';
       content = tableId ? <TableScreen key={tableId} tableId={tableId} uid={uid} navigate={setScreen} /> : <Placeholder title={TITLES.table} navigate={setScreen} />;

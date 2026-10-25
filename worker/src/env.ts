@@ -15,4 +15,8 @@ export interface Env {
   /** Cloudflare Realtime (المحادثة الصوتية): معرّف التطبيق (ليس سرياً) ومفتاحه (سر) */
   REALTIME_APP_ID?: string;
   REALTIME_APP_SECRET?: string;
+  /** شراء العملات في الآيفون: مفتاح In-App Purchase من App Store Connect (أسرار) */
+  APPSTORE_IAP_KEY?: string;
+  APPSTORE_IAP_KEY_ID?: string;
+  APPSTORE_IAP_ISSUER_ID?: string;
 }

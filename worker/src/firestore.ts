@@ -2,7 +2,6 @@ import { SignJWT, importPKCS8 } from 'jose';
 
 interface ServiceAccount { client_email: string; private_key: string; project_id: string }
 
-let cached: { token: string; exp: number } | null = null;
 
 /**
  * يقرأ ملف حساب الخدمة حتى لو حُوّلت رموز \n داخل النصوص إلى أسطر حقيقية
@@ -32,14 +31,18 @@ export function parseServiceAccount(raw: string): ServiceAccount {
   }
 }
 
-/** توكن وصول OAuth لحساب الخدمة (يُخزّن مؤقتاً حتى قرب انتهائه). */
-async function accessToken(serviceAccountJson: string): Promise<string> {
+/** توكن وصول OAuth لحساب الخدمة (يُخزّن مؤقتاً لكل مجموعة صلاحيات حتى قرب انتهائه). */
+const tokenCache = new Map<string, { token: string; exp: number }>();
+
+// Firestore + إدارة حسابات Firebase Auth (لحذف الحساب عند طلب صاحبه)
+const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform';
+
+export async function accessToken(serviceAccountJson: string, scope = DEFAULT_SCOPE): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
+  const cached = tokenCache.get(scope);
   if (cached && cached.exp - 60 > now) return cached.token;
   const sa = parseServiceAccount(serviceAccountJson);
   const key = await importPKCS8(sa.private_key, 'RS256');
-  // Firestore + إدارة حسابات Firebase Auth (لحذف الحساب عند طلب صاحبه)
-  const scope = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform';
   const assertion = await new SignJWT({ scope })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(sa.client_email)
@@ -54,7 +57,7 @@ async function accessToken(serviceAccountJson: string): Promise<string> {
   });
   if (!res.ok) throw new Error(`oauth ${res.status}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  cached = { token: data.access_token, exp: now + data.expires_in };
+  tokenCache.set(scope, { token: data.access_token, exp: now + data.expires_in });
   return data.access_token;
 }
 

@@ -1,6 +1,7 @@
 # نشر خادم مجلسك + نسخة الويب من التطبيق على Cloudflare Workers تلقائياً.
 # أسرار GitHub المطلوبة: CLOUDFLARE_API_TOKEN, FIREBASE_SERVICE_ACCOUNT
 # اختياري: REALTIME_APP_SECRET (مفتاح Cloudflare Realtime للمحادثة الصوتية)
+# اختياري: APPSTORE_IAP_KEY / APPSTORE_IAP_KEY_ID / APPSTORE_IAP_ISSUER_ID (التحقق من مشتريات الآيفون)
 # (معرّف الحساب موجود في worker/wrangler.jsonc)
 name: Deploy Worker
 
@@ -66,6 +67,16 @@ jobs:
         run: |
           if [ -z "$REALTIME_APP_SECRET" ]; then echo "REALTIME_APP_SECRET not set — voice chat disabled"; exit 0; fi
           printf '%s' "$REALTIME_APP_SECRET" | npx wrangler secret put REALTIME_APP_SECRET
+      - name: App Store purchase secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPSTORE_IAP_KEY: ${{ secrets.APPSTORE_IAP_KEY }}
+          APPSTORE_IAP_KEY_ID: ${{ secrets.APPSTORE_IAP_KEY_ID }}
+          APPSTORE_IAP_ISSUER_ID: ${{ secrets.APPSTORE_IAP_ISSUER_ID }}
+        working-directory: worker
+        run: |
+          if [ -z "$APPSTORE_IAP_KEY" ]; then echo "App Store purchase key not set yet"; exit 0; fi
+          for n in APPSTORE_IAP_KEY APPSTORE_IAP_KEY_ID APPSTORE_IAP_ISSUER_ID; do printf '%s' "${!n}" | npx wrangler secret put $n; done
       - name: Smoke test
         run: |
           sleep 5

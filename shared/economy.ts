@@ -29,3 +29,12 @@ export const VOICE_MONTHLY_LISTEN_HOURS = 40_000;
 export const ONE_TIME_GIFTS: { id: string; username: string; coins: number }[] = [
   { id: 'gift-burjuazi-2026-10', username: 'البرجوازي', coins: 100 },
 ];
+
+/** باقات العملات للشراء من داخل التطبيق (معرّفات المنتجات نفسها في Google Play وApp Store) */
+export const COIN_PACKS = [
+  { id: 'coins_20', coins: 20, bonus: 0, suggestedPrice: '3.99 ر.س' },
+  { id: 'coins_70', coins: 70, bonus: 10, suggestedPrice: '9.99 ر.س' },
+  { id: 'coins_190', coins: 190, bonus: 40, suggestedPrice: '19.99 ر.س' },
+  { id: 'coins_550', coins: 550, bonus: 150, suggestedPrice: '44.99 ر.س' },
+] as const;
+export type CoinPackId = (typeof COIN_PACKS)[number]['id'];

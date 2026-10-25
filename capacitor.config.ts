@@ -13,14 +13,14 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#0d2b20',
     ...(hasGoogleServices ? {} : {
-      includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader'],
+      includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader', '@capgo/native-purchases'],
     }),
   },
   ios: {
     backgroundColor: '#0d2b20',
     contentInset: 'always',
     ...(hasGoogleServiceInfo ? {} : {
-      includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader'],
+      includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader', '@capgo/native-purchases'],
     }),
   },
   plugins: {

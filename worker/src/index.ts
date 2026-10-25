@@ -5,6 +5,7 @@ import type { Env } from './env';
 import { Firestore, deleteAuthUser } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './table-room';
+import { type VerifiedPurchase, accountTokenFor, consumeGoogle, verifyApple, verifyGoogle } from './purchases';
 
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
@@ -318,6 +319,40 @@ async function handle(request: Request, env: Env): Promise<Response> {
         }
         return json({ error: code.startsWith('realtime:') ? 'voice-failed' : code }, 400);
       }
+    }
+
+    // ───── شراء العملات من داخل التطبيق ─────
+    // معرّف ثابت يُرفق بالشراء ليرتبط بحساب صاحبه (لا يكشف هويته)
+    if (pathname === '/purchases/account-token') {
+      return json({ token: await accountTokenFor(user.uid) });
+    }
+
+    // التحقق من الشراء مع Google/Apple ثم إضافة العملات مرة واحدة فقط
+    if (pathname === '/purchases/verify' && request.method === 'POST') {
+      const b = await body();
+      const platform = String(b.platform ?? '');
+      let v: VerifiedPurchase;
+      try {
+        if (platform === 'android') v = await verifyGoogle(env, String(b.productId ?? ''), String(b.purchaseToken ?? ''));
+        else if (platform === 'ios') v = await verifyApple(env, String(b.transactionId ?? ''));
+        else return json({ error: 'bad-request' }, 400);
+      } catch (e) {
+        console.error('purchase verify', (e as Error).message);
+        return json({ error: 'not-verified' }, 400);
+      }
+      if (v.accountToken && v.accountToken !== (await accountTokenFor(user.uid))) return json({ error: 'other-account' }, 403);
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      const fresh = await db.createIfMissing('purchases', v.id, { uid: user.uid, productId: v.productId, coins: v.coins, at: new Date() });
+      if (fresh) {
+        try {
+          await db.adjustCoins(user.uid, v.coins);
+        } catch (e) {
+          await db.remove('purchases', v.id).catch(() => {}); // نسمح بإعادة المحاولة
+          throw e;
+        }
+      }
+      if (platform === 'android') await consumeGoogle(env, v.productId, String(b.purchaseToken)).catch((e) => console.error('consume', e));
+      return json({ ok: true, coins: v.coins, duplicate: !fresh });
     }
 
     // حذف الحساب نهائياً (مطلب Google Play وApp Store): الملف، اسم المستخدم، الأصدقاء، وحساب الدخول

@@ -19,6 +19,7 @@
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
     "@capacitor/screen-reader": "^8.0.1",
+    "@capgo/native-purchases": "^8.9.6",
     "firebase": "^13.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
