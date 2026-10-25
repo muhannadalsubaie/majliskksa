@@ -73,7 +73,8 @@ export async function buyPack(id: CoinPackId): Promise<void> {
     });
     announce('جارٍ تأكيد الشراء…');
     const added = await deliver(t);
-    announce(added ? `تم! أُضيفت ${added} عملة إلى رصيدك` : `تم تأكيد شراء ${pack.coins} عملة`);
+    const what = pack.bonus ? `${pack.coins - pack.bonus} عملة زائد ${pack.bonus} هدية` : `${pack.coins} عملة`;
+    announce(added ? `تم! أُضيف إلى رصيدك ${what}` : `تم تأكيد شراء ${what}`);
   } catch (e) {
     const msg = String((e as Error)?.message ?? e).toLowerCase();
     if (msg.includes('cancel')) announce('أُلغي الشراء');

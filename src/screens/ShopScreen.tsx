@@ -24,12 +24,14 @@ export function ShopScreen({ navigate, profile }: { navigate: Navigate; profile:
       {packs === null && <p role="status">جارٍ تحميل الباقات…</p>}
       <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {packs?.map((p) => {
-          const label = `${p.coins} عملة${p.bonus ? `، منها ${p.bonus} هدية` : ''}، بسعر ${p.price}`;
+          // نعرض العملات الأساسية والهدية منفصلتين (لا المجموع)
+          const base = p.coins - p.bonus;
+          const label = `${base} عملة${p.bonus ? ` زائد ${p.bonus} هدية` : ''}، بسعر ${p.price}`;
           return (
             <li key={p.id} className="seat-row">
               <span>
-                <strong>{p.coins} 🪙</strong>
-                {p.bonus > 0 && <span className="note"> (+{p.bonus} هدية)</span>}
+                <strong>{base} عملة</strong>
+                {p.bonus > 0 && <span> + {p.bonus} هدية</span>}
               </span>
               <button
                 aria-label={`شراء ${label}`}
