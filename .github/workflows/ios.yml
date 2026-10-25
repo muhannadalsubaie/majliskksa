@@ -1,0 +1,86 @@
+# بناء نسخة الآيفون على ماك سحابي (مجاني للمستودعات العامة) — بلا حاجة لجهاز ماك أو Codemagic.
+# بدون أسرار Apple: يبني للمحاكي فقط ليتأكد أن المشروع سليم.
+# مع الأسرار التالية يبني نسخة موقّعة ويرفعها مباشرة إلى TestFlight:
+#   APPLE_TEAM_ID   — معرّف الفريق (10 أحرف) من حساب المطوّر
+#   ASC_KEY_ID      — معرّف مفتاح App Store Connect API
+#   ASC_ISSUER_ID   — Issuer ID لنفس المفتاح
+#   ASC_KEY_P8      — محتوى ملف المفتاح AuthKey_XXXX.p8 كاملاً
+name: iOS
+
+on:
+  push:
+    paths:
+      - src/**
+      - shared/**
+      - public/**
+      - ios/**
+      - index.html
+      - capacitor.config.ts
+      - package.json
+      - package-lock.json
+      - .env
+      - .github/workflows/ios.yml
+  workflow_dispatch:
+
+concurrency: ios-build
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      HAS_KEYS: ${{ secrets.ASC_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build web app
+        run: npm ci && npm run build
+      - name: Firebase iOS config (Google / Apple sign-in)
+        run: |
+          if [ ! -f ios/GoogleService-Info.plist ]; then echo "no ios/GoogleService-Info.plist — Google/Apple sign-in disabled"; exit 0; fi
+          cp ios/GoogleService-Info.plist dist/
+          SCHEME=$(/usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" ios/GoogleService-Info.plist)
+          PL=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" $PL 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" -c "Add :CFBundleURLTypes:0 dict" \
+            -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $SCHEME" $PL
+      - name: Sync Capacitor
+        run: npx cap sync ios
+      - name: Build for simulator (no Apple keys yet)
+        if: env.HAS_KEYS != 'true'
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 40
+      - name: Archive and upload to TestFlight
+        if: env.HAS_KEYS == 'true'
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -o pipefail
+          KEY=$RUNNER_TEMP/AuthKey_$KEY_ID.p8
+          printf '%s' "$KEY_P8" > "$KEY"
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $KEY_ID -authenticationKeyIssuerID $ISSUER"
+          BUILD=$((100 + ${{ github.run_number }}))
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath $RUNNER_TEMP/App.xcarchive \
+            DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION=$BUILD \
+            $AUTH archive | tail -n 40
+          cat > $RUNNER_TEMP/export.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath $RUNNER_TEMP/App.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/export $AUTH | tail -n 40
+          echo "### رُفعت النسخة $BUILD إلى App Store Connect — تظهر في TestFlight بعد المعالجة (10–30 دقيقة)" >> $GITHUB_STEP_SUMMARY

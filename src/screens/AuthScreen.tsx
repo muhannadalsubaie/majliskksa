@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
-  GoogleAuthProvider, createUserWithEmailAndPassword, sendPasswordResetEmail,
+  GoogleAuthProvider, OAuthProvider, createUserWithEmailAndPassword, sendPasswordResetEmail,
   signInWithCredential, signInWithEmailAndPassword, signInWithPopup,
 } from 'firebase/auth';
 import { COINS } from '../../shared/economy';
@@ -92,6 +92,19 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
     navigate('menu');
   });
 
+  // تسجيل الدخول بـ Apple (في الآيفون فقط — شرط من Apple عند وجود الدخول بـ Google)
+  const apple = () => run(async () => {
+    const { auth } = await connectFirebase();
+    if (!Capacitor.isPluginAvailable('FirebaseAuthentication')) throw { code: 'google-native' };
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const r = await FirebaseAuthentication.signInWithApple().catch(() => { throw { code: 'auth/popup-closed-by-user' }; });
+    const idToken = r.credential?.idToken;
+    if (!idToken) throw { code: 'auth/popup-closed-by-user' };
+    await signInWithCredential(auth, new OAuthProvider('apple.com').credential({ idToken, rawNonce: r.credential?.nonce }));
+    announce('تم تسجيل الدخول');
+    navigate('menu');
+  });
+
   const resetPassword = () => run(async () => {
     if (!email.trim()) throw { code: 'auth/invalid-email' };
     const { auth } = await connectFirebase();
@@ -132,6 +145,9 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
       </p>
 
       <button className="secondary" onClick={google} disabled={busy}>الدخول بحساب Google</button>
+      {Capacitor.getPlatform() === 'ios' && (
+        <button className="secondary" onClick={apple} disabled={busy}>الدخول بحساب Apple</button>
+      )}
 
       <button className="secondary" onClick={() => { setMode(isSignup ? 'login' : 'signup'); setError(''); }} disabled={busy}>
         {isSignup ? 'عندي حساب — تسجيل الدخول' : 'ما عندي حساب — حساب جديد'}

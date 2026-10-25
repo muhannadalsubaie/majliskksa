@@ -5,7 +5,6 @@ dist/
 worker/node_modules/
 worker/.wrangler/
 
-/ios/
 *.log
 .DS_Store
 .firebase/
