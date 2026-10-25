@@ -50,6 +50,7 @@ jobs:
       - name: Build for simulator (no Apple keys yet)
         if: env.HAS_KEYS != 'true'
         run: |
+          set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 40
