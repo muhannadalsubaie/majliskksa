@@ -41,6 +41,9 @@ export interface VoiceRequest {
   muted?: unknown;
 }
 
+/** خطأ Realtime لجلسة انتهت لخمولها (لم يتصل بها أي اتصال صوتي بعد) */
+const isStaleSession = (e: unknown) => /session_error|disconnected/i.test(String((e as Error)?.message ?? e));
+
 const isSdp = (d: unknown, type: 'offer' | 'answer'): d is SessionDescription =>
   typeof d === 'object' && d !== null && (d as SessionDescription).type === type
   && typeof (d as SessionDescription).sdp === 'string' && (d as SessionDescription).sdp.length < 20_000;
@@ -245,19 +248,36 @@ export class TableRoom extends DurableObject<Env> {
       }
       case 'publish': {
         // أول مرة يفتح الميكروفون: ننشره في جلسته
-        const sessionId = own(req.sessionId);
+        let sessionId = own(req.sessionId);
         if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
-        const answer = await rt.pushTrack(sessionId, req.offer, req.mid, VOICE_TRACK);
+        const offer = req.offer, mid = req.mid;
+        let answer: SessionDescription;
+        try {
+          answer = await rt.pushTrack(sessionId, offer, mid, VOICE_TRACK);
+        } catch (e) {
+          // جلسة الاستماع انتهت لخمولها قبل أن يفتح الميكروفون: جلسة جديدة بالميكروفون مباشرة
+          if (!isStaleSession(e)) throw e;
+          ({ sessionId, answer } = await rt.publish(offer, mid, VOICE_TRACK));
+        }
         const acc = await this.accountVoice(t);
         await this.save({ ...acc, voice: { ...acc.voice, [uid]: { sessionId, muted: false, mic: true } } });
         this.broadcast([]);
-        return { answer };
+        return { answer, sessionId };
       }
       case 'pull': {
         const sessionId = own(req.sessionId);
         const remote = typeof req.uid === 'string' ? t.voice?.[req.uid] : undefined;
         if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
-        return rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
+        try {
+          return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
+        } catch (e) {
+          // جلسة المستمع انتهت لخمولها (لم يكن أحد يتكلم): جلسة جديدة له ثم نسحب الصوت إليها
+          if (!isStaleSession(e) || mine!.mic) throw e;
+          const fresh = await rt.newSession();
+          await this.save({ ...t, voice: { ...t.voice, [uid]: { ...mine!, sessionId: fresh } } });
+          this.broadcast([]);
+          return { ...(await rt.pull(fresh, remote.sessionId, VOICE_TRACK)), sessionId: fresh };
+        }
       }
       case 'renegotiate': {
         if (!isSdp(req.answer, 'answer')) throw new Error('bad-request');

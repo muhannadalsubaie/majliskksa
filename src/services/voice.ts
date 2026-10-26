@@ -132,7 +132,9 @@ export function setVoiceMuted(muted: boolean): Promise<void> {
       mic = stream.getAudioTracks()[0];
       const tx = pc.addTransceiver(mic, { direction: 'sendonly' });
       await pc.setLocalDescription(await pc.createOffer());
-      const r = await request<{ answer: Desc }>({ op: 'publish', sessionId, offer: pc.localDescription!.toJSON(), mid: tx.mid });
+      const r = await request<{ answer: Desc; sessionId?: string }>({ op: 'publish', sessionId, offer: pc.localDescription!.toJSON(), mid: tx.mid });
+      // الخادم أنشأ جلسة جديدة (انتهت جلسة الاستماع لخمولها)
+      if (r.sessionId && r.sessionId !== sessionId) sessionId = r.sessionId;
       await pc.setRemoteDescription(r.answer);
       set({ muted: false, busy: false });
       announce('الميكروفون مفتوح');
@@ -152,6 +154,8 @@ const MISSING_GRACE_MS = 4000;
 let missingTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** يطابق الأصوات المسحوبة مع قائمة المنضمين: يسحب الجدد ويغلق من غادر */
+type PullResponse = { requiresImmediateRenegotiation?: boolean; sessionDescription?: Desc; tracks?: { mid?: string }[]; sessionId?: string };
+
 export function syncVoice(list: TableView['voice']) {
   members = list;
   if (!state.joined || state.busy) return Promise.resolve();
@@ -182,9 +186,8 @@ export function syncVoice(list: TableView['voice']) {
     for (const [k, m] of others) {
       if (pulled.has(k)) continue;
       try {
-        const r = await request<{ requiresImmediateRenegotiation?: boolean; sessionDescription?: Desc; tracks?: { mid?: string }[] }>(
-          { op: 'pull', sessionId, uid: m.uid },
-        );
+        const r: PullResponse = await request<PullResponse>({ op: 'pull', sessionId, uid: m.uid });
+        if (r.sessionId && r.sessionId !== sessionId) sessionId = r.sessionId; // جلسة جديدة بعد خمول
         const mid = r.tracks?.[0]?.mid;
         if (!mid) continue;
         pulled.set(k, mid);

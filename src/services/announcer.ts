@@ -46,10 +46,13 @@ let pending: string[] = [];
 let busyUntil = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+// مفتاح جديد: نطق التطبيق يبدأ متوقفاً عند الجميع، ولا يُفعَّل إلا يدوياً من الإعدادات
+const SPEECH_KEY = 'majlisk.appSpeechOn';
+
 function loadSpeechSetting(): boolean {
   // مغلق افتراضياً: مستخدمو TalkBack/VoiceOver يسمعون الأحداث من قارئهم مباشرة،
   // وتشغيل نطق التطبيق معه يكرر الكلام.
-  try { return localStorage.getItem('majlisk.speech') === 'on'; } catch { return false; }
+  try { return localStorage.getItem(SPEECH_KEY) === 'on'; } catch { return false; }
 }
 
 export function mountAnnouncer(container: HTMLElement) {
@@ -97,7 +100,7 @@ export function isSpeechEnabled() { return speechEnabled; }
 
 export function setSpeechEnabled(on: boolean) {
   speechEnabled = on;
-  try { localStorage.setItem('majlisk.speech', on ? 'on' : 'off'); } catch { /* ignore */ }
+  try { localStorage.setItem(SPEECH_KEY, on ? 'on' : 'off'); } catch { /* ignore */ }
   if (on) speak('تم تفعيل النطق', true);
   announce(on ? 'تم تفعيل النطق' : 'تم إيقاف النطق');
 }
