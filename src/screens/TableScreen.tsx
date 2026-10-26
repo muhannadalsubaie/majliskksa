@@ -404,7 +404,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
           {/* يد اللاعب */}
           {mySeat !== null && (
-            <section aria-labelledby="hand-title">
+            <section className="hand-section" aria-labelledby="hand-title">
               <h2 id="hand-title" className="sr-only">أوراقك</h2>
               <div className="hand">
                 {sortHand(g.myHand).map((c) => {
