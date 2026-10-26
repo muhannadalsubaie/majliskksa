@@ -32,7 +32,14 @@ async function makeUser(tag) {
 
 async function login(context, u) {
   const page = await context.newPage();
-  page.on('console', (m) => { if (m.type() === 'error') log(u.username, 'console:', m.text().slice(0, 160)); });
+  page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('INTERNET_DISCONNECTED')) log(u.username, 'console:', m.text().slice(0, 160)); });
+  // تفاصيل أي طلب صوت فشل (للتشخيص)
+  page.on('response', async (res) => {
+    if (res.url().includes('/voice') && res.status() >= 400) {
+      const req = res.request().postData() ?? '';
+      log(u.username, 'voice', res.status(), (await res.text().catch(() => '')).slice(0, 200), 'op:', (req.match(/"op":"(\w+)"/) ?? [])[1]);
+    }
+  });
   await page.goto(`${SITE}/?v=e2e${Date.now()}`);
   await page.getByLabel('البريد الإلكتروني').fill(u.email, { timeout: 30000 });
   await page.getByLabel('كلمة المرور').fill(u.password);
@@ -113,6 +120,7 @@ try {
   log('ERROR', e?.message ?? e);
   failed = true;
 } finally {
+  log('server voice-status', await fetch(`${SITE}/api/voice-status`).then((r) => r.text()).catch(() => ''));
   for (const u of users) log('delete', u.username, JSON.stringify(await api(u.token, '/me/delete')));
   await browser.close();
 }
