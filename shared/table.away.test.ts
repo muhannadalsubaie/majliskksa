@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { BOT_REPLACE_AFTER_MS } from './economy';
 import { assignSeat, awayExpired, join, markAway, markBack, newTable, nextAwayDeadline, replaceWithBot, seatOf, start, viewFor } from './table';
@@ -79,4 +79,23 @@ it('passes ownership to a seated player, or a spectator, when the owner leaves',
   let lobby = newTable('t', { uid: 'a', username: 'أحمد' }, false, 0);
   lobby = { ...lobby, spectators: [{ uid: 'z', username: 'زياد', isBot: false }] };
   expect(leave(lobby, 'a').table.ownerUid).toBe('z');
+});
+
+describe('lobby cleanup', () => {
+  it('a member who stays disconnected outside a match leaves the table after the timeout', async () => {
+    const { newTable, join, markLobbyAway, markLobbyBack, lobbyExpired, sweepLobbyGhosts, nextLobbyDeadline } = await import('./table');
+    const { LOBBY_LEAVE_AFTER_MS } = await import('./economy');
+    let t = newTable('t1', { uid: 'o', username: 'مهند' }, false, 0);
+    t = join(t, { uid: 'g', username: 'ضيف' }).table;
+    // الضيف انقطع قبل وجود الميزة: يلتقطه الفحص عند دخول أي أحد
+    t = sweepLobbyGhosts(t, new Set(['o']), 1000);
+    expect(t.lobbyAway).toEqual({ g: 1000 });
+    expect(nextLobbyDeadline(t)).toBe(1000 + LOBBY_LEAVE_AFTER_MS);
+    expect(lobbyExpired(t, 1000 + LOBBY_LEAVE_AFTER_MS - 1)).toEqual([]);
+    expect(lobbyExpired(t, 1000 + LOBBY_LEAVE_AFTER_MS)).toEqual(['g']);
+    // عاد قبل المهلة: لا يخرج
+    expect(lobbyExpired(markLobbyBack(t, 'g'), 1e12)).toEqual([]);
+    // لا تتكرر المهلة لنفس الشخص
+    expect(markLobbyAway(t, 'g', 5000)).toBe(t);
+  });
 });

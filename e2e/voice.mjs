@@ -70,6 +70,7 @@ const browser = await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
 const users = [];
+const pages = [];
 try {
   const A = await makeUser('a'); users.push(A);
   const B = await makeUser('b'); users.push(B);
@@ -77,6 +78,7 @@ try {
   const ctxB = await browser.newContext({ permissions: ['microphone'] });
   const pa = await login(ctxA, A);
   const pb = await login(ctxB, B);
+  pages.push(pa, pb);
   log('both signed in');
 
   await pa.getByRole('button', { name: 'إنشاء طاولة' }).click();
@@ -122,6 +124,15 @@ try {
   log('ERROR', e?.message ?? e);
   failed = true;
 } finally {
+  // نغادر الطاولة قبل حذف الحسابين، فتُغلق ولا تبقى في قائمة الطاولات
+  for (const page of pages) {
+    try {
+      await page.getByRole('button', { name: 'القائمة' }).click({ timeout: 5000 });
+      await page.getByRole('button', { name: 'مغادرة الطاولة' }).click({ timeout: 5000 });
+      await page.getByRole('button', { name: 'مغادرة', exact: true }).click({ timeout: 5000 });
+      await sleep(1500);
+    } catch (e) { log('leave table failed', e?.message ?? e); }
+  }
   log('server voice-status', await fetch(`${SITE}/api/voice-status`).then((r) => r.text()).catch(() => ''));
   for (const u of users) log('delete', u.username, JSON.stringify(await api(u.token, '/me/delete')));
   await browser.close();

@@ -7,7 +7,7 @@ import {
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
 import { RULES } from './baloot/scoring';
-import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS } from './economy';
+import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
 
@@ -32,6 +32,8 @@ export interface TableData {
   away?: Record<string, number>;
   /** سجل المباراة الحالية: نتيجة كل صكة (بلا أوراق) */
   history?: HandRecord[];
+  /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
+  lobbyAway?: Record<string, number>;
 }
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
@@ -56,6 +58,41 @@ const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOv
 export function markAway(t: TableData, uid: string, now: number): TableData {
   if (!gameActive(t) || seatOf(t, uid) === null || t.away?.[uid] !== undefined) return t;
   return { ...t, away: { ...(t.away ?? {}), [uid]: now } };
+}
+
+// ───── خارج اللعب: المنقطع طويلاً يخرج من الطاولة ─────
+
+const humanMembers = (t: TableData) => [...t.seats.filter((m): m is Member => m !== null && !m.isBot), ...t.spectators];
+
+/** انقطع اتصال حاضر والطاولة ليست في مباراة: نبدأ مهلة خروجه */
+export function markLobbyAway(t: TableData, uid: string, now: number): TableData {
+  if (gameActive(t) || t.lobbyAway?.[uid] !== undefined || !humanMembers(t).some((m) => m.uid === uid)) return t;
+  return { ...t, lobbyAway: { ...(t.lobbyAway ?? {}), [uid]: now } };
+}
+
+export function markLobbyBack(t: TableData, uid: string): TableData {
+  if (t.lobbyAway?.[uid] === undefined) return t;
+  const lobbyAway = { ...t.lobbyAway };
+  delete lobbyAway[uid];
+  return { ...t, lobbyAway };
+}
+
+/** كل حاضر غير متصل الآن تبدأ مهلته (يلتقط من انقطع قبل وجود هذه الميزة) */
+export function sweepLobbyGhosts(t: TableData, connected: Set<string>, now: number): TableData {
+  let cur = t;
+  for (const m of humanMembers(t)) if (!connected.has(m.uid)) cur = markLobbyAway(cur, m.uid, now);
+  return cur;
+}
+
+export function lobbyExpired(t: TableData, now: number): string[] {
+  if (gameActive(t)) return [];
+  return Object.entries(t.lobbyAway ?? {}).filter(([, at]) => now - at >= LOBBY_LEAVE_AFTER_MS).map(([uid]) => uid);
+}
+
+export function nextLobbyDeadline(t: TableData): number | null {
+  if (gameActive(t)) return null;
+  const times = Object.values(t.lobbyAway ?? {});
+  return times.length ? Math.min(...times) + LOBBY_LEAVE_AFTER_MS : null;
 }
 
 /** عاد اللاعب قبل انتهاء المهلة */
@@ -170,7 +207,7 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
 export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean; newOwner?: string } {
-  const t = markBack(withoutVoice(t0, uid), uid);
+  const t = markLobbyBack(markBack(withoutVoice(t0, uid), uid), uid);
   const seat = seatOf(t, uid);
   let table: TableData;
   let botReplaced = false;
@@ -278,7 +315,7 @@ export function removeBot(t: TableData, seat: Seat): TableData {
 export function start(t: TableData, rng: Rng): TableData {
   if (!isFull(t)) throw new TableError('not-full');
   if (t.game && t.game.phase !== 'matchOver') throw new TableError('game-started');
-  return { ...t, game: newMatch(rng, 0), history: [] };
+  return { ...t, game: newMatch(rng, 0), history: [], lobbyAway: {} };
 }
 
 // ───── أسماء ونصوص الإعلانات ─────

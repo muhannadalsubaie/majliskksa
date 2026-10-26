@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
 import { Realtime, type SessionDescription } from './realtime';
@@ -330,6 +330,15 @@ export class TableRoom extends DurableObject<Env> {
       await this.save(markBack(t, uid));
       this.broadcast([`عاد ${memberName(t, uid) ?? 'لاعب'} إلى الطاولة`]);
     }
+    // خارج اللعب: عاد قبل مهلة الخروج، ومن ليس متصلاً من الحاضرين تبدأ مهلته
+    const cur = this.table;
+    if (cur) {
+      const connected = new Set(this.ctx.getWebSockets().filter((w) => w.readyState === WebSocket.OPEN)
+        .map((w) => (w.deserializeAttachment() as { uid: string }).uid));
+      connected.add(uid);
+      const next = sweepLobbyGhosts(markLobbyBack(cur, uid), connected, Date.now());
+      if (next !== cur) await this.save(next);
+    }
     await this.ctx.storage.delete('emptySince');
     await this.schedule();
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -469,6 +478,15 @@ export class TableRoom extends DurableObject<Env> {
         await this.schedule();
       }
     }
+    // خارج اللعب: من لا يعود خلال المهلة يخرج من الطاولة (لا تبقى حسابات مغلقة أو محذوفة جالسة)
+    const latest = this.table;
+    if (latest && !stillHere) {
+      const next = markLobbyAway(latest, uid, Date.now());
+      if (next !== latest) {
+        await this.save(next);
+        await this.schedule();
+      }
+    }
     // آخر متصل خرج: نبدأ مهلة الإغلاق
     if (this.connectedCount(ws) === 0) {
       await this.ctx.storage.put('emptySince', Date.now());
@@ -515,7 +533,8 @@ export class TableRoom extends DurableObject<Env> {
     if (botAt) await this.ctx.storage.put('botAt', botAt);
     else await this.ctx.storage.delete('botAt');
     const awayAt = t ? nextAwayDeadline(t) : null;
-    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity);
+    const lobbyAt = t ? nextLobbyDeadline(t) : null;
+    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -546,6 +565,16 @@ export class TableRoom extends DurableObject<Env> {
       }
       await this.publish(cur);
     }
+    // خارج اللعب: انتهت مهلة منقطع فيخرج من الطاولة
+    for (const uid of lobbyExpired(cur, Date.now())) {
+      const name = memberName(cur, uid) ?? 'أحد الحاضرين';
+      const r = leave(cur.voice?.[uid] ? await this.accountVoice(cur) : cur, uid);
+      if (!hasHumans(r.table)) { await this.closeTable(); return; }
+      cur = r.table;
+      await this.save(cur);
+      this.broadcast([`خرج ${name} من الطاولة لانقطاع اتصاله`, ...(r.newOwner ? [`أصبح ${r.newOwner} مالك الطاولة`] : [])]);
+      await this.publish(cur);
+    }
     // دور الروبوت (قد يوقظنا المنبه مبكراً لمهلة منقطع، فلا نسبق وقت تفكيره)
     const botAt = await this.ctx.storage.get<number>('botAt');
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
@@ -556,7 +585,7 @@ export class TableRoom extends DurableObject<Env> {
       if (r.table.game?.phase === 'matchOver') await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
-    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity));
+    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity));
   }
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */
