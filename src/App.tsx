@@ -17,6 +17,8 @@ import { ShopScreen } from './screens/ShopScreen';
 import { recoverPurchases } from './services/purchases';
 import { InviteDialog } from './components/InviteDialog';
 import { useHub } from './services/social';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { App as CapApp } from '@capacitor/app';
 
 const TITLES: Record<ScreenName, string> = {
   splash: 'مجلسك', auth: 'تسجيل الدخول', menu: 'القائمة الرئيسية', createTable: 'إنشاء طاولة',
@@ -52,6 +54,8 @@ export default function App() {
   // زر الرجوع في الجهاز: يرجع للصفحة السابقة داخل التطبيق
   const screenRef = useRef(screen);
   screenRef.current = screen;
+  // الرجوع من الصفحة الرئيسية: نسأل قبل الخروج من التطبيق
+  const [confirmExit, setConfirmExit] = useState(false);
   useEffect(() => initBackButton(() => {
     switch (screenRef.current) {
       case 'settings': case 'friends': case 'createTable': case 'joinTable': case 'shop':
@@ -60,8 +64,11 @@ export default function App() {
       case 'table':
         window.dispatchEvent(new Event(TABLE_BACK));
         return true;
+      case 'menu': case 'auth':
+        setConfirmExit(true);
+        return true;
       default:
-        return false; // الرئيسية وشاشة الدخول: يُصغَّر التطبيق
+        return false; // شاشة البداية: يُصغَّر التطبيق
     }
   }), []);
 
@@ -88,6 +95,15 @@ export default function App() {
     <>
       {content}
       {pendingInvite && !needsUsername && <InviteDialog invite={pendingInvite} onJoined={openTable} />}
+      {confirmExit && (
+        <ConfirmDialog
+          title="الخروج من مجلسك"
+          message="هل تريد الخروج من مجلسك؟"
+          confirmLabel="خروج"
+          onConfirm={() => { setConfirmExit(false); void CapApp.exitApp(); }}
+          onCancel={() => setConfirmExit(false)}
+        />
+      )}
       <div ref={liveRef} className="sr-only" />
     </>
   );
