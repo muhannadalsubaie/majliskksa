@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { TableView } from '../../shared/table';
 import { announce } from './announcer';
 import { API_URL } from './api';
+import { keepVoiceLevel } from './nativeA11y';
 import { getToken } from './tables';
 
 export interface VoiceState { joined: boolean; muted: boolean; busy: boolean }
@@ -73,6 +74,7 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
       // نضيف أنفسنا محلياً حتى لا تبدو القائمة القديمة وكأن الخادم أخرجنا
       members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true, mic: false }];
       set({ joined: true, muted: true, busy: false });
+      keepVoiceLevel(true);
       autoRetries = 0;
       if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، والميكروفون مغلق. اضغط زر الميكروفون لفتحه');
     } catch (e) {
@@ -248,6 +250,7 @@ function cleanup() {
   pc?.close();
   pc = null;
   sessionId = null;
+  keepVoiceLevel(false);
   set({ joined: false, muted: true, busy: false });
 }
 

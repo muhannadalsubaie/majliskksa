@@ -65,6 +65,23 @@ function play(name: SoundName, { at = 0, gain = 0.8, rate = 1 } = {}) {
   src.start(ac.currentTime + at);
 }
 
+/** نغمة صناعية قصيرة (للمزايدة): طبقة ترن ثم تخفت بنعومة */
+function tone(freq: number, { at = 0, dur = 0.35, gain = 0.25, type = 'sine' as OscillatorType } = {}) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + at;
+  const osc = ac.createOscillator();
+  osc.type = type;
+  osc.frequency.value = freq;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g).connect(ac.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+}
+
 const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
 
 export const sounds = {
@@ -102,5 +119,43 @@ export const sounds = {
   baloot() {
     play('collide', { gain: 0.7 });
     play('chips2', { at: 0.15, gain: 0.7 });
+  },
+
+  // ===== المزايدة: صوت مميز لكل نوع حتى تعرفه بالسمع =====
+
+  /** شراء حكم: رصّة فيش ونغمتان منخفضتان */
+  hokm() {
+    play('chips1', { gain: 0.8 });
+    tone(392, { at: 0.05, dur: 0.3 });
+    tone(523, { at: 0.18, dur: 0.45 });
+  },
+
+  /** صن (أو أشكل): نغمات صاعدة مشرقة */
+  sun() {
+    play('chips2', { gain: 0.7 });
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, { at: 0.04 + i * 0.09, dur: 0.5, gain: 0.2, type: 'triangle' }));
+  },
+
+  /** تأكيد الحكم بعد أن قال الجميع بس */
+  confirmHokm() {
+    tone(523, { dur: 0.25, gain: 0.2 });
+    tone(784, { at: 0.12, dur: 0.4, gain: 0.2 });
+  },
+
+  /** دبل/ثري/فور: طرقات قوية على الطاولة، تزيد وترتفع مع كل مستوى */
+  double(level: number) {
+    const knocks = Math.min(level, 4);
+    for (let i = 0; i < knocks; i++) {
+      play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.16, gain: 1, rate: 0.8 });
+    }
+    play('collide', { at: knocks * 0.16, gain: 0.8 });
+    tone(220 * 2 ** ((level - 2) / 4), { at: knocks * 0.16, dur: 0.6, gain: 0.22, type: 'sawtooth' });
+  },
+
+  /** قهوة: طرقات ثم نغمة طويلة */
+  gahwa() {
+    for (let i = 0; i < 3; i++) play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.14, gain: 1, rate: 0.75 });
+    play('collide', { at: 0.45, gain: 0.9 });
+    [262, 330, 392, 523].forEach((f) => tone(f, { at: 0.5, dur: 1.2, gain: 0.12, type: 'triangle' }));
   },
 };

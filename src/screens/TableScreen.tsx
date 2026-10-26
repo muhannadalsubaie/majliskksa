@@ -129,6 +129,15 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     }
     if (g.declared.length > prev.declared.length) sounds.project();
     if (g.balootSeat !== null && prev.balootSeat === null) sounds.baloot();
+    // المزايدة
+    if (g.hokmBid && (!prev.hokmBid || prev.hokmBid.seat !== g.hokmBid.seat || prev.hokmBid.suit !== g.hokmBid.suit)) sounds.hokm();
+    if (g.contract && !prev.contract) {
+      if (g.contract.mode === 'sun') sounds.sun();
+      // الحكم المشترى من قبل (سمعنا صوته): الآن تأكّد
+      else if (prev.hokmBid) sounds.confirmHokm();
+    }
+    if (g.doubling.gahwa && !prev.doubling.gahwa) sounds.gahwa();
+    else if (g.doubling.level > prev.doubling.level) sounds.double(g.doubling.level);
   }, [g]);
 
   /** الأوراق الموجودة على الطاولة الآن ومن لعب كل ورقة، بالترتيب */

@@ -9,6 +9,7 @@ import { ScreenReader } from '@capacitor/screen-reader';
 interface AnnouncePlugin {
   announce(opts: { text: string }): Promise<void>;
   isScreenReaderOn(): Promise<{ value: boolean }>;
+  keepVoiceLevel(opts: { on: boolean }): Promise<void>;
 }
 
 const Announce = registerPlugin<AnnouncePlugin>('Announce');
@@ -51,4 +52,12 @@ export function onSystemReaderChange(fn: (on: boolean) => void) {
 export function systemAnnounce(text: string) {
   if (platform === 'android') Announce.announce({ text }).catch(() => {});
   else ScreenReader.speak({ value: text, language: 'ar' }).catch(() => {});
+}
+
+/**
+ * أثناء المحادثة الصوتية (Android): يمنع خفض صوت اللاعبين كلما تكلم TalkBack.
+ * في الآيفون الخفض من إعداد VoiceOver نفسه (الصوت ← خفض الصوت) ولا يتحكم به التطبيق.
+ */
+export function keepVoiceLevel(on: boolean) {
+  if (platform === 'android') Announce.keepVoiceLevel({ on }).catch(() => {});
 }
