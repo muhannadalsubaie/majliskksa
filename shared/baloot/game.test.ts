@@ -180,14 +180,19 @@ describe('game flow', () => {
     expect(redeal(s, seededRng(5)).dealer).toBe(1);
   });
 
-  it('hokm double chain: دبل (lock choice) → ثري (open) → فور (lock choice) → قهوة (open)', () => {
+  it('hokm double chain: دبل (announced, then lock choice) → ثري (open) → فور (lock choice) → قهوة (open)', () => {
     let s = newMatch(seededRng(6), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
-    expect(() => applyAction(s, { type: 'double', seat: 0 })).toThrow(IllegalAction);
-    s = applyAction(s, { type: 'double', seat: 0, locked: true });
-    expect(s.doubling).toMatchObject({ level: 2, locked: true });
+    // الدبل يُعلن أولاً، ثم يختار صاحبه مقفل أو مفتوح — ولا يتحرك أحد غيره قبل اختياره
+    s = applyAction(s, { type: 'double', seat: 0 });
+    expect(s.doubling).toMatchObject({ level: 2, lockPending: 0 });
+    expect(availableDouble(s, 1)).toBeNull();
+    expect(() => applyAction(s, { type: 'doublePass', seat: 1 })).toThrow(IllegalAction);
+    expect(() => applyAction(s, { type: 'doubleLock', seat: 1, locked: true })).toThrow(IllegalAction);
+    s = applyAction(s, { type: 'doubleLock', seat: 0, locked: true });
+    expect(s.doubling).toMatchObject({ level: 2, locked: true, lockPending: null, awaitingSeat: 1 });
     // بعد الدبل: المزايدة بين المدبّل (0) والمشتري (1) فقط
     expect(availableDouble(s, 1)).toEqual({ label: 'ثري', needsLockChoice: false });
     expect(availableDouble(s, 3)).toBeNull();
@@ -195,7 +200,7 @@ describe('game flow', () => {
     expect(s.doubling).toMatchObject({ level: 3, locked: false });
     expect(availableDouble(s, 0)).toEqual({ label: 'فور', needsLockChoice: true });
     expect(availableDouble(s, 2)).toBeNull();
-    expect(() => applyAction(s, { type: 'double', seat: 0 })).toThrow(IllegalAction);
+    // الروبوت يرسل اختياره مع الدبل مباشرة
     s = applyAction(s, { type: 'double', seat: 0, locked: true });
     expect(s.doubling).toMatchObject({ level: 4, locked: true });
     expect(availableDouble(s, 1)?.label).toBe('قهوة');

@@ -43,6 +43,8 @@ export interface DoublingState {
   doubler: Seat | null;
   /** صاحب القرار الآن (بعد الدبل الأول) — null في الدبل الأول حيث يقرر أيٌّ من فريق الخصم */
   awaitingSeat: Seat | null;
+  /** أعلن الدبل (أو الفور) وبقي أن يختار مقفل أو مفتوح — لا يتحرك أحد غيره حتى يختار */
+  lockPending?: Seat | null;
 }
 
 export interface GameState {
@@ -89,6 +91,8 @@ export type Action =
   | { type: 'bid'; seat: Seat; bid: Bid }
   | { type: 'double'; seat: Seat; locked?: boolean }
   | { type: 'doublePass'; seat: Seat }
+  /** بعد إعلان الدبل/الفور: اختيار مقفل أو مفتوح */
+  | { type: 'doubleLock'; seat: Seat; locked: boolean }
   | { type: 'declareProject'; seat: Seat }
   | { type: 'declareBaloot'; seat: Seat }
   | { type: 'play'; seat: Seat; card: Card };
@@ -260,9 +264,13 @@ export function redeal(s: GameState, rng: Rng): GameState {
 export function isDoublingTurn(s: GameState, seat: Seat): boolean {
   if (s.phase !== 'doubling') return false;
   const d = s.doubling;
+  if (d.lockPending != null) return false; // ننتظر اختياره مقفل أو مفتوح
   if (d.awaitingSeat != null) return d.awaitingSeat === seat; // != null: الطاولات القديمة بلا هذا الحقل
   return d.awaitingTeam === teamOf(seat) && !d.passed.includes(seat);
 }
+
+/** هل على هذا اللاعب أن يختار مقفل أو مفتوح الآن؟ */
+export const isLockChoiceTurn = (s: GameState, seat: Seat) => s.phase === 'doubling' && s.doubling.lockPending === seat;
 
 export function availableDouble(s: GameState, seat: Seat): { label: 'دبل' | 'ثري' | 'فور' | 'قهوة'; needsLockChoice: boolean } | null {
   if (!isDoublingTurn(s, seat)) return null;
@@ -278,7 +286,6 @@ export function availableDouble(s: GameState, seat: Seat): { label: 'دبل' | '
 function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
   const option = availableDouble(s, seat);
   if (!option) fail('الدبل غير متاح');
-  if (option!.needsLockChoice && locked === undefined) fail('اختر مقفل أو مفتوح');
   const d = { ...s.doubling, passed: [] as Seat[] };
   const hokm = s.contract!.mode === 'hokm';
   if (d.level === 1) {
@@ -296,6 +303,22 @@ function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
     d.gahwa = true; // قهوة: مفتوح تلقائياً
     d.locked = false;
   }
+  // بلا اختيار بعد: يُعلن الدبل الآن، ثم يختار صاحبه مقفل أو مفتوح (doubleLock)
+  if (option!.needsLockChoice && locked === undefined) {
+    return { ...s, doubling: { ...d, locked: false, lockPending: seat, awaitingSeat: null, awaitingTeam: null }, phase: 'doubling' };
+  }
+  return settleDoubling(s, d);
+}
+
+function applyDoubleLock(s: GameState, seat: Seat, locked: boolean): GameState {
+  if (!isLockChoiceTurn(s, seat)) fail('ليس وقت اختيار مقفل أو مفتوح');
+  const hokm = s.contract!.mode === 'hokm';
+  return settleDoubling(s, { ...s.doubling, locked: hokm && locked, lockPending: null });
+}
+
+/** بعد اكتمال الدبل: من يرد عليه، أو انتهى الدبل ونوزع بقية الورق */
+function settleDoubling(s: GameState, d: DoublingState): GameState {
+  const hokm = s.contract!.mode === 'hokm';
   const finished = !hokm || d.gahwa;
   // التالي: المشتري يرد على الدبل والفور، والمدبّل يرد على الثري
   const buyer = s.contract!.buyer;
@@ -400,6 +423,7 @@ export function applyAction(s: GameState, a: Action): GameState {
   switch (a.type) {
     case 'bid': return applyBid(s, a.seat, a.bid);
     case 'double': return applyDouble(s, a.seat, a.locked);
+    case 'doubleLock': return applyDoubleLock(s, a.seat, a.locked);
     case 'doublePass': return applyDoublePass(s, a.seat);
     case 'declareProject': {
       if (!canDeclareProject(s, a.seat)) fail('لا يوجد مشروع');

@@ -2,7 +2,7 @@
 import { type Card, type Seat, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
 import { botAction } from './baloot/bot';
 import {
-  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn,
+  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
@@ -305,6 +305,14 @@ export function dealAnnouncement(t: TableData): string {
   return `${nameOf(t, g.dealer)} الموزع. ورقة الأرض: ${cardLabel(g.qaba)}`;
 }
 
+/** بعد اكتمال الدبل: من عليه القرار، أو بدأ اللعب */
+function afterDoubling(t: TableData, after: GameState): string[] {
+  // بعد الدبل: المزايدة بين المدبّل والمشتري فقط
+  if (after.phase === 'doubling' && after.doubling.awaitingSeat != null) return [`القرار عند ${nameOf(t, after.doubling.awaitingSeat)}`];
+  if (after.phase === 'playing') return ['وُزّعت بقية الورق، بدأ اللعب'];
+  return [];
+}
+
 export const levelText = (level: number, gahwa: boolean) =>
   gahwa ? ' قهوة' : level === 2 ? ' دبل' : level === 3 ? ' ثري' : level === 4 ? ' فور' : '';
 
@@ -352,13 +360,16 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     case 'double': {
       const d = after.doubling;
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
-      const lock = after.contract!.mode === 'hokm' && !d.gahwa ? (d.locked ? ' مقفل' : ' مفتوح') : '';
-      events.push(`${who}: ${label}${lock}`);
-      // بعد الدبل: المزايدة بين المدبّل والمشتري فقط
-      if (after.phase === 'doubling' && after.doubling.awaitingSeat != null) {
-        events.push(`القرار عند ${nameOf(t, after.doubling.awaitingSeat)}`);
-      }
-      if (after.phase === 'playing') events.push('وُزّعت بقية الورق، بدأ اللعب');
+      // يُعلن الشراء فوراً، ثم مقفل أو مفتوح (مع الحركة نفسها أو بعد أن يختار صاحبه)
+      events.push(`${who} اشترى ${label}`);
+      if (d.lockPending != null) { events.push(`${who} يختار مقفل أو مفتوح`); break; }
+      if (after.contract!.mode === 'hokm' && !d.gahwa) events.push(d.locked ? 'مقفل' : 'مفتوح');
+      events.push(...afterDoubling(t, after));
+      break;
+    }
+    case 'doubleLock': {
+      events.push(after.doubling.locked ? `${who}: مقفل` : `${who}: مفتوح`);
+      events.push(...afterDoubling(t, after));
       break;
     }
     case 'doublePass':
@@ -440,7 +451,7 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   // نعطي الأولوية لمن عليه الدور، ثم إعلان البلوت لأي روبوت
   const order: Seat[] = [];
   if (g.phase === 'doubling') {
-    for (const s of [0, 1, 2, 3] as Seat[]) if (isDoublingTurn(g, s)) order.push(s);
+    for (const s of [0, 1, 2, 3] as Seat[]) if (isDoublingTurn(g, s) || isLockChoiceTurn(g, s)) order.push(s);
   } else {
     order.push(g.turn, nextSeat(g.turn), nextSeat(g.turn, 2), nextSeat(g.turn, 3));
   }
@@ -492,6 +503,8 @@ export interface GameView {
     bids: Bid[];
     double: ReturnType<typeof availableDouble>;
     canPassDouble: boolean;
+    /** أعلنتَ الدبل: اختر مقفل أو مفتوح */
+    chooseLock: boolean;
     legal: Card[];
     canProject: boolean;
     canBaloot: boolean;
@@ -544,6 +557,7 @@ export function viewFor(t: TableData, uid: string): TableView {
         bids: playing ? availableBids(g, mySeat) : [],
         double: playing ? availableDouble(g, mySeat) : null,
         canPassDouble: playing && isDoublingTurn(g, mySeat),
+        chooseLock: playing && isLockChoiceTurn(g, mySeat),
         legal: playing ? legalCardsFor(g, mySeat) : [],
         canProject: playing && canDeclareProject(g, mySeat),
         canBaloot: playing && canDeclareBaloot(g, mySeat),

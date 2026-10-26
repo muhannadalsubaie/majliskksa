@@ -72,7 +72,6 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
-  const [lockChoice, setLockChoice] = useState(false);
   const wasMyTurn = useRef(false);
 
   const g = view?.game ?? null;
@@ -82,7 +81,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   const rel = (s: Seat) => ((s - me + 4) % 4) as 0 | 1 | 2 | 3;
 
   const myTurn = Boolean(g && mySeat !== null && (
-    g.actions.bids.length > 0 || g.actions.double !== null || g.actions.canPassDouble || g.actions.legal.length > 0
+    g.actions.bids.length > 0 || g.actions.double !== null || g.actions.canPassDouble || g.actions.chooseLock || g.actions.legal.length > 0
   ));
 
   // إعلان "دورك" مرة واحدة عند بداية الدور
@@ -91,7 +90,6 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     wasMyTurn.current = myTurn;
   }, [myTurn]);
 
-  useEffect(() => { if (!g || g.actions.double === null) setLockChoice(false); }, [g]);
 
   // بعد آخر ورقة في الأكلة: نبقي الأوراق الأربع ظاهرة لحظة قبل أن تذهب لصاحبها
   // (ما لم تبدأ الأكلة التالية قبل ذلك)
@@ -368,7 +366,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           <p className="turn-line" tabIndex={-1}>
             {g.phase === 'matchOver'
               ? (g.outcome.status === 'won' ? (g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر') : '')
-              : myTurn ? 'دورك' : g.phase === 'doubling' ? (g.doubling.awaitingSeat != null ? `بانتظار قرار ${name(g.doubling.awaitingSeat)} في الدبل` : 'بانتظار قرار الدبل') : `دور ${name(g.turn)}`}
+              : myTurn ? 'دورك' : g.phase === 'doubling' ? (g.doubling.lockPending != null ? `بانتظار ${name(g.doubling.lockPending)}: مقفل أو مفتوح` : g.doubling.awaitingSeat != null ? `بانتظار قرار ${name(g.doubling.awaitingSeat)} في الدبل` : 'بانتظار قرار الدبل') : `دور ${name(g.turn)}`}
           </p>
 
           {/* أزرار المزايدة */}
@@ -382,24 +380,23 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             </div>
           )}
 
-          {/* الدبل */}
+          {/* الدبل: الضغطة تعلن الدبل فوراً للجميع، ثم يختار صاحبه مقفل أو مفتوح */}
           {(g.actions.double || g.actions.canPassDouble) && (
             <div className="action-row" role="group" aria-label="الدبل">
-              {g.actions.double && !lockChoice && (
-                <button onClick={() => (g.actions.double!.needsLockChoice ? setLockChoice(true) : (doubleSound(), act({ type: 'double' })))}>
+              {g.actions.double && (
+                <button onClick={() => { doubleSound(); act({ type: 'double' }); }}>
                   {g.actions.double.label}
                 </button>
-              )}
-              {lockChoice && (
-                <>
-                  <button onClick={() => { doubleSound(); act({ type: 'double', locked: true }); }}>{g.actions.double?.label} مقفل</button>
-                  <button onClick={() => { doubleSound(); act({ type: 'double', locked: false }); }}>{g.actions.double?.label} مفتوح</button>
-                </>
               )}
               {g.actions.canPassDouble && <button className="secondary" onClick={() => act({ type: 'doublePass' })}>تمرير</button>}
             </div>
           )}
-
+          {g.actions.chooseLock && (
+            <div className="action-row" role="group" aria-label="مقفل أو مفتوح">
+              <button onClick={() => act({ type: 'doubleLock', locked: true })}>مقفل</button>
+              <button onClick={() => act({ type: 'doubleLock', locked: false })}>مفتوح</button>
+            </div>
+          )}
 
           {g.phase === 'matchOver' && isOwner && (
             <button onClick={() => send({ type: 'start' })}>مباراة جديدة</button>

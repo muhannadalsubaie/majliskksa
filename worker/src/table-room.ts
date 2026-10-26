@@ -76,6 +76,7 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
     }
     case 'double': return { type: 'double', seat, locked: typeof a.locked === 'boolean' ? a.locked : undefined };
     case 'doublePass': return { type: 'doublePass', seat };
+    case 'doubleLock': return typeof a.locked === 'boolean' ? { type: 'doubleLock', seat, locked: a.locked } : null;
     case 'declareProject': return { type: 'declareProject', seat };
     case 'declareBaloot': return { type: 'declareBaloot', seat };
     case 'play': return isCard(a.card) ? { type: 'play', seat, card: { suit: a.card.suit, rank: a.card.rank } } : null;

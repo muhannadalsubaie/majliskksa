@@ -2,7 +2,7 @@ import {
   type Card, type Rank, type Seat, type Suit, SUITS, cardPoints, cardStrength, createDeck, sameCard, teamOf,
 } from './cards';
 import {
-  type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, legalCardsFor,
+  type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn, legalCardsFor,
 } from './game';
 import { trickWinner } from './play';
 
@@ -140,6 +140,13 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
   return { type: 'pass' };
 }
 
+/** مقفل إذا كانت أوراق الحكم القوية عندنا (يمنع المشتري من سحب الحكم) */
+function wantsLock(s: GameState, seat: Seat): boolean {
+  const c = s.contract!;
+  const hand = s.hands[seat];
+  return c.mode === 'hokm' && (has(hand, c.trump!, 'J') || has(hand, c.trump!, '9'));
+}
+
 function chooseDouble(s: GameState, seat: Seat, p: BotParams): Action {
   const option = availableDouble(s, seat);
   const c = s.contract!;
@@ -151,7 +158,7 @@ function chooseDouble(s: GameState, seat: Seat, p: BotParams): Action {
   const need = option?.label === 'دبل' ? p.double : option?.label === 'قهوة' ? p.raise + 2 : p.raise;
   if (option && strength >= need) {
     // مقفل إذا كانت أوراق الحكم القوية عندنا (يمنع المشتري من سحب الحكم)
-    const locked = c.mode === 'hokm' && (has(hand, c.trump!, 'J') || has(hand, c.trump!, '9'));
+    const locked = wantsLock(s, seat);
     return { type: 'double', seat, locked: option.needsLockChoice ? locked : undefined };
   }
   return { type: 'doublePass', seat };
@@ -226,6 +233,8 @@ export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_
   if (isDoublingTurn(s, seat)) {
     return chooseDouble(s, seat, params);
   }
+  // حلّ روبوت مكان لاعب أعلن الدبل ولم يختر بعد
+  if (isLockChoiceTurn(s, seat)) return { type: 'doubleLock', seat, locked: wantsLock(s, seat) };
   if (s.phase === 'playing') {
     if (s.turn !== seat || s.trickNo >= 8) return null;
     return { type: 'play', seat, card: choosePlay(s, seat) };
