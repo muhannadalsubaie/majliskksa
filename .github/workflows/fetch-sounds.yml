@@ -97,17 +97,7 @@ jobs:
           opt /tmp/music-jingles 'jingles_SAX' match-lose 1 3
           opt /tmp/music-jingles 'jingles_HIT' kaboot 1 3
 
-          # ───── صفحة تجربة الأصوات: بدائل يختار منها صاحب اللعبة بالسمع ─────
-          rm -rf public/sounds/preview && mkdir -p public/sounds/preview
-          prev() {
-            find "$1" -type f -iname "*.ogg" | grep -iE "$2" | sort | while IFS= read -r f; do
-              n=$(basename "$f" .ogg)
-              ffmpeg -nostdin -loglevel error -y -i "$f" -t 3 -ac 1 -ar 44100 -b:a 64k "public/sounds/preview/$n.mp3"
-            done
-          }
-          prev /tmp/interface-sounds '(glass|confirmation|bong|pluck|select|maximize)_0'
-          prev /tmp/music-jingles 'jingles_(STEEL|SAX|HIT|PIZZI|NES)'
-          ls public/sounds/preview | sed 's/\.mp3$//' > public/sounds/preview/list.txt
+          # بدائل صفحة تجربة الأصوات يجمعها preview-sounds.yml
 
           # ───── توحيد مستوى الصوت: نفس الارتفاع للجميع وذروة أقل من الحد (لا تشويه عند تداخل الأصوات) ─────
           norm() {
@@ -121,7 +111,7 @@ jobs:
           }
           for f in public/sounds/*.mp3; do norm "$f" -24; done
           # الموسيقى والنغمات أخفض قليلاً من أصوات الطاولة
-          for f in public/sounds/preview/*.mp3 public/sounds/turn.mp3 public/sounds/match-*.mp3 public/sounds/kaboot.mp3; do [ -f "$f" ] && norm "$f" -26; done
+          for f in public/sounds/turn.mp3 public/sounds/match-*.mp3 public/sounds/kaboot.mp3; do [ -f "$f" ] && norm "$f" -26; done
           ls -la public/sounds
       - name: Commit
         id: commit

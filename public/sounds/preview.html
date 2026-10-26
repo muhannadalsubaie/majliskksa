@@ -18,16 +18,13 @@
 <body>
 <main>
   <h1>تجربة أصوات مجلسك</h1>
-  <p>اضغط أي زر لتسمعه. أرسل رقم أو اسم الصوت الذي يعجبك ليُستخدم في اللعبة.</p>
+  <p>اضغط أي زر لتسمعه. أرسل رمز الصوت الذي يعجبك (مثل turn3 أو win12) ليُستخدم في اللعبة.</p>
 
   <h2 id="h-game">الأصوات المستخدمة الآن في اللعبة</h2>
   <ul aria-labelledby="h-game" id="game"></ul>
 
-  <h2 id="h-turn">بدائل نغمة "دورك"</h2>
-  <ul aria-labelledby="h-turn" id="turn"></ul>
-
-  <h2 id="h-jingle">بدائل موسيقى نهاية المباراة والكبوت</h2>
-  <ul aria-labelledby="h-jingle" id="jingle"></ul>
+  <div id="cats"></div>
+  <p id="credits" style="margin-top:24px;font-size:13px"></p>
 </main>
 <script>
   // كل حدث في اللعبة وما يُسمع فيه (أسماء الملفات في مجلد الأصوات)
@@ -72,13 +69,30 @@
   const game = document.getElementById('game');
   for (const [label, names] of GAME) addButton(game, label, () => playSeq(names, ''));
 
-  fetch('preview/list.txt').then((r) => r.text()).then((txt) => {
-    const names = txt.split('\n').map((s) => s.trim()).filter(Boolean);
-    const turn = document.getElementById('turn');
-    const jingle = document.getElementById('jingle');
-    names.filter((n) => !n.startsWith('jingles_')).forEach((n, i) => addButton(turn, `${i + 1}. ${n}`, () => new Audio(`preview/${n}.mp3`).play()));
-    names.filter((n) => n.startsWith('jingles_')).forEach((n) => addButton(jingle, n.replace('jingles_', ''), () => new Audio(`preview/${n}.mp3`).play()));
-  }).catch(() => {});
+  // البدائل من الإنترنت (يجمعها preview-sounds.yml): مرتبة حسب الحدث، ولكل صوت مصدره ورخصته
+  const CATS = [
+    ['turn', 'بدائل نغمة "دورك"'],
+    ['cards', 'بدائل أصوات الورق (سحب الأكلة)'],
+    ['bid', 'بدائل أصوات الشراء والدبل (فيش وعملات)'],
+    ['win', 'بدائل الفوز (صكة، كبوت، مباراة)'],
+    ['lose', 'بدائل الخسارة'],
+  ];
+  const cats = document.getElementById('cats');
+  fetch('preview/catalog.json').then((r) => r.json()).then((items) => {
+    for (const [id, title] of CATS) {
+      const list = items.filter((x) => x.cat === id);
+      if (!list.length) continue;
+      const h = document.createElement('h2');
+      h.id = `h-${id}`;
+      h.textContent = `${title} (${list.length})`;
+      const ul = document.createElement('ul');
+      ul.setAttribute('aria-labelledby', h.id);
+      cats.append(h, ul);
+      list.forEach((x, i) => addButton(ul, `${id}${i + 1}. ${x.title} — ${x.source}`, () => new Audio(x.src).play().catch(() => {})));
+    }
+    document.getElementById('credits').textContent =
+      'المصادر: Mixkit (رخصة Mixkit المجانية)، OpenGameArt (CC0 وبعضها CC-BY)، Kenney (CC0).';
+  }).catch(() => { cats.textContent = 'تعذّر تحميل قائمة البدائل'; });
 </script>
 </body>
 </html>

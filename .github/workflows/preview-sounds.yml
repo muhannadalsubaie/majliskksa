@@ -1,0 +1,53 @@
+# يجمع أصواتاً بديلة من الإنترنت لصفحة تجربة الأصوات فقط (لا يغيّر أصوات اللعبة)، ثم ينشر الموقع.
+name: Preview sounds
+
+on:
+  push:
+    paths:
+      - .github/workflows/preview-sounds.yml
+      - .github/scripts/preview_sounds.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - name: Collect candidate sounds
+        run: |
+          rm -rf public/sounds/preview
+          python3 .github/scripts/preview_sounds.py
+      - name: Even out loudness
+        run: |
+          # نفس الارتفاع للجميع حتى تكون المقارنة عادلة، وذروة تحت حد التشويه
+          for f in public/sounds/preview/*.mp3; do
+            stats=$(ffmpeg -nostdin -hide_banner -i "$f" -af volumedetect -f null - 2>&1)
+            mean=$(echo "$stats" | sed -n 's/.*mean_volume: \(-*[0-9.]*\) dB/\1/p')
+            peak=$(echo "$stats" | sed -n 's/.*max_volume: \(-*[0-9.]*\) dB/\1/p')
+            [ -n "$mean" ] || continue
+            gain=$(python3 -c "print(round(min(-24 - $mean, -3 - $peak), 2))")
+            ffmpeg -nostdin -loglevel error -y -i "$f" -af "volume=${gain}dB" -ac 1 -ar 44100 -b:a 64k "$f.tmp.mp3" && mv "$f.tmp.mp3" "$f"
+          done
+          du -sh public/sounds/preview; ls public/sounds/preview | wc -l
+      - name: Commit
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+          git add -A public/sounds/preview
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "Update sound preview candidates"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Deploy the preview page
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-worker.yml --ref "${GITHUB_REF_NAME}"
