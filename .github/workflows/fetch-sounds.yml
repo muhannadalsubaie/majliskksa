@@ -51,7 +51,8 @@ jobs:
           cp /tmp/casino/License.txt public/sounds/LICENSE-kenney.txt 2>/dev/null || true
           # أقصر مقطوعة من كل آلة = ضربة موسيقية قصيرة تناسب الإعلان
           shortest() {
-            for f in $(find /tmp/jingles -type f -iname "*.ogg" | grep -iE "$1"); do
+            # أسماء المجلدات فيها مسافات ("Steel jingles"): نقرأ كل مسار كسطر كامل
+            find /tmp/jingles -type f -iname "*.ogg" | grep -iE "$1" | while IFS= read -r f; do
               echo "$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f") $f"
             done | sort -n | sed -n "${2:-1}p" | cut -d' ' -f2-
           }
@@ -60,10 +61,10 @@ jobs:
             echo "$2 <- $(basename "$src") ($(ffprobe -v error -show_entries format=duration -of csv=p=0 "$src")s)"
             ffmpeg -loglevel error -y -i "$src" -t 2.2 -af "afade=t=out:st=1.8:d=0.4,loudnorm=I=-18:TP=-2" -ac 1 -ar 44100 -b:a 96k "public/sounds/$2.mp3"
           }
-          stinger 'steel' bid-sun 1
-          stinger 'hit' bid-hokm 1
-          stinger 'pizzi' bid-confirm 1
-          stinger 'sax' bid-double 1
+          stinger 'jingles_STEEL' bid-sun 1
+          stinger 'jingles_HIT' bid-hokm 1
+          stinger 'jingles_PIZZI' bid-confirm 1
+          stinger 'jingles_SAX' bid-double 1
           ls -la public/sounds
       - name: Commit
         run: |
