@@ -120,6 +120,18 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
       </section>
       )}
 
+      {/* شكر وحقوق: رخصة صور الكروت (LGPL) تشترط ذكرها مع رابط المصدر والرخصة */}
+      <section aria-labelledby="sec-credits" className="stack">
+        <h2 id="sec-credits">شكر وحقوق</h2>
+        <p className="note" style={{ margin: 0 }}>
+          صور الكروت من مجموعة SVG-cards لديفيد بيلو (David Bellot)، برخصة LGPL-2.1.{' '}
+          <a href="https://github.com/htdebeer/SVG-cards" target="_blank" rel="noopener">المصدر</a>
+          {' — '}
+          <a href={`${SITE_URL}/cards/LICENSE-svg-cards.txt`} target="_blank" rel="noopener">نص الرخصة</a>
+        </p>
+        <p className="note" style={{ margin: 0 }}>المؤثرات الصوتية من Kenney (kenney.nl)، برخصة CC0.</p>
+      </section>
+
       {confirmDelete && (
         <ConfirmDialog
           title="حذف الحساب"

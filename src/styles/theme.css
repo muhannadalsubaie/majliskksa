@@ -96,11 +96,11 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
   border-radius: 50%; border: 1px solid #d4af3733; background: #0b241b;
 }
 .trick-slot {
-  position: absolute; top: 50%; left: 50%; margin: -38px 0 0 -27px;
+  position: absolute; top: 50%; left: 50%; margin: -42px 0 0 -29px;
   translate: var(--dx) var(--dy); rotate: var(--rot);
   animation: fall .35s ease-out both;
 }
-.trick-slot .card-face { width: 54px; height: 76px; font-size: 20px; box-shadow: 0 3px 8px #000a; }
+.trick-slot .card-face { width: 58px; height: 84px; box-shadow: 0 3px 10px #000b; }
 .trick-slot .note { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; margin-bottom: 4px; }
 /* الإزاحة والميل والجهة التي تنزل منها الورقة */
 .from-2 { --dx: 0px; --dy: -38px; --rot: -4deg; --fx: 0px; --fy: -80px; }
@@ -110,11 +110,10 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .qaba-slot { --dx: 0px; --dy: 6px; --rot: 0deg; --fx: 0px; --fy: 0px; }
 @keyframes fall { from { translate: var(--fx) var(--fy); opacity: 0; scale: .85; } }
 @media (prefers-reduced-motion: reduce) { .trick-slot { animation: none; } }
-.card-face { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 46px; height: 64px; border-radius: 8px; background: #f8f3e3; color: #0d2b20; font-weight: 800; font-size: 18px; line-height: 1.1; border: 2px solid var(--gold); direction: ltr; }
-.card-face.red { color: #a3202a; }
+.card-face { display: block; width: 46px; height: 67px; border-radius: 6px; background: #fff; box-shadow: 0 2px 6px #0008; user-select: none; }
 /* أوراقك في أسفل الشاشة فوق زر الميكروفون، والطاولة تأخذ المساحة فوقها */
 .hand-section { margin-top: auto; padding-top: 12px; }
-.hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.hand { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
 .card-btn { padding: 0; background: none; border-radius: 10px; }
 .card-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
 .card-btn:not([aria-disabled="true"]) .card-face { box-shadow: 0 0 0 2px var(--gold-soft); }
@@ -123,7 +122,7 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 /* أزرار المزايدة (بس، صن، حكم، أشكل...) أصغر لتترك مساحة للأوراق — مع إبقاء مساحة لمس كافية */
 .bid-row button { flex: 0 1 auto; min-width: 64px; min-height: 44px; padding: 8px 14px; font-size: 15px; }
 /* أوراق اليد أكبر قليلاً من أوراق الطاولة */
-.hand .card-face { width: 54px; height: 76px; font-size: 21px; }
+.hand .card-face { width: 58px; height: 84px; }
 .seat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--green-800); border-radius: var(--radius); padding: 10px 14px; min-height: 52px; }
 .seat-row button { padding: 8px 12px; }
 .table-row { display: flex; justify-content: space-between; width: 100%; text-align: start; }

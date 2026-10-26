@@ -16,15 +16,9 @@ import { useTable } from '../services/tables';
 import { type SwipeDir, TWO_FINGER, isScreenReaderOn, swipeDir } from '../services/screenReader';
 import type { Navigate } from '../state/navigation';
 
-const RANK_SHORT: Record<string, string> = { A: 'A', K: 'K', Q: 'Q', J: 'J', '10': '10', '9': '9', '8': '8', '7': '7' };
-const isRed = (c: Card) => c.suit === 'H' || c.suit === 'D';
-
+/** صورة الورقة (SVG-cards لديفيد بيلو، رخصة LGPL-2.1 — مذكورة في الإعدادات). للعين فقط: الاسم يُقرأ من النص */
 function CardFace({ card }: { card: Card }) {
-  return (
-    <span className={`card-face${isRed(card) ? ' red' : ''}`} aria-hidden="true">
-      <span>{RANK_SHORT[card.rank]}</span><span>{SUIT_SYMBOLS[card.suit]}</span>
-    </span>
-  );
+  return <img className="card-face" src={`${import.meta.env.BASE_URL}cards/${card.suit}${card.rank}.webp`} alt="" aria-hidden="true" draggable={false} />;
 }
 
 /**
