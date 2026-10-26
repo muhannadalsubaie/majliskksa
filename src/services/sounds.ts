@@ -1,7 +1,7 @@
 // مؤثرات اللعبة الصوتية: تسجيلات حقيقية لورق اللعب (حزمة Kenney "Casino Audio"، رخصة CC0)
 // في public/sounds — خلط وتوزيع الورق، رمي الورقة، القطع بالحكم، والمشاريع والبلوت.
 // تحترم "كتم عام لجميع الأصوات" في الإعدادات، وصوتها معتدل حتى لا يغطي قارئ الشاشة.
-import { isMuted } from './preferences';
+import { isMuted, isTurnChimeOn } from './preferences';
 
 const FILES = [
   'card1', 'card2', 'card3', 'card4',
@@ -10,6 +10,10 @@ const FILES = [
   'shuffle', 'fan', 'chips1', 'chips2', 'collide',
   // طرق على طاولة خشب وفنجان قهوة (Kenney "Impact Sounds"، CC0) — للمزايدة
   'knock1', 'knock2', 'knock3', 'knock4', 'tap1', 'cup1', 'cup2',
+  // سحب الأكلة، فيش نهاية الصكة، نغمة الدور، ونهاية المباراة (Kenney، CC0)
+  'slide5', 'slide6', 'slide7', 'slide8', 'chips3', 'chips4', 'chips5', 'chips6',
+  'collide2', 'collide3', 'collide4', 'lay1', 'lay2', 'lay3', 'handle1', 'handle2', 'handle3',
+  'turn', 'match-win', 'match-lose', 'kaboot',
 ] as const;
 type SoundName = (typeof FILES)[number];
 
@@ -108,6 +112,52 @@ export const sounds = {
     } else {
       for (let i = 0; i < 4; i++) play(pick(['slide1', 'slide2', 'slide3', 'slide4'] as const), { at: i * 0.12, gain: 0.6 });
     }
+  },
+
+  /** سحب الأكلة: الأوراق الأربع تنزلق إلى صاحبها */
+  collect() {
+    const sweep = ['slide5', 'slide6', 'slide7'] as const;
+    sweep.forEach((n, i) => {
+      if (!play(n, { at: i * 0.06, gain: 0.65 - i * 0.15, rate: 1.1 })) play(pick(['slide1', 'slide2', 'slide3', 'slide4'] as const), { at: i * 0.06, gain: 0.5 - i * 0.12, rate: 1.1 });
+    });
+  },
+
+  /** نغمة "دورك" — أخفض مع قارئ الشاشة حتى لا تغطي كلامه */
+  turn(soft: boolean) {
+    if (!isTurnChimeOn()) return;
+    const gain = soft ? 0.35 : 0.7;
+    if (play('turn', { gain, vary: false })) return;
+    tone(988, { dur: 0.25, gain: gain * 0.3 });
+    tone(1319, { at: 0.09, dur: 0.4, gain: gain * 0.3 });
+  },
+
+  /** نهاية الصكة: فيش يُجمع للفائز، صوت أهدأ للخسارة، وشلال فيش للكبوت */
+  handEnd(result: 'win' | 'lose' | 'neutral', kaboot: boolean) {
+    if (kaboot && result !== 'lose') {
+      play('kaboot', { gain: 0.8, vary: false });
+      (['chips3', 'chips4', 'chips5', 'chips6', 'collide2', 'collide3'] as const).forEach((n, i) => play(n, { at: 0.1 + i * 0.11, gain: 0.85 }));
+      return;
+    }
+    if (result === 'win') {
+      play('chips3', { gain: 0.85 });
+      play('chips4', { at: 0.14, gain: 0.8 });
+      play('collide2', { at: 0.32, gain: 0.75 });
+      play('handle1', { at: 0.5, gain: 0.6 });
+    } else if (result === 'lose') {
+      play('lay1', { gain: 0.7 });
+      play('lay2', { at: 0.22, gain: 0.5 });
+      if (kaboot) tone(147, { at: 0.35, dur: 0.6, gain: 0.15, type: 'triangle' });
+    } else {
+      play('chips3', { gain: 0.6 });
+      play('collide2', { at: 0.2, gain: 0.5 });
+    }
+  },
+
+  /** نهاية المباراة */
+  matchEnd(won: boolean) {
+    if (play(won ? 'match-win' : 'match-lose', { gain: 0.8, vary: false })) return;
+    const notes = won ? [523, 659, 784, 1047] : [392, 330, 262];
+    notes.forEach((f, i) => tone(f, { at: i * 0.15, dur: 0.5, gain: 0.15, type: 'triangle' }));
   },
 
   /** رمي ورقة على الطاولة */

@@ -35,6 +35,15 @@ jobs:
           curl -sL "$ZIP" -o /tmp/impact.zip
           mkdir -p /tmp/impact && unzip -o -q /tmp/impact.zip -d /tmp/impact
           find /tmp/impact -type f -iname "*.ogg" | sed 's#.*/##' | sort | tr '\n' ' '
+          # نغمة الدور (Kenney "Interface Sounds") ومقطوعات نهاية المباراة (Kenney "Music Jingles") — CC0
+          for pack in interface-sounds music-jingles; do
+            PAGE=$(curl -sL "https://kenney.nl/assets/$pack")
+            ZIP=$(echo "$PAGE" | grep -oE "https://kenney\.nl/media/pages/assets/$pack/[^\"]+\.zip" | head -1)
+            echo "$pack zip: $ZIP"
+            curl -sL "$ZIP" -o "/tmp/$pack.zip"
+            mkdir -p "/tmp/$pack" && unzip -o -q "/tmp/$pack.zip" -d "/tmp/$pack"
+          done
+          echo "---- casino ----"; find /tmp/casino -type f -iname "*.ogg" | sed 's#.*/##' | sort | tr '\n' ' '
       - name: Pick and convert
         run: |
           set -e
@@ -66,6 +75,53 @@ jobs:
           impact 'impactWood_light' tap1 1
           impact 'impactPlate_light' cup1 1
           impact 'impactPlate_light' cup2 2
+          # ───── أصوات إضافية (يُتجاوز أي ملف غير موجود في الحزمة) ─────
+          # أول ملف يطابق النمط في مجلد الحزمة (المسارات قد تحوي مسافات)
+          fpick() { find "$1" -type f -iname "*.ogg" | grep -iE "$2" | sort | sed -n "${3:-1}p"; }
+          opt() {
+            src=$(fpick "$1" "$2" "$4"); [ -n "$src" ] || { echo "skip $3 ($2)"; return 0; }
+            ffmpeg -loglevel error -y -i "$src" -t "${5:-2}" -ac 1 -ar 44100 -b:a 96k "public/sounds/$3.mp3"
+            echo "$3 <- $(basename "$src")"
+          }
+          # سحب الأكلة: انزلاق الورق
+          for n in 5 6 7 8; do opt /tmp/casino "card-slide-$n" "slide$n"; done
+          # نهاية الصكة: الفيش
+          for n in 3 4 5 6; do opt /tmp/casino "chips-stack-$n" "chips$n"; done
+          for n in 2 3 4; do opt /tmp/casino "chips-collide-$n" "collide$n"; done
+          for n in 1 2 3; do opt /tmp/casino "chip-lay-$n" "lay$n"; done
+          for n in 1 2 3; do opt /tmp/casino "chips-handle-$n" "handle$n"; done
+          # نغمة "دورك" وبدائلها
+          opt /tmp/interface-sounds 'glass_00' turn 1
+          # مقطوعات نهاية المباراة (الافتراضي — وبدائلها في صفحة التجربة)
+          opt /tmp/music-jingles 'jingles_STEEL' match-win 1 3
+          opt /tmp/music-jingles 'jingles_SAX' match-lose 1 3
+          opt /tmp/music-jingles 'jingles_HIT' kaboot 1 3
+
+          # ───── صفحة تجربة الأصوات: بدائل يختار منها صاحب اللعبة بالسمع ─────
+          rm -rf public/sounds/preview && mkdir -p public/sounds/preview
+          prev() {
+            find "$1" -type f -iname "*.ogg" | grep -iE "$2" | sort | while IFS= read -r f; do
+              n=$(basename "$f" .ogg)
+              ffmpeg -loglevel error -y -i "$f" -t 3 -ac 1 -ar 44100 -b:a 64k "public/sounds/preview/$n.mp3"
+            done
+          }
+          prev /tmp/interface-sounds '(glass|confirmation|bong|pluck|select|maximize)_0'
+          prev /tmp/music-jingles 'jingles_(STEEL|SAX|HIT|PIZZI|NES)'
+          ls public/sounds/preview | sed 's/\.mp3$//' > public/sounds/preview/list.txt
+
+          # ───── توحيد مستوى الصوت: نفس الارتفاع للجميع وذروة أقل من الحد (لا تشويه عند تداخل الأصوات) ─────
+          norm() {
+            f="$1"; target="$2"
+            stats=$(ffmpeg -hide_banner -i "$f" -af volumedetect -f null - 2>&1)
+            mean=$(echo "$stats" | sed -n 's/.*mean_volume: \(-*[0-9.]*\) dB/\1/p')
+            peak=$(echo "$stats" | sed -n 's/.*max_volume: \(-*[0-9.]*\) dB/\1/p')
+            gain=$(python3 -c "print(round(min($target - $mean, -3 - $peak), 2))")
+            ffmpeg -loglevel error -y -i "$f" -af "volume=${gain}dB" -ac 1 -ar 44100 -b:a 96k "$f.tmp.mp3" && mv "$f.tmp.mp3" "$f"
+            echo "norm $(basename "$f"): mean $mean peak $peak -> ${gain}dB"
+          }
+          for f in public/sounds/*.mp3; do norm "$f" -24; done
+          # الموسيقى والنغمات أخفض قليلاً من أصوات الطاولة
+          for f in public/sounds/preview/*.mp3 public/sounds/turn.mp3 public/sounds/match-*.mp3 public/sounds/kaboot.mp3; do [ -f "$f" ] && norm "$f" -26; done
           ls -la public/sounds
       - name: Commit
         id: commit

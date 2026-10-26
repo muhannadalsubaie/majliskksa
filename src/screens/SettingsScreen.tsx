@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Switch } from '../components/Switch';
-import { isMuted, setMuted } from '../services/preferences';
+import { isMuted, isTurnChimeOn, setMuted, setTurnChime } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
 import { ANNOUNCE_PACES, type AnnouncePace, announce, getAnnouncePace, isSpeechEnabled, setAnnouncePace, setSpeechEnabled } from '../services/announcer';
 import { deleteMyAccount } from '../services/tables';
@@ -22,6 +22,7 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
   const [speech, setSpeech] = useState(isSpeechEnabled());
   const [reader, setReader] = useState(isScreenReaderSettingOn());
   const [muted, setMutedState] = useState(isMuted());
+  const [turnChime, setTurnChimeState] = useState(isTurnChimeOn());
   const [rate, setRate] = useState(getSpeechRate());
   const [pace, setPace] = useState<AnnouncePace>(getAnnouncePace());
 
@@ -46,6 +47,12 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
           checked={muted}
           onChange={(on) => { setMutedState(on); setMuted(on); }}
           description="يكتم مؤثرات اللعبة (التوزيع، رمي الورق، القطع، المشاريع). النطق وقارئ الشاشة لهما إعدادات منفصلة."
+        />
+        <Switch
+          label="نغمة دورك"
+          checked={turnChime}
+          onChange={(on) => { setTurnChimeState(on); setTurnChime(on); }}
+          description="نغمة قصيرة عندما يأتي دورك. تكون أخفض تلقائياً مع قارئ الشاشة."
         />
       </section>
 

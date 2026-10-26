@@ -80,7 +80,10 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   // إعلان "دورك" مرة واحدة عند بداية الدور
   useEffect(() => {
-    if (myTurn && !wasMyTurn.current) announce('دورك');
+    if (myTurn && !wasMyTurn.current) {
+      announce('دورك');
+      sounds.turn(isSystemReaderOn() || isScreenReaderOn());
+    }
     wasMyTurn.current = myTurn;
   }, [myTurn]);
 
@@ -96,7 +99,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     if (prev !== null && g.trickNo === prev + 1 && g.lastTrick && g.trick.length === 0) {
       setHeldTrick(g.trickNo);
       const t = setTimeout(() => setHeldTrick(null), TRICK_HOLD_MS);
-      return () => clearTimeout(t);
+      // صوت سحب الأوراق لحظة ذهابها لصاحب الأكلة
+      const c = setTimeout(() => sounds.collect(), TRICK_HOLD_MS - 150);
+      return () => { clearTimeout(t); clearTimeout(c); };
     }
   }, [g?.trickNo]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownTrick = g && heldTrick === g.trickNo && g.trick.length === 0 && g.lastTrick ? g.lastTrick.cards : g?.trick ?? [];
@@ -124,6 +129,17 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     }
     if (g.declared.length > prev.declared.length) sounds.project();
     if (g.balootSeat !== null && prev.balootSeat === null) sounds.baloot();
+    // نهاية الصكة (بعد صوت سحب الأكلة الأخيرة)، ثم نهاية المباراة
+    if (g.lastHand && !prev.lastHand) {
+      const r = g.lastHand;
+      const team = mySeat === null ? null : teamOf(mySeat);
+      const result = team === null ? 'neutral' : r.points[team] > r.points[1 - team] ? 'win' : r.points[team] < r.points[1 - team] ? 'lose' : 'neutral';
+      setTimeout(() => sounds.handEnd(result, r.kaboot !== null), TRICK_HOLD_MS + 200);
+      if (g.outcome.status === 'won' && team !== null) {
+        const won = g.outcome.winner === team;
+        setTimeout(() => sounds.matchEnd(won), TRICK_HOLD_MS + 1600);
+      }
+    }
     // المزايدة
     if (g.hokmBid && (!prev.hokmBid || prev.hokmBid.seat !== g.hokmBid.seat || prev.hokmBid.suit !== g.hokmBid.suit)) sounds.hokm();
     if (g.contract && !prev.contract) {

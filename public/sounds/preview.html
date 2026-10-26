@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تجربة أصوات مجلسك</title>
+<style>
+  :root { --bg: #0d2b20; --card: #143a2b; --gold: #d4af37; --text: #f3ead2; --dim: #bfb59a; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, sans-serif; padding: 16px; }
+  h1 { color: var(--gold); font-size: 22px; margin: 0 0 4px; }
+  h2 { color: var(--gold); font-size: 18px; margin: 24px 0 8px; }
+  p { color: var(--dim); margin: 0 0 8px; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  button { width: 100%; min-height: 48px; font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--gold); border-radius: 12px; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>تجربة أصوات مجلسك</h1>
+  <p>اضغط أي زر لتسمعه. أرسل رقم أو اسم الصوت الذي يعجبك ليُستخدم في اللعبة.</p>
+
+  <h2 id="h-game">الأصوات المستخدمة الآن في اللعبة</h2>
+  <ul aria-labelledby="h-game" id="game"></ul>
+
+  <h2 id="h-turn">بدائل نغمة "دورك"</h2>
+  <ul aria-labelledby="h-turn" id="turn"></ul>
+
+  <h2 id="h-jingle">بدائل موسيقى نهاية المباراة والكبوت</h2>
+  <ul aria-labelledby="h-jingle" id="jingle"></ul>
+</main>
+<script>
+  // كل حدث في اللعبة وما يُسمع فيه (أسماء الملفات في مجلد الأصوات)
+  const GAME = [
+    ['خلط وتوزيع الورق', ['shuffle']],
+    ['رمي ورقة', ['card1']],
+    ['قطع بالحكم', ['shove1', 'card1']],
+    ['سحب الأكلة', ['slide5', 'slide6', 'slide7']],
+    ['شراء حكم', ['shove2', 'knock1']],
+    ['شراء صن', ['fan', 'shove3', 'knock2', 'knock3']],
+    ['تأكيد الحكم', ['tap1']],
+    ['دبل', ['knock1', 'knock2']],
+    ['ثري', ['knock1', 'knock2', 'knock3']],
+    ['فور', ['knock1', 'knock2', 'knock3', 'knock4']],
+    ['قهوة', ['knock1', 'knock2', 'knock3', 'cup1', 'cup2']],
+    ['مشروع', ['fan', 'chips1']],
+    ['بلوت', ['collide', 'chips2']],
+    ['دورك', ['turn']],
+    ['فزت بالصكة', ['chips3', 'chips4', 'collide2', 'handle1']],
+    ['خسرت الصكة', ['lay1', 'lay2']],
+    ['كبوت', ['kaboot', 'chips3', 'chips4', 'chips5', 'chips6']],
+    ['فزت بالمباراة', ['match-win']],
+    ['خسرت المباراة', ['match-lose']],
+  ];
+  const GAPS = { knock1: 0.22, knock2: 0.22, knock3: 0.22, knock4: 0.22 };
+  function playSeq(names, dir) {
+    let at = 0;
+    for (const n of names) {
+      const a = new Audio(`${dir}${n}.mp3`);
+      setTimeout(() => a.play().catch(() => {}), at * 1000);
+      at += GAPS[n] ?? 0.14;
+    }
+  }
+  function addButton(list, label, onClick) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    li.appendChild(b);
+    list.appendChild(li);
+  }
+  const game = document.getElementById('game');
+  for (const [label, names] of GAME) addButton(game, label, () => playSeq(names, ''));
+
+  fetch('preview/list.txt').then((r) => r.text()).then((txt) => {
+    const names = txt.split('\n').map((s) => s.trim()).filter(Boolean);
+    const turn = document.getElementById('turn');
+    const jingle = document.getElementById('jingle');
+    names.filter((n) => !n.startsWith('jingles_')).forEach((n, i) => addButton(turn, `${i + 1}. ${n}`, () => new Audio(`preview/${n}.mp3`).play()));
+    names.filter((n) => n.startsWith('jingles_')).forEach((n) => addButton(jingle, n.replace('jingles_', ''), () => new Audio(`preview/${n}.mp3`).play()));
+  }).catch(() => {});
+</script>
+</body>
+</html>
