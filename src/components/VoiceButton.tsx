@@ -43,7 +43,9 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
   };
 
   const toggleMute = () => {
-    if (!voice.joined) { announce('اضغط مطولاً للانضمام إلى المحادثة الصوتية'); return; }
+    if (voice.busy) return;
+    // خارج المحادثة: الضغطة تعيدك للمحادثة وتفتح الميكروفون مباشرة
+    if (!voice.joined) { void joinVoice(view.id, uid).then(() => setVoiceMuted(false)); return; }
     void setVoiceMuted(!voice.muted);
   };
 
@@ -61,7 +63,7 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
     : !voice.joined ? 'أنت خارج المحادثة الصوتية'
       : voice.muted ? 'الميكروفون مغلق' : 'الميكروفون مفتوح';
   const hint = voice.busy ? ''
-    : !voice.joined ? 'اضغط مطولاً للانضمام'
+    : !voice.joined ? 'اضغط للانضمام وفتح الميكروفون، أو مطولاً للانضمام والاستماع فقط'
       : voice.muted ? 'اضغط لفتحه، أو مطولاً للخروج من المحادثة' : 'اضغط لإغلاقه، أو مطولاً للخروج من المحادثة';
   const label = hint ? `${status}، ${hint}` : status;
 

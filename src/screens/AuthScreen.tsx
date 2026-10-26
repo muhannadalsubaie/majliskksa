@@ -138,7 +138,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
 
         {error && <p role="alert" style={{ color: 'var(--gold-soft)', margin: 0 }}>{error}</p>}
 
-        <button type="submit" disabled={busy}>{isSignup ? 'إنشاء الحساب (+15 🪙)' : 'دخول'}</button>
+        <button type="submit" disabled={busy}>{isSignup ? `إنشاء الحساب (+${COINS.signupBonus} 🪙)` : 'دخول'}</button>
       </form>
       <p className="note" style={{ margin: 0 }}>
         بالتسجيل أنت توافق على <a href={`${SITE_URL}/privacy.html`} target="_blank" rel="noopener">سياسة الخصوصية</a>.

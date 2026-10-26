@@ -82,3 +82,21 @@ jobs:
           sleep 5
           curl -s https://majlisk-api.majlisk.workers.dev/api/health; echo
           curl -s -X POST -H "Content-Type: application/json" --data '{"username":"test_check"}' https://majlisk-api.majlisk.workers.dev/api/username/available; echo
+
+  # اختبار المحادثة الصوتية آلياً على الموقع بعد النشر (عند الطلب، أو إذا احتوت رسالة التعديل على [e2e])
+  voice-e2e:
+    needs: deploy
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[e2e]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: npm i --no-save playwright@1 && npx playwright install --with-deps chromium
+      - name: Voice chat end-to-end
+        run: |
+          export FIREBASE_API_KEY=$(grep '^VITE_FIREBASE_API_KEY=' .env | cut -d= -f2-)
+          sleep 20
+          node e2e/voice.mjs

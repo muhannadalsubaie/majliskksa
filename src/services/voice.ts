@@ -63,16 +63,26 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
     try {
       pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], bundlePolicy: 'max-bundle' });
       pc.ontrack = (e) => playRemote(e.transceiver.mid, e.track);
+      // انقطع اتصال الصوت نفسه (تغيّر الشبكة، مكالمة): نعيد الانضمام مكتومين
+      const thisPc = pc;
+      pc.onconnectionstatechange = () => {
+        if (thisPc === pc && thisPc.connectionState === 'failed' && state.joined && !leaving) void rejoin();
+      };
       const r = await request<{ sessionId: string }>({ op: 'session' });
       sessionId = r.sessionId;
       // نضيف أنفسنا محلياً حتى لا تبدو القائمة القديمة وكأن الخادم أخرجنا
       members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true, mic: false }];
       set({ joined: true, muted: true, busy: false });
+      autoRetries = 0;
       if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، والميكروفون مغلق. اضغط زر الميكروفون لفتحه');
     } catch (e) {
       cleanup();
       const code = (e as Error).message;
-      // الانضمام التلقائي يفشل بصمت إن كانت الخدمة غير مفعّلة أو وصلت حدها
+      // الانضمام التلقائي يفشل بصمت، ويعيد المحاولة بعد قليل إن كان الخطأ عابراً (شبكة)
+      if (mode !== 'manual' && code !== 'voice-not-configured' && code !== 'voice-limit' && autoRetries < 3) {
+        autoRetries++;
+        setTimeout(() => { if (!state.joined && tableId === id) void joinVoice(id, uid, mode); }, 5000 * autoRetries);
+      }
       if (mode === 'manual') {
         announce(code === 'voice-not-configured' ? 'المحادثة الصوتية غير مفعّلة بعد'
           : code === 'voice-limit' ? 'المحادثة الصوتية وصلت لحدها هذا الشهر، وترجع بداية الشهر الجاي'
@@ -82,6 +92,8 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
     }
   }).then(() => syncVoice(members));
 }
+
+let autoRetries = 0;
 
 /** خروج مقصود: حتى لا يظن التحديث القادم من الخادم (وأنت لست في القائمة) أنه انقطاع فيعيدك */
 let leaving = false;
@@ -135,12 +147,26 @@ export function setVoiceMuted(muted: boolean): Promise<void> {
   });
 }
 
+/** مهلة قبل اعتبار غيابنا عن قائمة الخادم انقطاعاً حقيقياً */
+const MISSING_GRACE_MS = 4000;
+let missingTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** يطابق الأصوات المسحوبة مع قائمة المنضمين: يسحب الجدد ويغلق من غادر */
 export function syncVoice(list: TableView['voice']) {
   members = list;
   if (!state.joined || state.busy) return Promise.resolve();
-  // أخرجنا الخادم من المحادثة (انقطع اتصالنا بالطاولة أثناء مكالمة مثلاً): نعود تلقائياً مكتومين
-  if (!members.some((m) => m.uid === myUid)) return leaving ? Promise.resolve() : rejoin();
+  // لسنا في قائمة الخادم: قد تكون حالة قديمة وصلت قبل تسجيل انضمامنا (لا نتصرف فوراً)،
+  // أو أخرجنا الخادم فعلاً (انقطع اتصالنا بالطاولة). نتحقق بعد مهلة من آخر قائمة وصلت، ثم نعود مكتومين.
+  if (!members.some((m) => m.uid === myUid)) {
+    if (!leaving && !missingTimer) {
+      missingTimer = setTimeout(() => {
+        missingTimer = null;
+        if (state.joined && !state.busy && !leaving && !members.some((m) => m.uid === myUid)) void rejoin();
+      }, MISSING_GRACE_MS);
+    }
+    return Promise.resolve();
+  }
+  if (missingTimer) { clearTimeout(missingTimer); missingTimer = null; }
   return serial(async () => {
     if (!pc || !sessionId) return;
     // المفتاح uid + الجلسة: من أعاد الانضمام بجلسة جديدة نسحب صوته من جديد
@@ -186,7 +212,8 @@ function rejoin(): Promise<void> {
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !state.joined || state.busy) return;
-    const broken = mic?.readyState === 'ended' || !pc || ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
+    // 'disconnected' عابر غالباً ويتعافى وحده؛ نعيد الانضمام فقط عند فشل حقيقي
+    const broken = mic?.readyState === 'ended' || !pc || ['failed', 'closed'].includes(pc.connectionState);
     if (broken) void rejoin();
   });
 }
@@ -210,6 +237,7 @@ function stopPlayer(mid: string) {
 }
 
 function cleanup() {
+  if (missingTimer) { clearTimeout(missingTimer); missingTimer = null; }
   [...players.keys()].forEach(stopPlayer);
   pulled.clear();
   mic?.stop();
@@ -224,6 +252,13 @@ function cleanup() {
 export function disposeVoice() {
   // عبر الطابور: حتى لو كان الانضمام التلقائي ما زال جارياً نغادر بعده
   void leaveVoice(true);
+}
+
+// للتشخيص والاختبارات الآلية: حالة الصوت الحالية (بلا أي بيانات حساسة)
+if (typeof window !== 'undefined') {
+  (window as unknown as { __voice: () => unknown }).__voice = () => ({
+    ...state, pc: pc?.connectionState ?? null, players: players.size, pulled: pulled.size, members: members.length,
+  });
 }
 
 export function useVoice(): VoiceState {
