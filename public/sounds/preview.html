@@ -32,14 +32,14 @@
     ['خلط وتوزيع الورق', ['shuffle']],
     ['رمي ورقة', ['card1']],
     ['قطع بالحكم', ['shove1', 'card1']],
-    ['سحب الأكلة', ['slide5', 'slide6', 'slide7']],
-    ['شراء حكم', ['shove2', 'knock1']],
-    ['شراء صن', ['fan', 'shove3', 'knock2', 'knock3']],
-    ['تأكيد الحكم', ['tap1']],
-    ['دبل', ['knock1', 'knock2']],
-    ['ثري', ['knock1', 'knock2', 'knock3']],
-    ['فور', ['knock1', 'knock2', 'knock3', 'knock4']],
-    ['قهوة', ['knock1', 'knock2', 'knock3', 'cup1', 'cup2']],
+    ['سحب الأكلة', ['slide7']],
+    ['شراء حكم', ['bid']],
+    ['شراء صن', ['bid']],
+    ['تأكيد الحكم', ['bid']],
+    ['دبل', ['bid', 'bid']],
+    ['ثري', ['bid', 'bid', 'bid']],
+    ['فور', ['bid', 'bid', 'bid', 'bid']],
+    ['قهوة', ['bid', 'bid', 'bid', 'cup1']],
     ['مشروع', ['fan', 'chips1']],
     ['بلوت', ['collide', 'chips2']],
     ['دورك', ['turn']],
@@ -49,7 +49,7 @@
     ['فزت بالمباراة', ['match-win']],
     ['خسرت المباراة', ['match-lose']],
   ];
-  const GAPS = { knock1: 0.22, knock2: 0.22, knock3: 0.22, knock4: 0.22 };
+  const GAPS = { bid: 0.2 };
   function playSeq(names, dir) {
     let at = 0;
     for (const n of names) {

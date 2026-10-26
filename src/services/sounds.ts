@@ -14,6 +14,8 @@ const FILES = [
   'slide5', 'slide6', 'slide7', 'slide8', 'chips3', 'chips4', 'chips5', 'chips6',
   'collide2', 'collide3', 'collide4', 'lay1', 'lay2', 'lay3', 'handle1', 'handle2', 'handle3',
   'turn', 'match-win', 'match-lose', 'kaboot',
+  // صوت الشراء والدبل الذي اختاره صاحب اللعبة (Kenney RPG Audio "bookPlace3"، CC0)
+  'bid',
 ] as const;
 type SoundName = (typeof FILES)[number];
 
@@ -43,7 +45,7 @@ function load(): Promise<void> {
   const ac = ctx;
   loading = Promise.all(FILES.map(async (name) => {
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3?v=3`); // ?v= يتغير مع تحديث الملفات حتى لا تبقى نسخة قديمة مخزنة
+      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3?v=4`); // ?v= يتغير مع تحديث الملفات حتى لا تبقى نسخة قديمة مخزنة
       buffers.set(name, await ac.decodeAudioData(await res.arrayBuffer()));
     } catch { /* صوت ناقص لا يوقف اللعبة */ }
   })).then(() => {});
@@ -114,12 +116,9 @@ export const sounds = {
     }
   },
 
-  /** سحب الأكلة: الأوراق الأربع تنزلق إلى صاحبها */
+  /** سحب الأكلة: انزلاق الأوراق إلى صاحبها */
   collect() {
-    const sweep = ['slide5', 'slide6', 'slide7'] as const;
-    sweep.forEach((n, i) => {
-      if (!play(n, { at: i * 0.06, gain: 0.65 - i * 0.15, rate: 1.1 })) play(pick(['slide1', 'slide2', 'slide3', 'slide4'] as const), { at: i * 0.06, gain: 0.5 - i * 0.12, rate: 1.1 });
-    });
+    if (!play('slide7', { gain: 0.8, vary: false })) play('slide3', { gain: 0.7 });
   },
 
   /** نغمة "دورك" — أخفض مع قارئ الشاشة حتى لا تغطي كلامه */
@@ -183,45 +182,36 @@ export const sounds = {
     play('chips2', { at: 0.15, gain: 0.7 });
   },
 
-  // ===== المزايدة: أصوات طاولة حقيقية — ورقة تُضرب على الطاولة وطرقات بالأصابع =====
+  // ===== المزايدة: صوت واحد للشراء والدبل (اختيار صاحب اللعبة)، يتكرر في الدبل بعدد مستواه =====
 
-  /** شراء حكم: ضربة ورقة قوية على الطاولة ثم طرقة واحدة */
+  /** شراء حكم */
   hokm() {
     if (!once('hokm')) return;
-    play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { gain: 1, rate: 0.9 });
-    if (!play('knock1', { at: 0.12, gain: 1 })) tone(196, { at: 0.12, dur: 0.25, gain: 0.25 });
+    if (!play('bid', { gain: 0.9, vary: false })) play('shove1', { gain: 0.9 });
   },
 
-  /** صن (أو أشكل): فرد الورق ثم ضربة على الطاولة وطرقتان سريعتان */
+  /** صن (أو أشكل) */
   sun() {
     if (!once('sun')) return;
-    play('fan', { gain: 0.7 });
-    play(pick(['shove1', 'shove3'] as const), { at: 0.22, gain: 1 });
-    play('knock2', { at: 0.34, gain: 1 });
-    play('knock3', { at: 0.46, gain: 0.9 });
+    if (!play('bid', { gain: 0.9, vary: false })) play('shove3', { gain: 0.9 });
   },
 
-  /** تأكيد الحكم: نقرة خفيفة بالإصبع */
+  /** تأكيد الحكم */
   confirmHokm() {
     if (!once('confirm')) return;
-    if (!play('tap1', { gain: 0.9 })) play('card1', { gain: 0.8 });
+    if (!play('bid', { gain: 0.7, vary: false })) play('card1', { gain: 0.8 });
   },
 
-  /** دبل/ثري/فور: طرقات على الطاولة بعدد المستوى، أقوى مع كل مستوى */
+  /** دبل/ثري/فور: الصوت يتكرر بعدد المستوى (دبل مرتين، ثري ثلاثاً، فور أربعاً) */
   double(level: number) {
     if (!once(`double${level}`)) return;
-    const knocks = Math.min(level, 4);
-    const names = ['knock1', 'knock2', 'knock3', 'knock4'] as const;
-    for (let i = 0; i < knocks; i++) {
-      play(names[i % names.length], { at: i * 0.22, gain: Math.min(1, 0.75 + level * 0.07) });
-    }
+    for (let i = 0; i < Math.min(level, 4); i++) play('bid', { at: i * 0.2, gain: 0.9, vary: false });
   },
 
-  /** قهوة: ثلاث طرقات ثم صوت الفنجان */
+  /** قهوة: الصوت ثلاث مرات ثم الفنجان */
   gahwa() {
     if (!once('gahwa')) return;
-    (['knock1', 'knock2', 'knock3'] as const).forEach((n, i) => play(n, { at: i * 0.2, gain: 1 }));
+    for (let i = 0; i < 3; i++) play('bid', { at: i * 0.2, gain: 0.9, vary: false });
     play('cup1', { at: 0.7, gain: 0.9 });
-    play('cup2', { at: 0.95, gain: 0.7 });
   },
 };
