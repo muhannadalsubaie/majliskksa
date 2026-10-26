@@ -60,7 +60,8 @@ export type ClientMessage =
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
-  | { type: 'botNow'; seat: number };
+  | { type: 'botNow'; seat: number }
+  | { type: 'stop' };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {

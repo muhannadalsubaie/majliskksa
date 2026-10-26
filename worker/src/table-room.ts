@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
 import { Realtime, type SessionDescription } from './realtime';
@@ -23,7 +23,8 @@ type ClientMessage =
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
-  | { type: 'botNow'; seat: number };
+  | { type: 'botNow'; seat: number }
+  | { type: 'stop' };
 
 const rng = () => Math.random();
 
@@ -406,6 +407,15 @@ export class TableRoom extends DurableObject<Env> {
         const next = replaceWithBot(t, who.uid, rng);
         await this.save(next);
         this.broadcast([`حلّ ${next.seats[msg.seat]!.username} مكان ${who.username}`]);
+        await this.publish(next);
+        break;
+      }
+      case 'stop': {
+        // المالك يوقف اللعبة نهائياً: النتيجة صفر صفر والمقاعد فارغة، ثم يختار من يلعب
+        if (!isOwner) throw new Error('not-owner');
+        const next = stopGame(t);
+        await this.save(next);
+        this.broadcast(['أوقف مالك الطاولة اللعبة. النتيجة صفر صفر والمقاعد فارغة، والمالك يختار من يلعب']);
         await this.publish(next);
         break;
       }

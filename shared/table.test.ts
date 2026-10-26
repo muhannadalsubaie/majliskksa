@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER } from './baloot/cards';
-import { BOT_NAMES, addBot, addInvite, assignSeat, join, leave, replaceSeat, vacateSeat, newTable, nextAutoStep, runAutoStep, start, TableError, viewFor, type TableData } from './table';
+import { BOT_NAMES, addBot, addInvite, assignSeat, join, leave, replaceSeat, vacateSeat, newTable, nextAutoStep, runAutoStep, start, stopGame, TableError, viewFor, type TableData } from './table';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -156,6 +156,27 @@ describe('table', () => {
       expect(events.some((e) => /الموزع\. ورقة الأرض: /.test(e))).toBe(true);
       expect(events.some((e) => / اشترى (حكم|صن)/.test(e))).toBe(true);
     }
+  });
+
+  it('stopGame: score back to zero, seats empty, humans become spectators, bots removed', () => {
+    const rng = seededRng(5);
+    let t = botsTable(5);
+    t = { ...t, seats: t.seats.map((m, i) => (i === 2 ? { uid: 'u2', username: 'سالم', isBot: false } : m)) };
+    t = { ...t, spectators: [{ uid: 'u3', username: 'فهد', isBot: false }] };
+    for (let n = 0; n < 200; n++) {
+      const step = nextAutoStep(t, rng);
+      if (!step) break; // دور اللاعب البشري
+      t = runAutoStep(t, step, rng).table;
+    }
+    expect(t.game).not.toBeNull();
+    const s = stopGame(t);
+    expect(s.game).toBeNull();
+    expect(s.history).toEqual([]);
+    expect(s.seats).toEqual([null, null, null, null]);
+    expect(s.spectators.map((m) => m.uid).sort()).toEqual(['u2', 'u3']);
+    // بعدها يجلس المالك من يريد
+    const seated = assignSeat(s, 1, 'u2');
+    expect(seated.seats[1]?.uid).toBe('u2');
   });
 
   it('bots wait for the human whose turn it is', () => {

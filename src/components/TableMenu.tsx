@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = 'main' | 'players' | 'invite' | 'settings' | { replace: Seat };
+type Page = 'main' | 'players' | 'invite' | 'settings' | 'stop' | { replace: Seat };
 
 /** قائمة الطاولة: اللاعبون، دعوة صديق، مشاهدة إعلان، مغادرة */
 export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
@@ -92,8 +92,22 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
             {voice.joined ? 'مغادرة المحادثة الصوتية' : 'الانضمام للمحادثة الصوتية'}
           </button>
           <button className="secondary" onClick={() => setPage('settings')}>الإعدادات</button>
+          {isOwner && (view.game || view.seats.some(Boolean)) && (
+            <button className="danger" onClick={() => setPage('stop')}>إيقاف اللعبة</button>
+          )}
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
           <button className="secondary" onClick={onClose}>إغلاق القائمة</button>
+        </div>
+      </>
+    );
+  } else if (page === 'stop') {
+    body = (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1}>إيقاف اللعبة</h2>
+        <p>إيقاف نهائي: تُلغى المباراة وترجع النتيجة صفر صفر، ويصبح الجميع مشاهدين والمقاعد فارغة. بعدها تختار أنت من يلعب من صفحة اللاعبين.</p>
+        <div className="actions">
+          <button className="danger" onClick={() => { send({ type: 'stop' }); onClose(); }}>إيقاف اللعبة</button>
+          <button className="secondary" onClick={() => setPage('main')}>إلغاء</button>
         </div>
       </>
     );

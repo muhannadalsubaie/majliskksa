@@ -245,6 +245,19 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
   return { ...cleared, seats, spectators };
 }
 
+/**
+ * إيقاف اللعبة نهائياً (المالك): تُلغى المباراة وسجلها، ويصبح كل الجالسين مشاهدين
+ * وتُزال الروبوتات، فيختار المالك من يجلس. من دفع رسوم الدخول لا يدفعها مرة أخرى.
+ */
+export function stopGame(t: TableData): TableData {
+  const humans = t.seats.filter((m): m is Member => m !== null && !m.isBot);
+  return {
+    ...t, game: null, history: [], away: {},
+    seats: [null, null, null, null],
+    spectators: [...humans, ...t.spectators.filter((s) => !humans.some((h) => h.uid === s.uid))],
+  };
+}
+
 export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
   if (!inLobby(t)) throw new TableError('game-started');
   if (t.seats[seat]) throw new TableError('seat-taken');
