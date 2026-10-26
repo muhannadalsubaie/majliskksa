@@ -102,7 +102,7 @@ jobs:
           prev() {
             find "$1" -type f -iname "*.ogg" | grep -iE "$2" | sort | while IFS= read -r f; do
               n=$(basename "$f" .ogg)
-              ffmpeg -loglevel error -y -i "$f" -t 3 -ac 1 -ar 44100 -b:a 64k "public/sounds/preview/$n.mp3"
+              ffmpeg -nostdin -loglevel error -y -i "$f" -t 3 -ac 1 -ar 44100 -b:a 64k "public/sounds/preview/$n.mp3"
             done
           }
           prev /tmp/interface-sounds '(glass|confirmation|bong|pluck|select|maximize)_0'
