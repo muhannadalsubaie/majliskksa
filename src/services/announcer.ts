@@ -18,12 +18,22 @@ let speechEnabled = loadSpeechSetting();
 // بعده ننتظر بقدر ما يحتاجه قارئ الشاشة لينطقه قبل الإعلان التالي حتى لا يقطعه؛ وهذا الانتظار
 // يتبع "سرعة الإعلانات" في الإعدادات لتطابق سرعة نطق TalkBack/VoiceOver عند المستخدم.
 const BATCH_MS = 0;
+// القيم مقاسة على نطق العربية في TalkBack/VoiceOver (أبطأ من الإنجليزية بوضوح)،
+// ومعها مهلة ثابتة لبدء النطق؛ والأفضل أن ننتظر قليلاً زيادة على أن نقطع الجملة.
 export const ANNOUNCE_PACES = [
-  { id: 'slow', label: 'بطيئة', msPerChar: 85, minGap: 900 },
-  { id: 'normal', label: 'عادية', msPerChar: 65, minGap: 700 },
-  { id: 'fast', label: 'سريعة', msPerChar: 45, minGap: 450 },
-  { id: 'fastest', label: 'سريعة جداً', msPerChar: 30, minGap: 300 },
+  { id: 'slow', label: 'بطيئة', msPerChar: 115, minGap: 1500 },
+  { id: 'normal', label: 'عادية', msPerChar: 90, minGap: 1200 },
+  { id: 'fast', label: 'سريعة', msPerChar: 70, minGap: 950 },
+  { id: 'fastest', label: 'سريعة جداً', msPerChar: 52, minGap: 750 },
 ] as const;
+/** مهلة بدء النطق لكل إعلان */
+const START_MS = 350;
+
+/** طول النطق التقريبي بالأحرف: الأرقام تُنطق كلمات أطول من رموزها (10 = "عشرة") */
+function spokenLength(text: string): number {
+  const digits = (text.match(/\d/g) ?? []).length;
+  return text.length + digits * 3;
+}
 export type AnnouncePace = (typeof ANNOUNCE_PACES)[number]['id'];
 const PACE_KEY = 'majlisk.announcePace';
 let pace: AnnouncePace = loadPace();
@@ -31,8 +41,8 @@ let pace: AnnouncePace = loadPace();
 function loadPace(): AnnouncePace {
   try {
     const v = localStorage.getItem(PACE_KEY);
-    return ANNOUNCE_PACES.some((p) => p.id === v) ? (v as AnnouncePace) : 'fast';
-  } catch { return 'fast'; }
+    return ANNOUNCE_PACES.some((p) => p.id === v) ? (v as AnnouncePace) : 'normal';
+  } catch { return 'normal'; }
 }
 
 export function getAnnouncePace() { return pace; }
@@ -84,7 +94,7 @@ function flush() {
   const text = pending.join('. ');
   pending = [];
   const p = ANNOUNCE_PACES.find((x) => x.id === pace)!;
-  busyUntil = Date.now() + Math.max(p.minGap, text.length * p.msPerChar);
+  busyUntil = Date.now() + START_MS + Math.max(p.minGap, spokenLength(text) * p.msPerChar);
   deliver(text);
 }
 

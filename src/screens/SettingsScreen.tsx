@@ -76,7 +76,7 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
         <h2 id="sec-speech">نطق الأحداث</h2>
         <h3 id="pace-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة إعلانات اللعب</h3>
         <p className="note" style={{ margin: 0 }}>
-          كم ينتظر التطبيق بين إعلان وآخر حتى لا يقطع قارئ الشاشة جملته. اختر ما يناسب سرعة نطق TalkBack أو VoiceOver عندك: كلما كانت أسرع وصلتك الحركات أسرع.
+          كم ينتظر التطبيق بين إعلان وآخر حتى لا يقطع قارئ الشاشة جملته. جرّب بزر "تجربة الإعلانات": إن انقطعت جملة قبل أن تكتمل اختر سرعة أبطأ، وإن كان الانتظار طويلاً اختر أسرع.
         </p>
         <div className="rate-row" role="radiogroup" aria-labelledby="pace-title" style={{ flexWrap: 'wrap' }}>
           {ANNOUNCE_PACES.map((p) => (
@@ -91,6 +91,12 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
             </button>
           ))}
         </div>
+        {/* أربع حركات متتالية كما في اللعب: إن انقطع أي منها اختر سرعة أبطأ */}
+        <button className="secondary" onClick={() => {
+          // كل حركة تصل بعد الأخرى بلحظة، كما يلعب الروبوتات
+          ['سالم رمى 10 شريا', 'فهد رمى الإكه شريا', 'علي رمى 7 شريا', 'يوسف رمى 8 شريا', 'الأكلة لسالم، دور سالم']
+            .forEach((m, i) => setTimeout(() => announce(m), i * 600));
+        }}>تجربة الإعلانات</button>
         <Switch
           label="نطق أحداث اللعبة بصوت التطبيق"
           checked={speech}
