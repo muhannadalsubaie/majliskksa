@@ -8,6 +8,8 @@ const FILES = [
   'slide1', 'slide2', 'slide3', 'slide4',
   'shove1', 'shove2', 'shove3', 'shove4',
   'shuffle', 'fan', 'chips1', 'chips2', 'collide',
+  // مقطوعات المزايدة (Kenney "Music Jingles"، CC0) — إن لم توجد نرجع للنغمات الصناعية
+  'bid-sun', 'bid-hokm', 'bid-confirm', 'bid-double',
 ] as const;
 type SoundName = (typeof FILES)[number];
 
@@ -51,18 +53,28 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock);
 }
 
-function play(name: SoundName, { at = 0, gain = 0.8, rate = 1 } = {}) {
+function play(name: SoundName, { at = 0, gain = 0.8, rate = 1, vary = true } = {}): boolean {
   const ac = audio();
   const buf = buffers.get(name);
-  if (!ac || !buf) return;
+  if (!ac || !buf) return false;
   const src = ac.createBufferSource();
   src.buffer = buf;
   // اختلاف بسيط في الطبقة بين كل مرة حتى لا يبدو الصوت مكرراً
-  src.playbackRate.value = rate * (0.95 + Math.random() * 0.1);
+  src.playbackRate.value = rate * (vary ? 0.95 + Math.random() * 0.1 : 1);
   const g = ac.createGain();
   g.gain.value = gain;
   src.connect(g).connect(ac.destination);
   src.start(ac.currentTime + at);
+  return true;
+}
+
+// صوت المزايدة يُشغَّل فوراً عند ضغطة المشتري، ثم يصل التحديث من الخادم: لا نكرره
+const recent = new Map<string, number>();
+function once(kind: string): boolean {
+  const now = Date.now();
+  if (now - (recent.get(kind) ?? 0) < 2500) return false;
+  recent.set(kind, now);
+  return true;
 }
 
 /** نغمة صناعية قصيرة (للمزايدة): طبقة ترن ثم تخفت بنعومة */
@@ -125,35 +137,44 @@ export const sounds = {
 
   /** شراء حكم: رصّة فيش ونغمتان منخفضتان */
   hokm() {
-    play('chips1', { gain: 0.8 });
+    if (!once('hokm')) return;
+    play('chips1', { gain: 0.6 });
+    if (play('bid-hokm', { gain: 0.9, vary: false })) return;
     tone(392, { at: 0.05, dur: 0.3 });
     tone(523, { at: 0.18, dur: 0.45 });
   },
 
   /** صن (أو أشكل): نغمات صاعدة مشرقة */
   sun() {
-    play('chips2', { gain: 0.7 });
+    if (!once('sun')) return;
+    play('chips2', { gain: 0.6 });
+    if (play('bid-sun', { gain: 0.9, vary: false })) return;
     [523, 659, 784, 1047].forEach((f, i) => tone(f, { at: 0.04 + i * 0.09, dur: 0.5, gain: 0.2, type: 'triangle' }));
   },
 
   /** تأكيد الحكم بعد أن قال الجميع بس */
   confirmHokm() {
+    if (!once('confirm')) return;
+    if (play('bid-confirm', { gain: 0.85, vary: false })) return;
     tone(523, { dur: 0.25, gain: 0.2 });
     tone(784, { at: 0.12, dur: 0.4, gain: 0.2 });
   },
 
   /** دبل/ثري/فور: طرقات قوية على الطاولة، تزيد وترتفع مع كل مستوى */
   double(level: number) {
+    if (!once(`double${level}`)) return;
     const knocks = Math.min(level, 4);
     for (let i = 0; i < knocks; i++) {
       play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.16, gain: 1, rate: 0.8 });
     }
     play('collide', { at: knocks * 0.16, gain: 0.8 });
+    if (play('bid-double', { at: knocks * 0.16, gain: 0.8, vary: false })) return;
     tone(220 * 2 ** ((level - 2) / 4), { at: knocks * 0.16, dur: 0.6, gain: 0.22, type: 'sawtooth' });
   },
 
   /** قهوة: طرقات ثم نغمة طويلة */
   gahwa() {
+    if (!once('gahwa')) return;
     for (let i = 0; i < 3; i++) play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.14, gain: 1, rate: 0.75 });
     play('collide', { at: 0.45, gain: 0.9 });
     [262, 330, 392, 523].forEach((f) => tone(f, { at: 0.5, dur: 1.2, gain: 0.12, type: 'triangle' }));

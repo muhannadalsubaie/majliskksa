@@ -27,6 +27,13 @@ jobs:
           echo "---- files ----"
           find /tmp/casino -type f | sed 's#/tmp/casino/##' | sort
           cat /tmp/casino/License.txt 2>/dev/null || find /tmp/casino -iname '*licen*' -exec cat {} \;
+          # مقطوعات قصيرة للمزايدة (حزمة Kenney "Music Jingles"، رخصة CC0)
+          PAGE=$(curl -sL https://kenney.nl/assets/music-jingles)
+          ZIP=$(echo "$PAGE" | grep -oE 'https://kenney\.nl/media/pages/assets/music-jingles/[^"]+\.zip' | head -1)
+          echo "jingles zip: $ZIP"
+          curl -sL "$ZIP" -o /tmp/jingles.zip
+          mkdir -p /tmp/jingles && unzip -o -q /tmp/jingles.zip -d /tmp/jingles
+          find /tmp/jingles -type f | sed 's#/tmp/jingles/##' | sort
       - name: Pick and convert
         run: |
           set -e
@@ -42,6 +49,21 @@ jobs:
           conv $A/chips-stack-2.ogg chips2
           conv $A/chips-collide-1.ogg collide
           cp /tmp/casino/License.txt public/sounds/LICENSE-kenney.txt 2>/dev/null || true
+          # أقصر مقطوعة من كل آلة = ضربة موسيقية قصيرة تناسب الإعلان
+          shortest() {
+            for f in $(find /tmp/jingles -type f -iname "*.ogg" | grep -iE "$1"); do
+              echo "$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f") $f"
+            done | sort -n | sed -n "${2:-1}p" | cut -d' ' -f2-
+          }
+          stinger() {
+            src=$(shortest "$1" "$3"); [ -n "$src" ] || { echo "no $1"; return; }
+            echo "$2 <- $(basename "$src") ($(ffprobe -v error -show_entries format=duration -of csv=p=0 "$src")s)"
+            ffmpeg -loglevel error -y -i "$src" -t 2.2 -af "afade=t=out:st=1.8:d=0.4,loudnorm=I=-18:TP=-2" -ac 1 -ar 44100 -b:a 96k "public/sounds/$2.mp3"
+          }
+          stinger 'steel' bid-sun 1
+          stinger 'hit' bid-hokm 1
+          stinger 'pizzi' bid-confirm 1
+          stinger 'sax' bid-double 1
           ls -la public/sounds
       - name: Commit
         run: |

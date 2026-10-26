@@ -143,6 +143,18 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     else if (g.doubling.level > prev.doubling.level) sounds.double(g.doubling.level);
   }, [g]);
 
+  // صاحب المزايدة يسمع صوتها فوراً عند الضغط (ولا يتكرر حين يصل التحديث من الخادم)
+  const bidSound = (b: Bid) => {
+    if (b.type === 'hokm') sounds.hokm();
+    else if (b.type === 'sun' || b.type === 'ashkal') sounds.sun();
+    else if (b.type === 'confirmHokm') sounds.confirmHokm();
+  };
+  const doubleSound = () => {
+    if (!g) return;
+    if (/قهوة/.test(g.actions.double?.label ?? '')) sounds.gahwa();
+    else sounds.double(g.doubling.level + 1);
+  };
+
   /** الأوراق الموجودة على الطاولة الآن ومن لعب كل ورقة، بالترتيب */
   const trickSummary = (): string => {
     if (shownTrick.length === 0) return 'لا توجد أوراق على الطاولة';
@@ -363,7 +375,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           {g.actions.bids.length > 0 && (
             <div className="action-row bid-row" role="group" aria-label="المزايدة">
               {g.actions.bids.map((b) => (
-                <button key={bidLabel(b)} className={b.type === 'pass' ? 'secondary' : ''} onClick={() => act({ type: 'bid', bid: b })}>
+                <button key={bidLabel(b)} className={b.type === 'pass' ? 'secondary' : ''} onClick={() => { bidSound(b); act({ type: 'bid', bid: b }); }}>
                   {bidLabel(b)}
                 </button>
               ))}
@@ -374,14 +386,14 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           {(g.actions.double || g.actions.canPassDouble) && (
             <div className="action-row" role="group" aria-label="الدبل">
               {g.actions.double && !lockChoice && (
-                <button onClick={() => (g.actions.double!.needsLockChoice ? setLockChoice(true) : act({ type: 'double' }))}>
+                <button onClick={() => (g.actions.double!.needsLockChoice ? setLockChoice(true) : (doubleSound(), act({ type: 'double' })))}>
                   {g.actions.double.label}
                 </button>
               )}
               {lockChoice && (
                 <>
-                  <button onClick={() => act({ type: 'double', locked: true })}>{g.actions.double?.label} مقفل</button>
-                  <button onClick={() => act({ type: 'double', locked: false })}>{g.actions.double?.label} مفتوح</button>
+                  <button onClick={() => { doubleSound(); act({ type: 'double', locked: true }); }}>{g.actions.double?.label} مقفل</button>
+                  <button onClick={() => { doubleSound(); act({ type: 'double', locked: false }); }}>{g.actions.double?.label} مفتوح</button>
                 </>
               )}
               {g.actions.canPassDouble && <button className="secondary" onClick={() => act({ type: 'doublePass' })}>تمرير</button>}
