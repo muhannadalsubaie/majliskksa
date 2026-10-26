@@ -149,3 +149,6 @@ button.back-btn { padding: 6px 14px; min-height: 40px; font-size: 14px; flex: 0 
 /* أسماء من في المحادثة الصوتية — فوق زر الصوت */
 .voice-people { position: fixed; left: 16px; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 62px); max-width: min(70vw, 320px); margin: 0; padding: 6px 10px; border-radius: 10px; background: var(--green-800); border: 1px solid var(--green-700); font-size: 13px; color: var(--text-dim); }
 .history-item { border-top: 1px solid var(--gold-dim, #c9a22744); padding-top: 8px; }
+.credits { margin-top: 24px; text-align: center; color: var(--text-dim); font-size: 12px; line-height: 1.6; }
+.credits p { margin: 0; }
+.credits a { color: inherit; }
