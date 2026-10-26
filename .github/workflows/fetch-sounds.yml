@@ -15,32 +15,33 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Download Kenney Casino Audio
         run: |
           set -e
-          PAGE=$(curl -sL https://kenney.nl/assets/casino-audio)
+          PAGE=$(curl -sL --max-time 300 https://kenney.nl/assets/casino-audio)
           ZIP=$(echo "$PAGE" | grep -oE 'https://kenney\.nl/media/pages/assets/casino-audio/[^"]+\.zip' | head -1)
           echo "zip: $ZIP"
-          curl -sL "$ZIP" -o /tmp/casino.zip
+          curl -sL --max-time 300 "$ZIP" -o /tmp/casino.zip
           mkdir -p /tmp/casino && unzip -o -q /tmp/casino.zip -d /tmp/casino
           echo "---- files ----"
           find /tmp/casino -type f | sed 's#/tmp/casino/##' | sort
           cat /tmp/casino/License.txt 2>/dev/null || find /tmp/casino -iname '*licen*' -exec cat {} \;
           # أصوات واقعية للمزايدة: طرق على طاولة خشب، وفنجان قهوة (حزمة Kenney "Impact Sounds"، رخصة CC0)
-          PAGE=$(curl -sL https://kenney.nl/assets/impact-sounds)
+          PAGE=$(curl -sL --max-time 300 https://kenney.nl/assets/impact-sounds)
           ZIP=$(echo "$PAGE" | grep -oE 'https://kenney\.nl/media/pages/assets/impact-sounds/[^"]+\.zip' | head -1)
           echo "impact zip: $ZIP"
-          curl -sL "$ZIP" -o /tmp/impact.zip
+          curl -sL --max-time 300 "$ZIP" -o /tmp/impact.zip
           mkdir -p /tmp/impact && unzip -o -q /tmp/impact.zip -d /tmp/impact
           find /tmp/impact -type f -iname "*.ogg" | sed 's#.*/##' | sort | tr '\n' ' '
           # نغمة الدور (Kenney "Interface Sounds") ومقطوعات نهاية المباراة (Kenney "Music Jingles") — CC0
           for pack in interface-sounds music-jingles rpg-audio; do
-            PAGE=$(curl -sL "https://kenney.nl/assets/$pack")
+            PAGE=$(curl -sL --max-time 300 "https://kenney.nl/assets/$pack")
             ZIP=$(echo "$PAGE" | grep -oE "https://kenney\.nl/media/pages/assets/$pack/[^\"]+\.zip" | head -1)
             echo "$pack zip: $ZIP"
-            curl -sL "$ZIP" -o "/tmp/$pack.zip"
+            curl -sL --max-time 300 "$ZIP" -o "/tmp/$pack.zip"
             mkdir -p "/tmp/$pack" && unzip -o -q "/tmp/$pack.zip" -d "/tmp/$pack"
           done
           echo "---- casino ----"; find /tmp/casino -type f -iname "*.ogg" | sed 's#.*/##' | sort | tr '\n' ' '
@@ -92,7 +93,7 @@ jobs:
           for n in 1 2 3; do opt /tmp/casino "chips-handle-$n" "handle$n"; done
           # نغمة "دورك" وبدائلها
           # نغمة "دورك" (اختيار صاحب اللعبة من صفحة التجربة): Mixkit "Game quick warning notification" — رخصة Mixkit
-          curl -sL https://assets.mixkit.co/active_storage/sfx/268/268-preview.mp3 -o /tmp/turn-src.mp3
+          curl -sL --max-time 60 --retry 3 -A "Mozilla/5.0" https://assets.mixkit.co/active_storage/sfx/268/268-preview.mp3 -o /tmp/turn-src.mp3
           ffmpeg -nostdin -loglevel error -y -i /tmp/turn-src.mp3 -t 2 -ac 1 -ar 44100 -b:a 96k public/sounds/turn.mp3 && echo "turn <- mixkit 268"
           # صوت الشراء والدبل (اختياره): Kenney RPG Audio "bookPlace3" — CC0
           opt /tmp/rpg-audio 'bookPlace3' bid 1
