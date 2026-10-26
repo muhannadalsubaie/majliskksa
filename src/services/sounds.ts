@@ -8,8 +8,8 @@ const FILES = [
   'slide1', 'slide2', 'slide3', 'slide4',
   'shove1', 'shove2', 'shove3', 'shove4',
   'shuffle', 'fan', 'chips1', 'chips2', 'collide',
-  // مقطوعات المزايدة (Kenney "Music Jingles"، CC0) — إن لم توجد نرجع للنغمات الصناعية
-  'bid-sun', 'bid-hokm', 'bid-confirm', 'bid-double',
+  // طرق على طاولة خشب وفنجان قهوة (Kenney "Impact Sounds"، CC0) — للمزايدة
+  'knock1', 'knock2', 'knock3', 'knock4', 'tap1', 'cup1', 'cup2',
 ] as const;
 type SoundName = (typeof FILES)[number];
 
@@ -39,7 +39,7 @@ function load(): Promise<void> {
   const ac = ctx;
   loading = Promise.all(FILES.map(async (name) => {
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3?v=2`); // ?v= يتغير مع تحديث الملفات حتى لا تبقى نسخة قديمة مخزنة
+      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3?v=3`); // ?v= يتغير مع تحديث الملفات حتى لا تبقى نسخة قديمة مخزنة
       buffers.set(name, await ac.decodeAudioData(await res.arrayBuffer()));
     } catch { /* صوت ناقص لا يوقف اللعبة */ }
   })).then(() => {});
@@ -133,50 +133,45 @@ export const sounds = {
     play('chips2', { at: 0.15, gain: 0.7 });
   },
 
-  // ===== المزايدة: صوت مميز لكل نوع حتى تعرفه بالسمع =====
+  // ===== المزايدة: أصوات طاولة حقيقية — ورقة تُضرب على الطاولة وطرقات بالأصابع =====
 
-  /** شراء حكم: رصّة فيش ونغمتان منخفضتان */
+  /** شراء حكم: ضربة ورقة قوية على الطاولة ثم طرقة واحدة */
   hokm() {
     if (!once('hokm')) return;
-    play('chips1', { gain: 0.6 });
-    if (play('bid-hokm', { gain: 0.9, vary: false })) return;
-    tone(392, { at: 0.05, dur: 0.3 });
-    tone(523, { at: 0.18, dur: 0.45 });
+    play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { gain: 1, rate: 0.9 });
+    if (!play('knock1', { at: 0.12, gain: 1 })) tone(196, { at: 0.12, dur: 0.25, gain: 0.25 });
   },
 
-  /** صن (أو أشكل): نغمات صاعدة مشرقة */
+  /** صن (أو أشكل): فرد الورق ثم ضربة على الطاولة وطرقتان سريعتان */
   sun() {
     if (!once('sun')) return;
-    play('chips2', { gain: 0.6 });
-    if (play('bid-sun', { gain: 0.9, vary: false })) return;
-    [523, 659, 784, 1047].forEach((f, i) => tone(f, { at: 0.04 + i * 0.09, dur: 0.5, gain: 0.2, type: 'triangle' }));
+    play('fan', { gain: 0.7 });
+    play(pick(['shove1', 'shove3'] as const), { at: 0.22, gain: 1 });
+    play('knock2', { at: 0.34, gain: 1 });
+    play('knock3', { at: 0.46, gain: 0.9 });
   },
 
-  /** تأكيد الحكم بعد أن قال الجميع بس */
+  /** تأكيد الحكم: نقرة خفيفة بالإصبع */
   confirmHokm() {
     if (!once('confirm')) return;
-    if (play('bid-confirm', { gain: 0.85, vary: false })) return;
-    tone(523, { dur: 0.25, gain: 0.2 });
-    tone(784, { at: 0.12, dur: 0.4, gain: 0.2 });
+    if (!play('tap1', { gain: 0.9 })) play('card1', { gain: 0.8 });
   },
 
-  /** دبل/ثري/فور: طرقات قوية على الطاولة، تزيد وترتفع مع كل مستوى */
+  /** دبل/ثري/فور: طرقات على الطاولة بعدد المستوى، أقوى مع كل مستوى */
   double(level: number) {
     if (!once(`double${level}`)) return;
     const knocks = Math.min(level, 4);
+    const names = ['knock1', 'knock2', 'knock3', 'knock4'] as const;
     for (let i = 0; i < knocks; i++) {
-      play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.16, gain: 1, rate: 0.8 });
+      play(names[i % names.length], { at: i * 0.22, gain: Math.min(1, 0.75 + level * 0.07) });
     }
-    play('collide', { at: knocks * 0.16, gain: 0.8 });
-    if (play('bid-double', { at: knocks * 0.16, gain: 0.8, vary: false })) return;
-    tone(220 * 2 ** ((level - 2) / 4), { at: knocks * 0.16, dur: 0.6, gain: 0.22, type: 'sawtooth' });
   },
 
-  /** قهوة: طرقات ثم نغمة طويلة */
+  /** قهوة: ثلاث طرقات ثم صوت الفنجان */
   gahwa() {
     if (!once('gahwa')) return;
-    for (let i = 0; i < 3; i++) play(pick(['shove1', 'shove2', 'shove3', 'shove4'] as const), { at: i * 0.14, gain: 1, rate: 0.75 });
-    play('collide', { at: 0.45, gain: 0.9 });
-    [262, 330, 392, 523].forEach((f) => tone(f, { at: 0.5, dur: 1.2, gain: 0.12, type: 'triangle' }));
+    (['knock1', 'knock2', 'knock3'] as const).forEach((n, i) => play(n, { at: i * 0.2, gain: 1 }));
+    play('cup1', { at: 0.7, gain: 0.9 });
+    play('cup2', { at: 0.95, gain: 0.7 });
   },
 };
