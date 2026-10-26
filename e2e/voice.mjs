@@ -115,7 +115,9 @@ try {
   check(await stable(pb, 'أنت خارج المحادثة الصوتية', 8000), 'B stays out (no automatic rejoin after leaving)');
 
   await pb.locator('.voice-btn').click();
-  check(await waitStatus(pb, 'الميكروفون مفتوح', 20000, 'B'), 'tap while out: B rejoined and the mic opened');
+  check(await stable(pb, 'أنت خارج المحادثة الصوتية', 4000), 'tap while out: B stays out');
+  await pb.locator('.voice-btn').dispatchEvent('contextmenu');
+  check(await waitStatus(pb, 'الميكروفون مغلق', 20000, 'B'), 'long press while out: B rejoined (mic closed)');
 } catch (e) {
   log('ERROR', e?.message ?? e);
   failed = true;

@@ -10,7 +10,7 @@ const LONG_PRESS_MS = 600;
  * ضغطة عادية: تشغيل/كتم الميكروفون. ضغطة طويلة: انضمام/مغادرة.
  * مع TalkBack: النقر مرتين = ضغطة، والنقر مرتين مع الإبقاء = ضغطة طويلة.
  * لوحة المفاتيح: Enter = كتم/فتح، Shift+Enter = انضمام/مغادرة.
- * لا انضمام تلقائي، ويبدأ الميكروفون مكتوماً (استماع فقط).
+ * الانضمام تلقائي والميكروفون مكتوم. من خرج بنفسه لا يعود إلا بالضغط المطول.
  */
 /** أيقونة ميكروفون (مع خط مائل عندما يكون مغلقاً) — للزينة فقط، النص هو ما يُقرأ */
 function MicIcon({ off }: { off: boolean }) {
@@ -44,8 +44,8 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
 
   const toggleMute = () => {
     if (voice.busy) return;
-    // خارج المحادثة: الضغطة تعيدك للمحادثة وتفتح الميكروفون مباشرة
-    if (!voice.joined) { void joinVoice(view.id, uid).then(() => setVoiceMuted(false)); return; }
+    // خرجت بنفسك: الضغطة العادية لا تعيدك، العودة بالضغط المطول فقط
+    if (!voice.joined) { announce('أنت خارج المحادثة الصوتية. اضغط مطولاً للعودة إليها'); return; }
     void setVoiceMuted(!voice.muted);
   };
 
@@ -63,7 +63,7 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
     : !voice.joined ? 'أنت خارج المحادثة الصوتية'
       : voice.muted ? 'الميكروفون مغلق' : 'الميكروفون مفتوح';
   const hint = voice.busy ? ''
-    : !voice.joined ? 'اضغط للانضمام وفتح الميكروفون، أو مطولاً للانضمام والاستماع فقط'
+    : !voice.joined ? 'اضغط مطولاً للعودة إليها'
       : voice.muted ? 'اضغط لفتحه، أو مطولاً للخروج من المحادثة' : 'اضغط لإغلاقه، أو مطولاً للخروج من المحادثة';
   const label = hint ? `${status}، ${hint}` : status;
 
