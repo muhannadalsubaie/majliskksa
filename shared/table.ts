@@ -6,6 +6,7 @@ import {
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
+import { RULES } from './baloot/scoring';
 import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
@@ -29,6 +30,24 @@ export interface TableData {
   voiceSince?: number;
   /** لاعبون انقطع اتصالهم أثناء المباراة: uid → وقت الانقطاع (مقعدهم محجوز 3 دقائق) */
   away?: Record<string, number>;
+  /** سجل المباراة الحالية: نتيجة كل صكة (بلا أوراق) */
+  history?: HandRecord[];
+}
+
+/** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
+export interface HandRecord {
+  /** أسماء الفريقين وقت الصكة */
+  teams: [string, string];
+  contract: string;
+  /** 1 بدون، 2 دبل، 3 ثري، 4 فور */
+  level: number;
+  gahwa: boolean;
+  buyer: string;
+  buyerTeam: Team;
+  abnat: [number, number];
+  points: [number, number];
+  buyerFailed: boolean;
+  kaboot: Team | null;
 }
 
 const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOver');
@@ -246,7 +265,7 @@ export function removeBot(t: TableData, seat: Seat): TableData {
 export function start(t: TableData, rng: Rng): TableData {
   if (!isFull(t)) throw new TableError('not-full');
   if (t.game && t.game.phase !== 'matchOver') throw new TableError('game-started');
-  return { ...t, game: newMatch(rng, 0) };
+  return { ...t, game: newMatch(rng, 0), history: [] };
 }
 
 // ───── أسماء ونصوص الإعلانات ─────
@@ -273,6 +292,15 @@ export function dealAnnouncement(t: TableData): string {
   return `${nameOf(t, g.dealer)} الموزع. ورقة الأرض: ${cardLabel(g.qaba)}`;
 }
 
+export const levelText = (level: number, gahwa: boolean) =>
+  gahwa ? ' قهوة' : level === 2 ? ' دبل' : level === 3 ? ' ثري' : level === 4 ? ' فور' : '';
+
+/** لماذا خسر المشتري */
+export function lossReason(mode: 'hokm' | 'sun', buyer: number, other: number): string {
+  if (mode === 'hokm') return `جاب ${buyer} بنط، والمطلوب أكثر من ${RULES.hokmBuyerThreshold}`;
+  return `جاب ${buyer} بنط، أقل من الخصم ${other}`;
+}
+
 export function contractText(g: GameState): string {
   const c = g.contract;
   if (!c) return '';
@@ -284,6 +312,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
   const before = t.game!;
   const after = applyAction(before, action);
   const events: string[] = [];
+  let history: HandRecord[] | undefined;
   const who = 'seat' in action ? nameOf(t, action.seat) : '';
 
   switch (action.type) {
@@ -354,8 +383,21 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       }
       if (after.lastHand && !before.lastHand) {
         const r = after.lastHand;
+        const c = after.contract!;
+        const buyerTeam = teamOf(c.buyer);
+        const abnat = r.abnat ?? [0, 0];
+        const level = after.doubling.level;
+        const record: HandRecord = {
+          teams: [teamName(t, 0), teamName(t, 1)], contract: contractText(after), level, gahwa: after.doubling.gahwa,
+          buyer: nameOf(t, c.buyer), buyerTeam, abnat, points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
+        };
+        history = [...(t.history ?? []), record];
+        // ملخص الصكة: الأبناط والفرق وسبب الخسارة، ثم النقاط
+        events.push(`انتهت الصكة. ${record.contract}${levelText(level, record.gahwa)}، المشتري ${record.buyer}`);
+        events.push(`${teamName(t, 0)} ${abnat[0]} بنط، ${teamName(t, 1)} ${abnat[1]} بنط، الفرق ${Math.abs(abnat[0] - abnat[1])}`);
         if (r.kaboot !== null) events.push(`كبوت لـ${teamName(t, r.kaboot)}`);
-        else if (r.buyerFailed) events.push('خسر المشتري');
+        else if (r.buyerFailed) events.push(`خسر المشتري: ${lossReason(c.mode, abnat[buyerTeam], abnat[1 - buyerTeam])}`);
+        else events.push('نجح المشتري');
         events.push(`نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
         events.push(`المجموع: ${after.scores[0]} مقابل ${after.scores[1]}`);
         if (after.outcome.status === 'won') events.push(`انتهت المباراة — فاز ${teamName(t, after.outcome.winner)}`);
@@ -365,7 +407,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     }
   }
   void rng;
-  return { table: { ...t, game: after }, events };
+  return { table: { ...t, game: after, ...(history ? { history } : {}) }, events };
 }
 
 // ───── الخطوة التلقائية التالية (روبوت أو توزيع) ─────
@@ -456,6 +498,8 @@ export interface TableView {
   /** من في المحادثة الصوتية */
   voice: { uid: string; username: string; sessionId: string; muted: boolean; mic: boolean }[];
   game: GameView | null;
+  /** سجل صكات المباراة الحالية */
+  history: HandRecord[];
 }
 
 export function viewFor(t: TableData, uid: string): TableView {
@@ -501,6 +545,7 @@ export function viewFor(t: TableData, uid: string): TableView {
       return at !== undefined ? { username: m.username, isBot: m.isBot, away: true, awayUntil: at + BOT_REPLACE_AFTER_MS } : { username: m.username, isBot: m.isBot };
     }),
     seatUids: t.seats.map((m) => m?.uid ?? ''),
+    history: t.history ?? [],
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
     voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted, mic: v.mic !== false })),
     game,

@@ -53,6 +53,12 @@ const isSuit = (s: unknown): s is Suit => SUITS.includes(s as Suit);
 const isCard = (c: unknown): c is Card =>
   typeof c === 'object' && c !== null && isSuit((c as Card).suit) && RANKS.includes((c as Card).rank as Rank);
 
+type SimpleBid = Exclude<Bid['type'], 'hokm'>;
+// كل المزايدات بلا لون (Record يجبرنا على إضافة أي نوع جديد هنا، وإلا لا يُبنى الخادم)
+const SIMPLE_BIDS = Object.keys({
+  pass: 1, sun: 1, ashkal: 1, secondHokm: 1, qablak: 1, confirmHokm: 1,
+} satisfies Record<SimpleBid, 1>) as SimpleBid[];
+
 /** يبني حركة من رسالة العميل. المقعد يُحدد من هوية المتصل، لا مما يرسله. */
 function parseAction(raw: unknown, seat: Seat): Action | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -62,7 +68,8 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
       const b = a.bid as Record<string, unknown> | undefined;
       if (!b) return null;
       let bid: Bid | null = null;
-      if (b.type === 'pass' || b.type === 'sun' || b.type === 'ashkal') bid = { type: b.type };
+      // المحرك يتحقق بعدها أن المزايدة مسموحة لهذا اللاعب الآن
+      if (typeof b.type === 'string' && SIMPLE_BIDS.includes(b.type as SimpleBid)) bid = { type: b.type as SimpleBid };
       else if (b.type === 'hokm' && isSuit(b.suit)) bid = { type: 'hokm', suit: b.suit };
       return bid ? { type: 'bid', seat, bid } : null;
     }

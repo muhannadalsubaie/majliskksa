@@ -132,6 +132,7 @@ describe('table', () => {
       let t = botsTable(seed);
       let steps = 0;
       const events: string[] = [];
+      let hands = 0;
       while (t.game!.phase !== 'matchOver') {
         const step = nextAutoStep(t, rng);
         expect(step, `seed ${seed}: stuck at ${t.game!.phase}`).not.toBeNull();
@@ -140,6 +141,12 @@ describe('table', () => {
           const g = r.table.game!;
           const total = (g.cardAbnat[0] + g.cardAbnat[1]) * (g.contract!.mode === 'sun' ? SUN_ABNAT_MULTIPLIER : 1);
           expect(total).toBe(HAND_TOTAL[g.contract!.mode]);
+          hands++;
+          const rec = r.table.history!.at(-1)!;
+          expect(r.table.history).toHaveLength(hands);
+          expect(rec.points).toEqual(g.lastHand!.points);
+          expect(r.events.some((e) => e.includes(`${rec.abnat[0]} بنط`) && e.includes('الفرق'))).toBe(true);
+          expect(r.events.some((e) => /^(نجح المشتري|خسر المشتري: جاب \d+ بنط|كبوت)/.test(e))).toBe(true);
         }
         t = r.table;
         events.push(...r.events);

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Card, type Seat, SUIT_NAMES, SUIT_SYMBOLS, SUITS, cardId, cardLabel, teamOf } from '../../shared/baloot/cards';
 import type { Bid } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
 import type { GameView } from '../../shared/table';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
+import { HistoryDialog } from '../components/HistoryDialog';
 import { TABLE_BACK } from '../services/backButton';
 import { isSystemReaderOn } from '../services/nativeA11y';
 import { SeatsLobby } from '../components/SeatsLobby';
@@ -69,6 +70,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   const { view, connected, closed, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
   const [lockChoice, setLockChoice] = useState(false);
   const wasMyTurn = useRef(false);
 
@@ -271,7 +274,10 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   return (
     <main className="screen table-screen" aria-labelledby="table-title">
       <header className="topbar">
-        <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
+        <span style={{ display: 'flex', gap: 8 }}>
+          <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
+          <button className="secondary" onClick={() => setHistoryOpen(true)} aria-haspopup="dialog">السجل</button>
+        </span>
         <h1 id="table-title" className="sr-only">الطاولة</h1>
       </header>
 
@@ -417,6 +423,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
       <VoiceButton view={view} uid={uid} />
 
+      {historyOpen && <HistoryDialog history={view?.history ?? []} onClose={closeHistory} />}
       {menuOpen && !confirmLeave && (
         <TableMenu
           view={view}

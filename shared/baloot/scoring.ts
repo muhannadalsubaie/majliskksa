@@ -38,6 +38,8 @@ export interface HandScoreInput {
 
 export interface HandScore {
   points: [number, number];
+  /** أبناط كل فريق في الصكة (أوراق + أرض + مشاريع؛ أوراق الصن مضاعفة) — قد تغيب في صكات قديمة */
+  abnat?: [number, number];
   buyerFailed: boolean;
   kaboot: Team | null;
   /** القهوة: الفائز بهذه الصكة يفوز باللعبة فوراً */
@@ -94,7 +96,7 @@ export function scoreHand(input: HandScoreInput): HandScore {
   // البلوت: نقطة ثابتة لصاحبها، لا تُضاعف ولا تُسحب
   if (mode === 'hokm' && input.balootTeam !== null) points[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
 
-  return { points, buyerFailed, kaboot, gahwaWinner: gahwa ? handWinner : null };
+  return { points, abnat: total, buyerFailed, kaboot, gahwaWinner: gahwa ? handWinner : null };
 }
 
 export type MatchOutcome = { status: 'ongoing' } | { status: 'won'; winner: Team } | { status: 'tiebreak' };
