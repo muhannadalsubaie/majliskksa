@@ -10,6 +10,7 @@ interface AnnouncePlugin {
   announce(opts: { text: string }): Promise<void>;
   isScreenReaderOn(): Promise<{ value: boolean }>;
   keepVoiceLevel(opts: { on: boolean }): Promise<void>;
+  backgroundVoice(opts: { on: boolean; mic: boolean }): Promise<void>;
 }
 
 const Announce = registerPlugin<AnnouncePlugin>('Announce');
@@ -60,4 +61,9 @@ export function systemAnnounce(text: string) {
  */
 export function keepVoiceLevel(on: boolean) {
   if (platform === 'android') Announce.keepVoiceLevel({ on }).catch(() => {});
+}
+
+/** Android: إبقاء المحادثة الصوتية تعمل والتطبيق في الخلفية (إشعار ثابت أثناء المحادثة) */
+export function backgroundVoice(on: boolean, mic = false) {
+  if (platform === 'android') Announce.backgroundVoice({ on, mic }).catch(() => {});
 }

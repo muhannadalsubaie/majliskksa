@@ -1,6 +1,11 @@
 package com.majlisk.app;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -78,6 +83,32 @@ public class AnnouncePlugin extends Plugin {
             am.requestAudioFocus(ignoreDuck, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN);
         } else {
             am.abandonAudioFocus(ignoreDuck);
+        }
+        call.resolve();
+    }
+
+    /** تشغيل المحادثة في الخلفية (خدمة أمامية بإشعار ثابت) أو إيقافها */
+    @PluginMethod
+    public void backgroundVoice(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        boolean mic = Boolean.TRUE.equals(call.getBoolean("mic", false));
+        Context ctx = getContext();
+        Intent i = new Intent(ctx, VoiceService.class).putExtra("mic", mic);
+        try {
+            if (on) {
+                // إذن الإشعارات (Android 13+) يُطلب مرة عند فتح الميكروفون حتى يظهر إشعار المحادثة
+                if (mic && Build.VERSION.SDK_INT >= 33
+                    && ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    && !ctx.getSharedPreferences("majlisk", Context.MODE_PRIVATE).getBoolean("askedNotify", false)) {
+                    ctx.getSharedPreferences("majlisk", Context.MODE_PRIVATE).edit().putBoolean("askedNotify", true).apply();
+                    ActivityCompat.requestPermissions(getActivity(), new String[] { Manifest.permission.POST_NOTIFICATIONS }, 7002);
+                }
+                ContextCompat.startForegroundService(ctx, i);
+            } else {
+                ctx.stopService(i);
+            }
+        } catch (Exception e) {
+            // لا نوقف المحادثة إن تعذّرت الخدمة؛ تعمل والتطبيق ظاهر
         }
         call.resolve();
     }

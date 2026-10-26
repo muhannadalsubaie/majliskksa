@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import type { TableView } from '../../shared/table';
 import { announce } from './announcer';
 import { API_URL } from './api';
-import { keepVoiceLevel } from './nativeA11y';
+import { backgroundVoice, keepVoiceLevel } from './nativeA11y';
 import { getToken } from './tables';
 
 export interface VoiceState { joined: boolean; muted: boolean; busy: boolean }
@@ -75,6 +75,7 @@ export function joinVoice(id: string, uid: string, mode: 'manual' | 'auto' | 're
       members = [...members.filter((m) => m.uid !== uid), { uid, username: '', sessionId: r.sessionId, muted: true, mic: false }];
       set({ joined: true, muted: true, busy: false });
       keepVoiceLevel(true);
+      backgroundVoice(true);
       autoRetries = 0;
       if (mode !== 'rejoin') announce('أنت في المحادثة الصوتية تسمع الآخرين، والميكروفون مغلق. اضغط زر الميكروفون لفتحه');
     } catch (e) {
@@ -139,6 +140,7 @@ export function setVoiceMuted(muted: boolean): Promise<void> {
       if (r.sessionId && r.sessionId !== sessionId) sessionId = r.sessionId;
       await pc.setRemoteDescription(r.answer);
       set({ muted: false, busy: false });
+      backgroundVoice(true, true); // من الآن تحتاج الخدمة صلاحية الميكروفون في الخلفية
       announce('الميكروفون مفتوح');
     } catch (e) {
       mic?.stop();
@@ -251,6 +253,7 @@ function cleanup() {
   pc = null;
   sessionId = null;
   keepVoiceLevel(false);
+  backgroundVoice(false);
   set({ joined: false, muted: true, busy: false });
 }
 
