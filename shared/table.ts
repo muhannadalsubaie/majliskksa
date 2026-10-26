@@ -2,7 +2,7 @@
 import { type Card, type Seat, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
 import { botAction } from './baloot/bot';
 import {
-  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot,
+  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn,
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
@@ -261,6 +261,7 @@ function bidText(b: Bid): string {
     case 'ashkal': return 'أشكل';
     case 'secondHokm': return 'حكم ثاني';
     case 'qablak': return 'قبلك';
+    case 'confirmHokm': return 'تأكيد الحكم';
     case 'hokm': return `حكم ${SUIT_NAMES[b.suit]}`;
   }
 }
@@ -297,6 +298,9 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         if (after.phase === 'doubling') events.push(`الدبل لـ${teamName(t, after.doubling.awaitingTeam!)} قبل توزيع بقية الورق`);
         else events.push('وُزّعت بقية الورق، بدأ اللعب');
       }
+      if (after.hokmConfirm && !before.hokmConfirm) {
+        events.push(`الكل قال بس — ${nameOf(t, after.hokmBid!.seat)} يؤكد الحكم أو يحوّل صن`);
+      }
       if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
         events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار الحكم`);
       }
@@ -308,6 +312,10 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
       const lock = after.contract!.mode === 'hokm' && !d.gahwa ? (d.locked ? ' مقفل' : ' مفتوح') : '';
       events.push(`${who}: ${label}${lock}`);
+      // بعد الدبل: المزايدة بين المدبّل والمشتري فقط
+      if (after.phase === 'doubling' && after.doubling.awaitingSeat != null) {
+        events.push(`القرار عند ${nameOf(t, after.doubling.awaitingSeat)}`);
+      }
       if (after.phase === 'playing') events.push('وُزّعت بقية الورق، بدأ اللعب');
       break;
     }
@@ -327,6 +335,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
       if (newly) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       events.push(`${who}: ${cardLabel(action.card)}`);
+      // البلوت تلقائي مع الورقة الثانية منه (الشايب أو البنت)
+      if (after.balootSeat !== null && before.balootSeat === null) events.push(`${who}: بلوت`);
       // كشف المشروع في اللفة الثانية: بعد أن يلعب صاحبه ورقته تُنطق أوراق مشروعه
       // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)
       const mineDeclared = before.trickNo === 1 ? after.declared.find((d) => d.seat === action.seat) : undefined;
@@ -375,7 +385,7 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   // نعطي الأولوية لمن عليه الدور، ثم إعلان البلوت لأي روبوت
   const order: Seat[] = [];
   if (g.phase === 'doubling') {
-    for (const s of [0, 1, 2, 3] as Seat[]) if (teamOf(s) === g.doubling.awaitingTeam) order.push(s);
+    for (const s of [0, 1, 2, 3] as Seat[]) if (isDoublingTurn(g, s)) order.push(s);
   } else {
     order.push(g.turn, nextSeat(g.turn), nextSeat(g.turn, 2), nextSeat(g.turn, 3));
   }
@@ -476,7 +486,7 @@ export function viewFor(t: TableData, uid: string): TableView {
       actions: {
         bids: playing ? availableBids(g, mySeat) : [],
         double: playing ? availableDouble(g, mySeat) : null,
-        canPassDouble: playing && g.phase === 'doubling' && g.doubling.awaitingTeam === teamOf(mySeat) && !g.doubling.passed.includes(mySeat),
+        canPassDouble: playing && isDoublingTurn(g, mySeat),
         legal: playing ? legalCardsFor(g, mySeat) : [],
         canProject: playing && canDeclareProject(g, mySeat),
         canBaloot: playing && canDeclareBaloot(g, mySeat),

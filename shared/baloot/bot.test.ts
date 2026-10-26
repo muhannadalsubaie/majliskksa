@@ -20,6 +20,7 @@ describe('bot', () => {
     let s = newMatch(seededRng(5), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
     const a = botAction(s, 0)!;
     expect(['double', 'doublePass']).toContain(a.type);
     if (a.type === 'double' && availableDouble(s, 0)?.needsLockChoice) expect(typeof a.locked).toBe('boolean');

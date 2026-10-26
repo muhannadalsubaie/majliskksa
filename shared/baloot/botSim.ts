@@ -2,7 +2,7 @@
 import type { Seat } from './cards';
 import { teamOf } from './cards';
 import { type BotParams, botAction } from './bot';
-import { type GameState, type Rng, applyAction, availableBids, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal } from './game';
+import { type GameState, type Rng, applyAction, availableBids, handOver, isDoublingTurn, legalCardsFor, needsRedeal, newMatch, nextHand, redeal } from './game';
 import { seededRng } from './testing';
 
 export type Player = BotParams | 'random';
@@ -21,11 +21,10 @@ export function playMatch(a: Player, b: Player, rng: Rng, maxHands = 60): 0 | 1 
       let action;
       if (who === 'random') {
         if (s.phase === 'bidding' && s.turn === seat) action = { type: 'bid' as const, seat, bid: pick(availableBids(s, seat)) };
-        else if (s.phase === 'doubling' && s.doubling.awaitingTeam === teamOf(seat) && !s.doubling.passed.includes(seat)) action = { type: 'doublePass' as const, seat };
+        else if (isDoublingTurn(s, seat)) action = { type: 'doublePass' as const, seat };
         else if (s.phase === 'playing' && s.turn === seat) action = { type: 'play' as const, seat, card: pick(legalCardsFor(s, seat)) };
       } else {
         action = botAction(s, seat, who) ?? undefined;
-        if (action?.type === 'declareBaloot' && s.turn !== seat) { s = applyAction(s, action); acted = true; break; }
         if (action && !(s.phase === 'bidding' ? s.turn === seat : s.phase === 'doubling' ? true : s.turn === seat)) action = undefined;
       }
       if (action) { s = applyAction(s, action); acted = true; break; }

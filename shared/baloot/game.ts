@@ -18,7 +18,9 @@ export type Bid =
   | { type: 'sun' }
   | { type: 'ashkal' }
   | { type: 'secondHokm' }
-  | { type: 'qablak' };
+  | { type: 'qablak' }
+  /** بعد أن قال الجميع بس على حكمه: المشتري يؤكد الحكم (أو يحوّل صن) */
+  | { type: 'confirmHokm' };
 
 export interface Contract {
   mode: GameMode;
@@ -37,6 +39,10 @@ export interface DoublingState {
   doublerTeam: Team | null;
   awaitingTeam: Team | null;
   passed: Seat[];
+  /** من دبّل أولاً: بعد الدبل تصبح المزايدة بينه وبين المشتري فقط */
+  doubler: Seat | null;
+  /** صاحب القرار الآن (بعد الدبل الأول) — null في الدبل الأول حيث يقرر أيٌّ من فريق الخصم */
+  awaitingSeat: Seat | null;
 }
 
 export interface GameState {
@@ -50,6 +56,8 @@ export interface GameState {
   bidRound: 1 | 2;
   bidsInRound: number;
   hokmBid: { seat: Seat; suit: Suit } | null;
+  /** قال الجميع بس على الحكم: الدور للمشتري ليؤكد الحكم أو يحوّل صن */
+  hokmConfirm?: boolean;
   /**
    * "حكم ثاني" في اللفة الأولى: يمر الدور على البقية (بس أو صن فقط)،
    * فإن قالوا كلهم بس يعود لصاحبه ليختار حكماً بغير لون القبلة.
@@ -98,7 +106,7 @@ export function shuffle(cards: Card[], rng: Rng): Card[] {
   return a;
 }
 
-const freshDoubling = (): DoublingState => ({ level: 1, gahwa: false, locked: false, doublerTeam: null, awaitingTeam: null, passed: [] });
+const freshDoubling = (): DoublingState => ({ level: 1, gahwa: false, locked: false, doublerTeam: null, awaitingTeam: null, passed: [], doubler: null, awaitingSeat: null });
 
 /** توزيع أولي: 3 ثم 2 لكل لاعب بدءاً من يمين الموزع، والورقة 21 هي القبلة. */
 export function dealHand(dealer: Seat, scores: [number, number], rng: Rng): GameState {
@@ -128,6 +136,8 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   if (s.phase !== 'bidding' || s.turn !== seat || !s.qaba) return [];
   // "قبلك": اللاعب الذي قبل قائل الصن يقرر
   if (s.sunClaim) return seat === s.sunClaim.challenger ? [{ type: 'pass' }, { type: 'qablak' }] : [];
+  // رجع الدور للمشتري بعد أن قال الجميع بس: تأكيد الحكم أو صن
+  if (s.hokmConfirm) return seat === s.hokmBid?.seat ? [{ type: 'confirmHokm' }, { type: 'sun' }] : [];
   const otherSuits = (['S', 'H', 'C', 'D'] as Suit[]).filter((suit) => suit !== s.qaba!.suit);
   // صاحب "حكم ثاني" بعد أن قال الجميع بس: يختار لوناً غير لون القبلة
   if (s.secondHokm?.remaining === 0) return otherSuits.map((suit) => ({ type: 'hokm', suit }));
@@ -184,6 +194,15 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer, qabaTo: buyer });
   }
 
+  // ───── تأكيد الحكم ─────
+  if (s.hokmConfirm) {
+    const { seat: buyer, suit } = s.hokmBid!;
+    const after = { ...s, hokmConfirm: false };
+    return bid.type === 'sun'
+      ? finalizeContract(after, { mode: 'sun', trump: null, buyer, qabaTo: buyer })
+      : finalizeContract(after, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
+  }
+
   if (bid.type === 'sun') {
     // إن تكلّم أحد قبله في هذه اللفة، يُعطى اللاعب الذي قبله مباشرة فرصة "قبلك"
     if (!s.secondHokm && s.bidsInRound > 0) {
@@ -213,10 +232,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
 
   if (next.bidsInRound < 4) return next;
   // انتهت الجولة
-  if (next.hokmBid) {
-    const { seat: buyer, suit } = next.hokmBid;
-    return finalizeContract(next, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
-  }
+  // قال الجميع بس على الحكم: يرجع الدور للمشتري ليؤكد الحكم أو يحوّل صن
+  if (next.hokmBid) return { ...next, hokmConfirm: true, turn: next.hokmBid.seat };
   if (s.bidRound === 1) return { ...next, bidRound: 2, bidsInRound: 0, turn: nextSeat(s.dealer) };
   // صنكة: الجميع مرّ مرتين — إعادة توزيع
   return { ...next, phase: 'bidding', qaba: null, outcome: { status: 'ongoing' } };
@@ -236,8 +253,19 @@ export function redeal(s: GameState, rng: Rng): GameState {
  *   → فور ×4 (الخصم، يختار مقفل/مفتوح) → قهوة (المشتري، مفتوح تلقائياً، تحسم اللعبة)
  * في الصن: دبل واحد فقط بلا مقفل/مفتوح.
  */
+/**
+ * هل على هذا اللاعب قرار في الدبل الآن؟
+ * الدبل الأول: أيٌّ من فريق الخصم (ولا ينتهي إلا إذا مرّر الاثنان). بعده المزايدة بين المدبّل والمشتري فقط.
+ */
+export function isDoublingTurn(s: GameState, seat: Seat): boolean {
+  if (s.phase !== 'doubling') return false;
+  const d = s.doubling;
+  if (d.awaitingSeat != null) return d.awaitingSeat === seat; // != null: الطاولات القديمة بلا هذا الحقل
+  return d.awaitingTeam === teamOf(seat) && !d.passed.includes(seat);
+}
+
 export function availableDouble(s: GameState, seat: Seat): { label: 'دبل' | 'ثري' | 'فور' | 'قهوة'; needsLockChoice: boolean } | null {
-  if (s.phase !== 'doubling' || s.doubling.awaitingTeam !== teamOf(seat) || s.doubling.passed.includes(seat)) return null;
+  if (!isDoublingTurn(s, seat)) return null;
   const hokm = s.contract!.mode === 'hokm';
   switch (s.doubling.level) {
     case 1: return { label: 'دبل', needsLockChoice: hokm };
@@ -256,6 +284,7 @@ function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
   if (d.level === 1) {
     d.level = 2;
     d.doublerTeam = teamOf(seat);
+    d.doubler = seat;
     d.locked = hokm && !!locked;
   } else if (d.level === 2) {
     d.level = 3; // ثري: مفتوح تلقائياً
@@ -268,12 +297,19 @@ function applyDouble(s: GameState, seat: Seat, locked?: boolean): GameState {
     d.locked = false;
   }
   const finished = !hokm || d.gahwa;
-  d.awaitingTeam = finished ? null : otherTeam(teamOf(seat));
+  // التالي: المشتري يرد على الدبل والفور، والمدبّل يرد على الثري
+  const buyer = s.contract!.buyer;
+  d.awaitingSeat = finished ? null : d.level === 3 ? d.doubler : buyer;
+  d.awaitingTeam = d.awaitingSeat === null ? null : teamOf(d.awaitingSeat);
   return finished ? dealRest({ ...s, doubling: d }) : { ...s, doubling: d, phase: 'doubling' };
 }
 
 function applyDoublePass(s: GameState, seat: Seat): GameState {
-  if (s.phase !== 'doubling' || s.doubling.awaitingTeam !== teamOf(seat)) fail('ليس دورك في الدبل');
+  if (!isDoublingTurn(s, seat)) fail('ليس دورك في الدبل');
+  // بعد الدبل الأول: تمرير صاحب القرار ينهي الدبل
+  if (s.doubling.awaitingSeat != null) {
+    return dealRest({ ...s, doubling: { ...s.doubling, awaitingSeat: null, awaitingTeam: null } });
+  }
   const passed = [...new Set([...s.doubling.passed, seat])];
   if (passed.length < 2) return { ...s, doubling: { ...s.doubling, passed } };
   return dealRest({ ...s, doubling: { ...s.doubling, passed, awaitingTeam: null } });
@@ -285,9 +321,9 @@ export function canDeclareProject(s: GameState, seat: Seat): boolean {
     && findProjects(s.initialHands[seat], s.contract!.mode).length > 0;
 }
 
-export function canDeclareBaloot(s: GameState, seat: Seat): boolean {
-  return s.phase === 'playing' && s.contract!.mode === 'hokm' && s.balootSeat === null
-    && hasBaloot(s.initialHands[seat], s.contract!.trump);
+/** البلوت صار تلقائياً مع لعب الورقة الثانية منه، فلا يوجد إعلان يدوي */
+export function canDeclareBaloot(_s: GameState, _seat: Seat): boolean {
+  return false;
 }
 
 export function lockedSeat(s: GameState): Seat | null {
@@ -310,7 +346,12 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
     && findProjects(s.initialHands[seat], c.mode).length > 0
     ? [...s.declared, { seat, projects: findProjects(s.initialHands[seat], c.mode) }]
     : s.declared;
-  let next: GameState = { ...s, hands, trick, declared, turn: nextSeat(seat) };
+  // البلوت تلقائي: يُعلن عندما يلعب صاحب الشايب والبنت من الحكم ثانيهما
+  const isKQ = c.mode === 'hokm' && card.suit === c.trump && (card.rank === 'K' || card.rank === 'Q');
+  const balootSeat = s.balootSeat === null && isKQ && hasBaloot(s.initialHands[seat], c.trump)
+    && !hands[seat].some((x) => x.suit === c.trump && (x.rank === 'K' || x.rank === 'Q'))
+    ? seat : s.balootSeat;
+  let next: GameState = { ...s, hands, trick, declared, balootSeat, turn: nextSeat(seat) };
   if (trick.length < 4) return next;
 
   const winner = trickWinner(trick, c.mode, c.trump);

@@ -2,7 +2,7 @@ import {
   type Card, type Rank, type Seat, type Suit, SUITS, cardPoints, cardStrength, createDeck, sameCard, teamOf,
 } from './cards';
 import {
-  type Action, type Bid, type GameState, availableBids, availableDouble, canDeclareBaloot, legalCardsFor,
+  type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, legalCardsFor,
 } from './game';
 import { trickWinner } from './play';
 
@@ -105,6 +105,11 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
   }
 
   const sun = sunStrength(withQaba);
+  // تأكيد الحكم بعد أن قال الجميع بس: نحوّل صن فقط إن كانت اليد أقوى صناً بوضوح
+  if (bids.some((b) => b.type === 'confirmHokm')) {
+    const trump = s.hokmBid!.suit;
+    return sun >= p.sun + 1 && sun > hokmStrength(withQaba, trump) ? { type: 'sun' } : { type: 'confirmHokm' };
+  }
   // قبلك: نأخذ الصن من اللاعب الذي بعدنا إن كانت يدنا تصلح صناً (والقائل ليس شريكنا)
   if (bids.some((b) => b.type === 'qablak')) {
     const callerIsPartner = s.sunClaim && teamOf(s.sunClaim.caller) === teamOf(seat);
@@ -218,11 +223,10 @@ function choosePlay(s: GameState, seat: Seat): Card {
 /** الحركة التالية للروبوت في هذا المقعد (أو null إن لم يكن دوره). */
 export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_BOT): Action | null {
   if (s.phase === 'bidding' && s.turn === seat && s.qaba) return { type: 'bid', seat, bid: chooseBid(s, seat, params) };
-  if (s.phase === 'doubling' && s.doubling.awaitingTeam === teamOf(seat) && !s.doubling.passed.includes(seat)) {
+  if (isDoublingTurn(s, seat)) {
     return chooseDouble(s, seat, params);
   }
   if (s.phase === 'playing') {
-    if (canDeclareBaloot(s, seat)) return { type: 'declareBaloot', seat };
     if (s.turn !== seat || s.trickNo >= 8) return null;
     return { type: 'play', seat, card: choosePlay(s, seat) };
   }

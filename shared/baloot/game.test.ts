@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Seat } from './cards';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER, teamOf } from './cards';
 import {
-  type GameState, IllegalAction, applyAction, availableBids, availableDouble, canDeclareBaloot,
+  type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn,
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './game';
 import { seededRng } from './testing';
@@ -16,7 +16,7 @@ function playHand(s: GameState, rng: () => number): GameState {
     if (++guard > 500) throw new Error('stuck');
     if (needsRedeal(s)) { s = redeal(s, rng); continue; }
     const seat = s.phase === 'doubling'
-      ? ([0, 1, 2, 3] as Seat[]).find((x) => teamOf(x) === s.doubling.awaitingTeam && !s.doubling.passed.includes(x))!
+      ? ([0, 1, 2, 3] as Seat[]).find((x) => isDoublingTurn(s, x))!
       : s.turn;
     if (s.phase === 'bidding') {
       const bids = availableBids(s, seat);
@@ -29,7 +29,6 @@ function playHand(s: GameState, rng: () => number): GameState {
         : applyAction(s, { type: 'doublePass', seat });
     } else {
       if (canDeclareProject(s, seat)) s = applyAction(s, { type: 'declareProject', seat });
-      for (const x of [0, 1, 2, 3] as Seat[]) if (canDeclareBaloot(s, x)) s = applyAction(s, { type: 'declareBaloot', seat: x });
       s = applyAction(s, { type: 'play', seat, card: pick(legalCardsFor(s, seat), rng) });
     }
   }
@@ -159,6 +158,12 @@ describe('game flow', () => {
     s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'pass' } });
+    // رجع الدور للمشتري: تأكيد الحكم أو صن فقط
+    expect(s.contract).toBeNull();
+    expect(s.turn).toBe(1);
+    expect(availableBids(s, 1).map((b) => b.type)).toEqual(['confirmHokm', 'sun']);
+    expect(availableBids(s, 2)).toEqual([]);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
     expect(s.contract).toMatchObject({ mode: 'hokm', buyer: 1 });
     expect(s.phase).toBe('doubling');
     expect(availableDouble(s, 1)).toBeNull(); // الفريق المشتري لا يبدأ الدبل
@@ -179,15 +184,19 @@ describe('game flow', () => {
     let s = newMatch(seededRng(6), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
     expect(() => applyAction(s, { type: 'double', seat: 0 })).toThrow(IllegalAction);
     s = applyAction(s, { type: 'double', seat: 0, locked: true });
     expect(s.doubling).toMatchObject({ level: 2, locked: true });
+    // بعد الدبل: المزايدة بين المدبّل (0) والمشتري (1) فقط
     expect(availableDouble(s, 1)).toEqual({ label: 'ثري', needsLockChoice: false });
-    s = applyAction(s, { type: 'double', seat: 3 });
+    expect(availableDouble(s, 3)).toBeNull();
+    s = applyAction(s, { type: 'double', seat: 1 });
     expect(s.doubling).toMatchObject({ level: 3, locked: false });
-    expect(availableDouble(s, 2)).toEqual({ label: 'فور', needsLockChoice: true });
-    expect(() => applyAction(s, { type: 'double', seat: 2 })).toThrow(IllegalAction);
-    s = applyAction(s, { type: 'double', seat: 2, locked: true });
+    expect(availableDouble(s, 0)).toEqual({ label: 'فور', needsLockChoice: true });
+    expect(availableDouble(s, 2)).toBeNull();
+    expect(() => applyAction(s, { type: 'double', seat: 0 })).toThrow(IllegalAction);
+    s = applyAction(s, { type: 'double', seat: 0, locked: true });
     expect(s.doubling).toMatchObject({ level: 4, locked: true });
     expect(availableDouble(s, 1)?.label).toBe('قهوة');
     s = applyAction(s, { type: 'double', seat: 1 });
@@ -199,9 +208,11 @@ describe('game flow', () => {
     let s = newMatch(seededRng(9), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
     s = applyAction(s, { type: 'double', seat: 2, locked: true });
     s = applyAction(s, { type: 'double', seat: 1 });
-    s = applyAction(s, { type: 'doublePass', seat: 0 });
+    // شريك المدبّل لا يقرر؛ تمرير المدبّل وحده ينهي الدبل
+    expect(() => applyAction(s, { type: 'doublePass', seat: 0 })).toThrow(IllegalAction);
     s = applyAction(s, { type: 'doublePass', seat: 2 });
     expect(s.phase).toBe('playing');
     expect(s.doubling).toMatchObject({ level: 3, locked: false });
@@ -247,5 +258,44 @@ describe('game flow', () => {
       }
       expect(s.outcome.status).toBe('won');
     }
+  });
+});
+
+describe('new rules: hokm confirmation, doubling pair, automatic baloot', () => {
+  it('the hokm buyer may switch to sun when everyone passed', () => {
+    let s = newMatch(seededRng(3), 0);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
+    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'sun' } });
+    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 1, qabaTo: 1 });
+  });
+
+  it('baloot is declared automatically when the second of K/Q of trump is played', () => {
+    let checked = 0;
+    for (let seed = 1; seed < 400 && checked < 3; seed++) {
+      const rng = seededRng(seed);
+      let s = newMatch(rng, 0);
+      s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
+      for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+      s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
+      for (const seat of [0, 2] as Seat[]) s = applyAction(s, { type: 'doublePass', seat });
+      const trump = s.contract!.trump!;
+      const holder = ([0, 1, 2, 3] as Seat[]).find((x) => ['K', 'Q'].every((r) => s.initialHands[x].some((c) => c.suit === trump && c.rank === r)));
+      if (holder === undefined) continue;
+      while (s.trickNo < 8 && s.balootSeat === null) {
+        const seat = s.turn;
+        const card = pick(legalCardsFor(s, seat), rng);
+        const before = s;
+        s = applyAction(s, { type: 'play', seat, card });
+        if (s.balootSeat !== null) {
+          expect(s.balootSeat).toBe(holder);
+          expect(seat).toBe(holder);
+          expect(card.suit === trump && (card.rank === 'K' || card.rank === 'Q')).toBe(true);
+          expect(before.hands[holder].filter((c) => c.suit === trump && (c.rank === 'K' || c.rank === 'Q'))).toHaveLength(1);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

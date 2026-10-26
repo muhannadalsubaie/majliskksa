@@ -47,6 +47,7 @@ function bidLabel(b: Bid): string {
     case 'ashkal': return 'أشكل';
     case 'secondHokm': return 'حكم ثاني';
     case 'qablak': return 'قبلك';
+    case 'confirmHokm': return 'تأكيد الحكم';
     case 'hokm': return `حكم ${SUIT_NAMES[b.suit]} ${SUIT_SYMBOLS[b.suit]}`;
   }
 }
@@ -340,7 +341,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           <p className="turn-line" tabIndex={-1}>
             {g.phase === 'matchOver'
               ? (g.outcome.status === 'won' ? (g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر') : '')
-              : myTurn ? 'دورك' : g.phase === 'doubling' ? 'بانتظار قرار الدبل' : `دور ${name(g.turn)}`}
+              : myTurn ? 'دورك' : g.phase === 'doubling' ? (g.doubling.awaitingSeat != null ? `بانتظار قرار ${name(g.doubling.awaitingSeat)} في الدبل` : 'بانتظار قرار الدبل') : `دور ${name(g.turn)}`}
           </p>
 
           {/* أزرار المزايدة */}
@@ -372,11 +373,6 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             </div>
           )}
 
-          {g.actions.canBaloot && (
-            <div className="action-row">
-              <button onClick={() => act({ type: 'declareBaloot' })}>بلوت</button>
-            </div>
-          )}
 
           {g.phase === 'matchOver' && isOwner && (
             <button onClick={() => send({ type: 'start' })}>مباراة جديدة</button>
