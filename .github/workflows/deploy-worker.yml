@@ -100,3 +100,20 @@ jobs:
           export FIREBASE_API_KEY=$(grep '^VITE_FIREBASE_API_KEY=' .env | cut -d= -f2-)
           sleep 20
           node e2e/voice.mjs
+
+  # الدخول بـ Google في محرك Safari (آيفون وماك): النافذة تُفتح فوراً وتصل لصفحة Google بلا خطأ
+  google-safari-e2e:
+    needs: deploy
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[e2e]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright WebKit
+        run: npm i --no-save playwright@1 && npx playwright install --with-deps webkit
+      - name: Google sign-in on Safari engine
+        run: |
+          sleep 20
+          node e2e/google-safari.mjs

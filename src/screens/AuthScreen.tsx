@@ -7,7 +7,7 @@ import { COINS } from '../../shared/economy';
 import { USERNAME_ERRORS, validateUsername } from '../../shared/username';
 import { UsernameField } from '../components/UsernameField';
 import { Capacitor } from '@capacitor/core';
-import { connectFirebase } from '../services/firebase';
+import { connectFirebase, firebaseNow } from '../services/firebase';
 import { announce } from '../services/announcer';
 import { SITE_URL, api, apiPublic } from '../services/api';
 import type { Navigate } from '../state/navigation';
@@ -20,6 +20,9 @@ const ERRORS: Record<string, string> = {
   'auth/missing-password': 'أدخل كلمة المرور',
   'auth/too-many-requests': 'محاولات كثيرة، حاول بعد قليل',
   'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
+  'auth/popup-blocked': 'المتصفح منع نافذة Google. اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى',
+  'auth/cancelled-popup-request': 'تم إغلاق نافذة Google',
+  'auth/unauthorized-domain': 'الدخول بـ Google غير مفعّل لهذا الرابط بعد',
   'google-native': 'الدخول بحساب Google داخل التطبيق قيد التفعيل. ادخل بالبريد وكلمة المرور مؤقتاً.',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
   ...USERNAME_ERRORS,
@@ -75,7 +78,23 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
     });
   };
 
-  const google = () => run(async () => {
+  const google = () => {
+    // المتصفح: نافذة Google يجب أن تُفتح في نفس لحظة الضغط بلا أي انتظار قبلها،
+    // وإلا يمنعها Safari في الآيفون والماك (Chrome أكثر تساهلاً فلا تظهر المشكلة فيه)
+    const ready = Capacitor.isNativePlatform() ? null : firebaseNow();
+    if (ready) {
+      const popup = signInWithPopup(ready.auth, new GoogleAuthProvider());
+      void run(async () => {
+        await popup;
+        announce('تم تسجيل الدخول');
+        navigate('menu');
+      });
+      return;
+    }
+    void googleSlow();
+  };
+
+  const googleSlow = () => run(async () => {
     const { auth } = await connectFirebase();
     if (Capacitor.isNativePlatform()) {
       // داخل التطبيق: نافذة اختيار حساب Google الأصلية في الجهاز، ثم ندخل بنفس الحساب في Firebase

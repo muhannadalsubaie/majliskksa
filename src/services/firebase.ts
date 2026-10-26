@@ -15,6 +15,10 @@ const config = {
 export interface FirebaseServices { app: FirebaseApp; auth: Auth; db: Firestore }
 
 let pending: Promise<FirebaseServices> | null = null;
+let ready: FirebaseServices | null = null;
+
+/** الخدمات إن كانت جاهزة الآن (بلا انتظار) — لما يجب أن يحدث داخل ضغطة المستخدم نفسها */
+export const firebaseNow = (): FirebaseServices | null => ready;
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(config.apiKey && config.projectId);
@@ -43,7 +47,8 @@ async function init(): Promise<FirebaseServices> {
     ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
     : getAuth(app);
   await withTimeout(auth.authStateReady(), 15_000);
-  return { app, auth, db: getFirestore(app) };
+  ready = { app, auth, db: getFirestore(app) };
+  return ready;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
