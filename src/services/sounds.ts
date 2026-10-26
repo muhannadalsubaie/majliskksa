@@ -39,7 +39,7 @@ function load(): Promise<void> {
   const ac = ctx;
   loading = Promise.all(FILES.map(async (name) => {
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3`);
+      const res = await fetch(`${import.meta.env.BASE_URL}sounds/${name}.mp3?v=2`); // ?v= يتغير مع تحديث الملفات حتى لا تبقى نسخة قديمة مخزنة
       buffers.set(name, await ac.decodeAudioData(await res.arrayBuffer()));
     } catch { /* صوت ناقص لا يوقف اللعبة */ }
   })).then(() => {});
