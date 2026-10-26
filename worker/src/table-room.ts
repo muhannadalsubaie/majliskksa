@@ -235,12 +235,12 @@ export class TableRoom extends DurableObject<Env> {
 
     switch (req.op) {
       case 'session': {
-        // الانضمام التلقائي عند دخول الطاولة: استماع فقط، بلا ميكروفون ولا إعلان
+        // الانضمام (تلقائياً عند دخول الطاولة): استماع فقط بلا ميكروفون، ويُعلن للبقية
         const acc = await this.accountVoice(t);
         if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
         const sessionId = await rt.newSession();
         await this.save({ ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } });
-        this.broadcast([]);
+        this.broadcast([`${name} انضم للمحادثة الصوتية`], uid);
         return { sessionId };
       }
       case 'publish': {
@@ -278,7 +278,7 @@ export class TableRoom extends DurableObject<Env> {
       case 'leave': {
         if (!mine) return { ok: true };
         await this.save(withoutVoice(await this.accountVoice(t), uid));
-        this.broadcast([]);
+        this.broadcast([`${name} غادر المحادثة الصوتية`], uid);
         return { ok: true };
       }
       default:
@@ -417,8 +417,9 @@ export class TableRoom extends DurableObject<Env> {
     const stillHere = this.ctx.getWebSockets().some((w) => w !== ws && w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
     const t = await this.load();
     if (t?.voice?.[uid] && !stillHere) {
+      const who = memberName(t, uid);
       await this.save(withoutVoice(await this.accountVoice(t), uid));
-      this.broadcast([]);
+      this.broadcast(who ? [`${who} غادر المحادثة الصوتية`] : [], uid);
     }
     // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
     const current = this.table;
@@ -521,13 +522,14 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */
-  private broadcast(events: string[]) {
+  /** except: لا تُرسل الإعلانات لهذا اللاعب (يسمع إعلانه الخاص من تطبيقه)، لكن تصله الحالة */
+  private broadcast(events: string[], except?: string) {
     const t = this.table;
     if (!t) return;
     for (const ws of this.ctx.getWebSockets()) {
       const { uid } = ws.deserializeAttachment() as { uid: string };
       try {
-        if (events.length) ws.send(JSON.stringify({ type: 'events', events }));
+        if (events.length && uid !== except) ws.send(JSON.stringify({ type: 'events', events }));
         ws.send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
       } catch { /* اتصال مغلق */ }
     }

@@ -12,7 +12,13 @@ import { isSystemReaderOn } from '../services/nativeA11y';
 import { RATE_MAX, RATE_MIN, RATE_STEP, getSpeechRate, setSpeechRate, speak } from '../services/speech';
 import type { Navigate } from '../state/navigation';
 
-export function SettingsScreen({ navigate }: { navigate: Navigate }) {
+/**
+ * الإعدادات. تُفتح من القائمة الرئيسية كشاشة، أو من قائمة الطاولة (onClose) دون مغادرة الطاولة —
+ * وهناك نُخفي قسم الحساب (الخروج وحذف الحساب) لأنه يُخرجك من اللعبة.
+ */
+export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onClose?: () => void }) {
+  const embedded = Boolean(onClose);
+  const Root = embedded ? 'div' : 'main';
   const [speech, setSpeech] = useState(isSpeechEnabled());
   const [reader, setReader] = useState(isScreenReaderSettingOn());
   const [muted, setMutedState] = useState(isMuted());
@@ -27,10 +33,10 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <main className="screen" aria-labelledby="settings-title">
+    <Root className={embedded ? 'stack' : 'screen'} aria-labelledby="settings-title">
       <header className="topbar">
         <h1 id="settings-title">الإعدادات</h1>
-        <button className="secondary back-btn" onClick={() => navigate('menu')}>رجوع</button>
+        <button className="secondary back-btn" onClick={() => (onClose ? onClose() : navigate('menu'))}>رجوع</button>
       </header>
 
       <section aria-labelledby="sec-sound" className="stack">
@@ -93,6 +99,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
         />
       </section>
 
+      {!embedded && (
       <section aria-labelledby="sec-account" className="stack">
         <h2 id="sec-account">الحساب</h2>
         <button
@@ -105,6 +112,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
         <button className="danger" onClick={() => setConfirmDelete(true)}>حذف الحساب</button>
         <a className="note" href={`${SITE_URL}/privacy.html`} target="_blank" rel="noopener">سياسة الخصوصية</a>
       </section>
+      )}
 
       {confirmDelete && (
         <ConfirmDialog
@@ -127,7 +135,7 @@ export function SettingsScreen({ navigate }: { navigate: Navigate }) {
           onCancel={() => setConfirmDelete(false)}
         />
       )}
-    </main>
+    </Root>
   );
 }
 

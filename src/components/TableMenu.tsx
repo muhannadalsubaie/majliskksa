@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { joinVoice, leaveVoice, useVoice } from '../services/voice';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import type { Seat } from '../../shared/baloot/cards';
 import { teamOf } from '../../shared/baloot/cards';
 import { COINS } from '../../shared/economy';
@@ -17,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = 'main' | 'players' | 'invite' | { replace: Seat };
+type Page = 'main' | 'players' | 'invite' | 'settings' | { replace: Seat };
 
 /** قائمة الطاولة: اللاعبون، دعوة صديق، مشاهدة إعلان، مغادرة */
 export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
@@ -90,6 +91,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           >
             {voice.joined ? 'مغادرة المحادثة الصوتية' : 'الانضمام للمحادثة الصوتية'}
           </button>
+          <button className="secondary" onClick={() => setPage('settings')}>الإعدادات</button>
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
           <button className="secondary" onClick={onClose}>إغلاق القائمة</button>
         </div>
@@ -114,6 +116,14 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           ))}
         </ul>
         <button className="secondary back-btn" onClick={() => setPage('main')}>رجوع</button>
+      </>
+    );
+  } else if (page === 'settings') {
+    // الإعدادات داخل الطاولة: نفس شاشة الإعدادات، والرجوع يعيدك للقائمة دون مغادرة اللعب
+    body = (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1} className="sr-only">إعدادات</h2>
+        <SettingsScreen navigate={() => setPage('main')} onClose={() => setPage('main')} />
       </>
     );
   } else if (page === 'players') {
