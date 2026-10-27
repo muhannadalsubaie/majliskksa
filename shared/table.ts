@@ -29,7 +29,7 @@ export interface TableData {
   voiceSince?: number;
   /** لاعبون انقطع اتصالهم أثناء المباراة: uid → وقت الانقطاع (مقعدهم محجوز 3 دقائق) */
   away?: Record<string, number>;
-  /** سجل المباريات على هذه الطاولة: نتيجة كل صكة (بلا أوراق) */
+  /** سجل المباراة الحالية: نتيجة كل صكة فيها (بلا أوراق) — يبدأ من جديد مع كل مباراة */
   history?: HandRecord[];
   /** رقم المباراة الحالية */
   matchNo?: number;
@@ -351,8 +351,8 @@ export function removeBot(t: TableData, seat: Seat): TableData {
 export function start(t: TableData, rng: Rng): TableData {
   if (!isFull(t)) throw new TableError('not-full');
   if (t.game && t.game.phase !== 'matchOver') throw new TableError('game-started');
-  // مباراة جديدة: السجل يبقى، وتبدأ مباراة برقم جديد (نحتفظ بآخر 200 صكة فقط)
-  return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: (t.history ?? []).slice(-200), lobbyAway: {} };
+  // مباراة جديدة: سجل جديد لها وحدها (سجل المباراة السابقة يُمسح)
+  return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} };
 }
 
 // ───── أسماء ونصوص الإعلانات ─────

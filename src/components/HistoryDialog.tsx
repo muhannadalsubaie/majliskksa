@@ -18,7 +18,7 @@ function handLines(r: HandRecord, n: number): { title: string; rows: string[] } 
   };
 }
 
-/** السجل: كل مباراة في قسم لحالها، وكل صكة فيها بأبناطها هي — بلا أوراق */
+/** سجل المباراة الحالية: كل صكة بأبناطها ونقاطها هي — بلا أوراق (يبدأ من جديد مع كل مباراة) */
 export function HistoryDialog({ history, onClose }: { history: HandRecord[]; onClose: () => void }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -28,7 +28,7 @@ export function HistoryDialog({ history, onClose }: { history: HandRecord[]; onC
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // نجمع الصكات حسب المباراة، والأحدث أولاً
+  // صكات المباراة الحالية (وإن بقيت صكات من مباراة سابقة في طاولة قديمة نفصلها)
   const matches = new Map<number, HandRecord[]>();
   for (const r of history) {
     const m = r.match ?? 1;

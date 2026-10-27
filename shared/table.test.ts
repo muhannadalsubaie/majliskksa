@@ -227,13 +227,13 @@ describe('owner moderation', () => {
   });
 });
 
-it('the log keeps every match separately: a new match keeps old hands and gets a new number', () => {
+it('each match has its own log: a new match starts an empty log', () => {
   const t = botsTable(21);
   expect(t.matchNo).toBe(1);
   const played = { ...t, history: [{ match: 1 } as never], game: { ...t.game!, phase: 'matchOver' as const } };
   const next = start(played, seededRng(1));
   expect(next.matchNo).toBe(2);
-  expect(next.history).toHaveLength(1);
+  expect(next.history).toEqual([]);
   // الإيقاف الكامل يمسح السجل
   expect(stopGame(next).history).toEqual([]);
 });
