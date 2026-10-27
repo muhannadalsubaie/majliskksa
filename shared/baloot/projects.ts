@@ -84,8 +84,13 @@ export function findProjects(hand: Card[], mode: GameMode): Project[] {
   return best;
 }
 
-export function projectsAbnat(projects: Project[]): number {
-  return projects.reduce((s, p) => s + PROJECT_ABNAT[p.kind], 0);
+/** أبناط المشروع حسب نوع اللعب: السرا في الصن 40 (4 نقاط)، وفي الحكم 20 (نقطتان) */
+export function projectValue(kind: ProjectKind, mode: GameMode = 'hokm'): number {
+  return kind === 'sira' && mode === 'sun' ? 40 : PROJECT_ABNAT[kind];
+}
+
+export function projectsAbnat(projects: Project[], mode: GameMode = 'hokm'): number {
+  return projects.reduce((s, p) => s + projectValue(p.kind, mode), 0);
 }
 
 /** مقارنة مشروعين: موجب إذا a أقوى. */
@@ -107,7 +112,7 @@ export interface ProjectResolution {
  * المشروع الأقوى يلغي الأضعف بين الفريقين.
  * عند التساوي التام يفوز الأسبق في ترتيب اللعب (بدءاً من firstSeat).
  */
-export function resolveProjects(declared: DeclaredProjects[], firstSeat: Seat): ProjectResolution {
+export function resolveProjects(declared: DeclaredProjects[], firstSeat: Seat, mode: GameMode = 'hokm'): ProjectResolution {
   const order = (s: Seat) => [0, 1, 2, 3].findIndex((n) => nextSeat(firstSeat, n) === s);
   let bestSeat: Seat | null = null;
   let bestProject: Project | null = null;
@@ -124,7 +129,7 @@ export function resolveProjects(declared: DeclaredProjects[], firstSeat: Seat): 
   if (bestSeat === null) return { winningTeam: null, abnat };
   const winningTeam = teamOf(bestSeat);
   for (const d of declared) {
-    if (teamOf(d.seat) === winningTeam) abnat[winningTeam] += projectsAbnat(d.projects);
+    if (teamOf(d.seat) === winningTeam) abnat[winningTeam] += projectsAbnat(d.projects, mode);
   }
   return { winningTeam, abnat };
 }

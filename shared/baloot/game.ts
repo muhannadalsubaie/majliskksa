@@ -388,7 +388,7 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   if (s.trickNo === 7) cardAbnat[team] += LAST_TRICK_BONUS;
 
   next = { ...next, trick: [], lastTrick: { cards: trick, winner }, trickNo: s.trickNo + 1, tricksWon, cardAbnat, turn: winner };
-  if (s.trickNo === 0) next.projects = resolveProjects(next.declared, nextSeat(s.dealer));
+  if (s.trickNo === 0) next.projects = resolveProjects(next.declared, nextSeat(s.dealer), c.mode);
   if (next.trickNo < 8) return next;
   return finishHand(next);
 }

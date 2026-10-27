@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { findProjects, resolveProjects, hasBaloot, projectsAbnat } from './projects';
+import { findProjects, resolveProjects, hasBaloot, projectsAbnat, projectValue } from './projects';
+import { abnatToPoints } from './scoring';
 import { cards } from './testing';
 
 const kinds = (hand: string, mode: 'sun' | 'hokm') => findProjects(cards(hand), mode).map((p) => p.kind).sort();
@@ -65,4 +66,9 @@ it('baloot needs K and Q of trump', () => {
   expect(hasBaloot(cards('KH QH 7S'), 'H')).toBe(true);
   expect(hasBaloot(cards('KH QS 7S'), 'H')).toBe(false);
   expect(hasBaloot(cards('KH QH'), null)).toBe(false);
+});
+
+it('sira is 4 points in sun and 2 in hokm', () => {
+  expect(abnatToPoints(projectValue('sira', 'sun'))).toBe(4);
+  expect(abnatToPoints(projectValue('sira', 'hokm'))).toBe(2);
 });
