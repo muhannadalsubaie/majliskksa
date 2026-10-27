@@ -10,7 +10,7 @@ import { TABLE_BACK } from '../services/backButton';
 import { isSystemReaderOn } from '../services/nativeA11y';
 import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
-import { announce } from '../services/announcer';
+import { announce, announceNow } from '../services/announcer';
 import { sounds } from '../services/sounds';
 import { useTable } from '../services/tables';
 import { type SwipeDir, TWO_FINGER, isScreenReaderOn, swipeDir } from '../services/screenReader';
@@ -208,9 +208,10 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   const readTrickRef = useRef((_dir: SwipeDir) => {});
   readTrickRef.current = (dir: SwipeDir) => {
-    if (dir === 'left') announce(trickSummary());
-    else if (dir === 'right') announce(contractSummary());
-    else if (dir === 'up') announce(projectsSummary());
+    // ردّ الإيماءة فوري (لا ينتظر طابور إعلانات اللعب)
+    if (dir === 'left') announceNow(trickSummary());
+    else if (dir === 'right') announceNow(contractSummary());
+    else if (dir === 'up') announceNow(projectsSummary());
   };
 
   // إيماءات بإصبعين: من اليمين لليسار = أوراق الطاولة ومن لعبها، من اليسار لليمين = نوع اللعب

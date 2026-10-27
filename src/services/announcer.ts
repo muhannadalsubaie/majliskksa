@@ -21,13 +21,13 @@ const BATCH_MS = 0;
 // القيم مقاسة على نطق العربية في TalkBack/VoiceOver (أبطأ من الإنجليزية بوضوح)،
 // ومعها مهلة ثابتة لبدء النطق؛ والأفضل أن ننتظر قليلاً زيادة على أن نقطع الجملة.
 export const ANNOUNCE_PACES = [
-  { id: 'slow', label: 'بطيئة', msPerChar: 115, minGap: 1500 },
-  { id: 'normal', label: 'عادية', msPerChar: 90, minGap: 1200 },
-  { id: 'fast', label: 'سريعة', msPerChar: 70, minGap: 950 },
-  { id: 'fastest', label: 'سريعة جداً', msPerChar: 52, minGap: 750 },
+  { id: 'slow', label: 'بطيئة', msPerChar: 100, minGap: 1200 },
+  { id: 'normal', label: 'عادية', msPerChar: 75, minGap: 900 },
+  { id: 'fast', label: 'سريعة', msPerChar: 55, minGap: 650 },
+  { id: 'fastest', label: 'سريعة جداً', msPerChar: 40, minGap: 450 },
 ] as const;
 /** مهلة بدء النطق لكل إعلان */
-const START_MS = 350;
+const START_MS = 200;
 
 /** طول النطق التقريبي بالأحرف: الأرقام تُنطق كلمات أطول من رموزها (10 = "عشرة") */
 function spokenLength(text: string): number {
@@ -41,8 +41,8 @@ let pace: AnnouncePace = loadPace();
 function loadPace(): AnnouncePace {
   try {
     const v = localStorage.getItem(PACE_KEY);
-    return ANNOUNCE_PACES.some((p) => p.id === v) ? (v as AnnouncePace) : 'normal';
-  } catch { return 'normal'; }
+    return ANNOUNCE_PACES.some((p) => p.id === v) ? (v as AnnouncePace) : 'fast';
+  } catch { return 'fast'; }
 }
 
 export function getAnnouncePace() { return pace; }
@@ -93,9 +93,29 @@ function flush() {
   if (wait > 0) { timer = setTimeout(flush, wait); return; }
   const text = pending.join('. ');
   pending = [];
-  const p = ANNOUNCE_PACES.find((x) => x.id === pace)!;
-  busyUntil = Date.now() + START_MS + Math.max(p.minGap, spokenLength(text) * p.msPerChar);
+  busyUntil = Date.now() + speakTime(text);
   deliver(text);
+}
+
+/** الوقت المقدّر لنطق النص بسرعة الإعلانات المختارة */
+function speakTime(text: string): number {
+  const p = ANNOUNCE_PACES.find((x) => x.id === pace)!;
+  return START_MS + Math.max(p.minGap, spokenLength(text) * p.msPerChar);
+}
+
+/**
+ * ردّ فوري على طلب المستخدم نفسه (إيماءة، نقرة): يُنطق الآن دون انتظار الطابور،
+ * ثم يكمل الطابور بعده. ما زال ينتظر في الطابور يبقى بترتيبه.
+ */
+export function announceNow(message: string) {
+  if (!message) return;
+  deliver(message);
+  busyUntil = Date.now() + speakTime(message);
+  if (pending.length) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(flush, busyUntil - Date.now());
+  }
+  if (!isSystemReaderOn() && (speechEnabled || isScreenReaderOn())) speak(message, true);
 }
 
 export function announce(message: string) {

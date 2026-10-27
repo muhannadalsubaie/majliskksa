@@ -6,7 +6,6 @@ import {
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
-import { RULES } from './baloot/scoring';
 import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
@@ -383,15 +382,6 @@ function afterDoubling(t: TableData, after: GameState): string[] {
   return [];
 }
 
-export const levelText = (level: number, gahwa: boolean) =>
-  gahwa ? ' قهوة' : level === 2 ? ' دبل' : level === 3 ? ' ثري' : level === 4 ? ' فور' : '';
-
-/** لماذا خسر المشتري */
-export function lossReason(mode: 'hokm' | 'sun', buyer: number, other: number): string {
-  if (mode === 'hokm') return `جاب ${buyer} بنط، والمطلوب أكثر من ${RULES.hokmBuyerThreshold}`;
-  return `جاب ${buyer} بنط، أقل من الخصم ${other}`;
-}
-
 export function contractText(g: GameState): string {
   const c = g.contract;
   if (!c) return '';
@@ -486,13 +476,10 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
           buyer: nameOf(t, c.buyer), buyerTeam, abnat, points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
         };
         history = [...(t.history ?? []), record];
-        // ملخص الصكة: الأبناط والفرق وسبب الخسارة، ثم النقاط
-        events.push(`انتهت الصكة. ${record.contract}${levelText(level, record.gahwa)}، المشتري ${record.buyer}`);
-        events.push(`${teamName(t, 0)} ${abnat[0]} بنط، ${teamName(t, 1)} ${abnat[1]} بنط، الفرق ${Math.abs(abnat[0] - abnat[1])}`);
-        if (r.kaboot !== null) events.push(`كبوت لـ${teamName(t, r.kaboot)}`);
-        else if (r.buyerFailed) events.push(`خسر المشتري: ${lossReason(c.mode, abnat[buyerTeam], abnat[1 - buyerTeam])}`);
-        else events.push('نجح المشتري');
-        events.push(`نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
+        // يُنطق: النقاط والفائز والخاسر فقط — الأبناط وتفاصيلها في السجل
+        const winner = r.kaboot ?? (r.buyerFailed ? 1 - buyerTeam : buyerTeam);
+        events.push(`انتهت الصكة. نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
+        events.push(`${r.kaboot !== null ? 'كبوت! ' : ''}فاز ${teamName(t, winner as Team)}، وخسر ${teamName(t, (1 - winner) as Team)}`);
         events.push(`المجموع: ${after.scores[0]} مقابل ${after.scores[1]}`);
         if (after.outcome.status === 'won') events.push(`انتهت المباراة — فاز ${teamName(t, after.outcome.winner)}`);
         if (after.outcome.status === 'tiebreak') events.push('تعادل — جولة فاصلة');

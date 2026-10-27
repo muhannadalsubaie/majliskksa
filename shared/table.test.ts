@@ -145,8 +145,10 @@ describe('table', () => {
           const rec = r.table.history!.at(-1)!;
           expect(r.table.history).toHaveLength(hands);
           expect(rec.points).toEqual(g.lastHand!.points);
-          expect(r.events.some((e) => e.includes(`${rec.abnat[0]} بنط`) && e.includes('الفرق'))).toBe(true);
-          expect(r.events.some((e) => /^(نجح المشتري|خسر المشتري: جاب \d+ بنط|كبوت)/.test(e))).toBe(true);
+          // يُنطق النقاط والفائز والخاسر فقط، والأبناط في السجل
+          expect(r.events.some((e) => e.includes('بنط'))).toBe(false);
+          expect(r.events.some((e) => e.includes(`نتيجة الصكة:`) && e.includes(String(rec.points[0])))).toBe(true);
+          expect(r.events.some((e) => /فاز فريق .+، وخسر فريق /.test(e))).toBe(true);
         }
         t = r.table;
         events.push(...r.events);
