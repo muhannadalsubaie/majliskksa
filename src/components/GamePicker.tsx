@@ -10,9 +10,9 @@ export type GameChoice =
   | { game: 'jackaroo'; variant: 'classic' | 'complex' };
 
 const GAMES = [
-  { id: 'baloot', name: 'بلوت', desc: '4 لاعبين في فريقين' },
-  { id: 'domino', name: 'دومينو', desc: '4 لاعبين في فريقين، حتى 100 نقطة' },
-  { id: 'jackaroo', name: 'جاكارو', desc: '4 لاعبين في فريقين' },
+  { id: 'baloot', name: 'بلوت' },
+  { id: 'domino', name: 'دومينو' },
+  { id: 'jackaroo', name: 'جاكارو' },
 ] as const;
 
 const VARIANTS = [
@@ -39,9 +39,8 @@ export function GamePicker({ onPick, onCancel }: Props) {
           <h2 id="picker-title" ref={titleRef} tabIndex={-1}>اختر اللعبة</h2>
           <div className="stack" role="list">
             {GAMES.map((g) => (
-              <div key={g.id} role="listitem"><button className="secondary game-option" onClick={() => choose(g.id)} aria-label={`${g.name}، ${g.desc}`}>
+              <div key={g.id} role="listitem"><button className="secondary game-option" onClick={() => choose(g.id)}>
                 <strong>{g.name}</strong>
-                <span className="note">{g.desc}</span>
               </button></div>
             ))}
           </div>
