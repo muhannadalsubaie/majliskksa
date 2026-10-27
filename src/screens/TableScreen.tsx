@@ -341,8 +341,6 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                       {view.seats[seat]?.away ? ' (انقطع الاتصال)' : ''}
                       {r === 2 ? ' (شريكك)' : ''}
                     </span>
-                    <span className="sr-only">، </span>
-                    <span className="note">{g.handCounts[seat]} أوراق</span>
                   </p>
                 </div>
               );

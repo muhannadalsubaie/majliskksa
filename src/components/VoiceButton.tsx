@@ -15,7 +15,7 @@ const LONG_PRESS_MS = 600;
 /** أيقونة ميكروفون (مع خط مائل عندما يكون مغلقاً) — للزينة فقط، النص هو ما يُقرأ */
 function MicIcon({ off }: { off: boolean }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="9" y="2" width="6" height="12" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
       {off && <path d="M3 3l18 18" />}
@@ -56,8 +56,6 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
     timer.current = window.setTimeout(() => { handled.current = true; toggleJoin(); }, LONG_PRESS_MS);
   };
 
-  // الكل ينضم تلقائياً، فنعرض فقط من فتح ميكروفونه
-  const others = view.voice.filter((m) => m.uid !== uid && m.mic && !m.muted);
   // الحالة نصاً واضحاً (يُكتب على الزر ويُقرأ)، ومعها تلميح بما تفعله الضغطة
   const status = voice.busy ? 'جارٍ الاتصال بالمحادثة الصوتية'
     : !voice.joined ? 'أنت خارج المحادثة الصوتية'
@@ -69,11 +67,6 @@ export function VoiceButton({ view, uid }: { view: TableView; uid: string }) {
 
   return (
     <div className="voice-dock">
-      {others.length > 0 && (
-        <p className="voice-people">
-          الميكروفون مفتوح عند: {others.map((m) => m.username).join('، ')}
-        </p>
-      )}
       <button
         className={`voice-btn ${!voice.joined ? 'off' : voice.muted ? 'muted' : ''}`}
         aria-label={label}
