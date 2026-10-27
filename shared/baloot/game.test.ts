@@ -209,6 +209,22 @@ describe('game flow', () => {
     expect(s.doubling).toMatchObject({ level: 4, gahwa: true, locked: false, doublerTeam: 0 });
   });
 
+  it('after a hokm bid every other player gets a turn, including those who passed before it', () => {
+    let s = newMatch(seededRng(11), 0);
+    // الموزع 0: الدور يبدأ من 1
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'hokm', suit: s.qaba!.suit } });
+    // يلف على 3 ثم 0 ثم 1 (الذي قال بس قبل الحكم) — كلهم بس أو صن
+    for (const seat of [3, 0, 1] as Seat[]) {
+      expect(s.turn).toBe(seat);
+      expect(availableBids(s, seat).map((b) => b.type)).toEqual(['pass', 'sun']);
+      s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    }
+    // ثم يرجع للمشتري: تأكيد الحكم أو صن
+    expect(s.turn).toBe(2);
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['confirmHokm', 'sun']);
+  });
+
   it('three stays open even after a locked double', () => {
     let s = newMatch(seededRng(9), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });

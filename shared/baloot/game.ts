@@ -232,7 +232,9 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   }
 
   const next: GameState = { ...s, bidsInRound: s.bidsInRound + 1, turn: nextSeat(seat) };
-  if (bid.type === 'hokm') next.hokmBid = { seat, suit: bid.suit };
+  // شراء حكم: يلف الدور على الثلاثة الباقين كلهم (حتى من قال بس قبله) ليقولوا بس أو صن،
+  // ثم يرجع للمشتري ليؤكد الحكم أو يحوّل صن
+  if (bid.type === 'hokm') { next.hokmBid = { seat, suit: bid.suit }; next.bidsInRound = 1; }
 
   if (next.bidsInRound < 4) return next;
   // انتهت الجولة
