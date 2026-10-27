@@ -1,15 +1,17 @@
 // محرّك لعبة الدومينو (قطع 0–6، 28 قطعة) — دوال نقية مثل محرّك البلوت، تصلح للخادم والتطبيق.
 //
-// القوانين (قابلة للتعديل من DominoRules):
-//  • 2 أو 3 أو 4 لاعبين. مع 4: فريقان، كل لاعب وشريكه متقابلان (0 و2 ضد 1 و3).
-//  • لكل لاعب 7 قطع. مع 4 لاعبين لا يبقى "بنك" فمن لا يملك قطعة مناسبة "يدق" (يمرّر)؛
-//    مع 2 أو 3 يسحب من البنك حتى يجد قطعة مناسبة، فإن فرغ البنك يدق.
-//  • أول صكة يبدأها صاحب دوس الستة (أو أعلى دوس، أو أعلى قطعة إن لم يوجد دوس) ويلعبه إجبارياً.
-//    الصكات التالية يبدأها الفائز بالصكة السابقة بأي قطعة.
-//  • تنتهي الصكة عندما "يقفل" لاعب (تخلص قطعه): يأخذ هو (أو فريقه) مجموع نقاط قطع الخصوم.
-//  • إن انسدّ اللعب (لا أحد يستطيع اللعب): يفوز الأقل مجموعاً في يده (أو فريقه) ويأخذ مجموع
-//    قطع الخصوم. عند التعادل لا يأخذ أحد شيئاً.
-//  • تنتهي المباراة عند الوصول لهدف النقاط (101 افتراضياً).
+// القوانين — مطابقة لـ Pagat (Partnership Dominoes و Draw Dominoes) ودليل جواكر العربي:
+//  • 2 أو 3 أو 4 لاعبين. مع 4: شراكة، كل لاعب وشريكه متقابلان (0 و2 ضد 1 و3).
+//  • لكل لاعب 7 قطع. مع 4 لاعبين لا يبقى "بنك" فمن لا يملك قطعة مناسبة "يدق" (يمرّر).
+//    مع 2 أو 3 (لعبة السحب): من لا يملك قطعة مناسبة يسحب من البنك حتى يجد قطعة يلعبها،
+//    وآخر قطعتين في البنك لا تُسحبان أبداً — إن بقيتا فقط يدق.
+//  • أول صكة يبدأها صاحب دوس الستة ويلعبه إجبارياً (إن لم يكن مع أحد — في السحب — فأعلى دوس،
+//    ثم أعلى قطعة). الصكات التالية يبدأها الفائز بالصكة السابقة بأي قطعة (قاعدة جواكر).
+//  • "القفل": من تخلص قطعه أولاً يأخذ (هو أو فريقه) مجموع نقاط قطع الخصوم. قطع الشريك لا تُحسب.
+//  • "الانسداد" (لا أحد يستطيع اللعب): يفوز الأقل مجموعاً في يده (أو فريقه).
+//    في الشراكة يأخذ مجموع الفريق الخاسر؛ في السحب الفردي يأخذ مجموع الخاسرين ناقصاً مجموعه.
+//    التعادل في الأقل: لا نقاط لأحد.
+//  • الفوز بالمباراة: 100 نقطة للشراكة ولعب لاعبَين، و61 لثلاثة لاعبين (قابل للتغيير).
 
 export type Pip = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export interface Tile { a: Pip; b: Pip }
@@ -21,7 +23,13 @@ export interface DominoRules {
   target: number;
 }
 
-export const DEFAULT_RULES: DominoRules = { players: 4, target: 101 };
+/** هدف المباراة المعتمد لكل عدد لاعبين (Pagat) */
+export const defaultTarget = (players: 2 | 3 | 4) => (players === 3 ? 61 : 100);
+
+export const DEFAULT_RULES: DominoRules = { players: 4, target: 100 };
+
+/** آخر قطعتين في البنك لا تُسحبان (لعبة السحب) */
+export const BONEYARD_RESERVE = 2;
 
 export interface PlacedTile {
   tile: Tile;
@@ -131,9 +139,9 @@ export function playable(s: DominoState, seat: number): Tile[] {
 }
 
 export const canDraw = (s: DominoState, seat: number) =>
-  s.phase === 'playing' && s.turn === seat && s.line.length > 0 && playable(s, seat).length === 0 && s.boneyard.length > 0;
+  s.phase === 'playing' && s.turn === seat && s.line.length > 0 && playable(s, seat).length === 0 && s.boneyard.length > BONEYARD_RESERVE;
 export const canPass = (s: DominoState, seat: number) =>
-  s.phase === 'playing' && s.turn === seat && s.line.length > 0 && playable(s, seat).length === 0 && s.boneyard.length === 0;
+  s.phase === 'playing' && s.turn === seat && s.line.length > 0 && playable(s, seat).length === 0 && s.boneyard.length <= BONEYARD_RESERVE;
 
 /** قطعة الافتتاح الإجبارية في أول صكة: دوس الستة، أو أعلى دوس، أو أعلى قطعة */
 export function openingTile(hands: Tile[][]): Tile | null {
@@ -161,6 +169,7 @@ export function dealHand(rules: DominoRules, scores: number[], handNo: number, s
 }
 
 export function newMatch(rng: Rng, rules: DominoRules = DEFAULT_RULES): DominoState {
+  if (rules.players < 2 || rules.players > 4 || rules.target < 1) fail('إعداد غير صالح');
   return dealHand(rules, Array(sidesCount(rules)).fill(0), 1, null, rng);
 }
 
@@ -245,7 +254,9 @@ function finishHand(s: DominoState, kind: 'domino' | 'blocked', dominoSeat: numb
   }
   if (winnerSeat !== null) {
     const side = sideOf(r, winnerSeat);
-    points[side] = sideTotals.reduce((sum, n, i) => (i === side ? sum : sum + n), 0);
+    const losers = sideTotals.reduce((sum, n, i) => (i === side ? sum : sum + n), 0);
+    // انسداد في السحب الفردي: ناقص مجموع الفائز نفسه (في القفل مجموعه صفر أصلاً)
+    points[side] = kind === 'blocked' && r.players !== 4 ? losers - sideTotals[side] : losers;
   }
   const scores = s.scores.map((n, i) => n + points[i]);
   const done = scores.some((n) => n >= r.target);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { seededRng } from '../../shared/baloot/testing';
 import { dominoBotAction } from './bot';
 import {
-  type DominoState, type Tile, DominoError, applyDomino, canDraw, canPass, ends, fullSet, newMatch, nextHand,
+  type DominoState, type Tile, DominoError, applyDomino, canDraw, canPass, defaultTarget, ends, fullSet, newMatch, nextHand,
   openingTile, pips, playable, sideOf,
 } from './engine';
 import { endsLabel, handAnnouncement, lineLabel, moveAnnouncement, tileLabel } from './labels';
@@ -15,7 +15,7 @@ describe('domino', () => {
     const s = newMatch(seededRng(1));
     expect(s.hands.map((h) => h.length)).toEqual([7, 7, 7, 7]);
     expect(s.boneyard).toHaveLength(0);
-    const two = newMatch(seededRng(1), { players: 2, target: 101 });
+    const two = newMatch(seededRng(1), { players: 2, target: 100 });
     expect(two.boneyard).toHaveLength(14);
   });
 
@@ -36,18 +36,42 @@ describe('domino', () => {
     if (wrong) expect(() => applyDomino(s, { type: 'play', seat, tile: wrong })).toThrow(DominoError);
   });
 
-  it('draw game: draws when stuck, passes only when the boneyard is empty', () => {
-    const base = newMatch(seededRng(5), { players: 2, target: 101 });
-    // نصنع حالة: يد بلا قطعة تصلح
+  it('draw game: draws when stuck, but the last two boneyard tiles are never drawn (Pagat)', () => {
+    const base = newMatch(seededRng(5), { players: 2, target: 100 });
+    // نصنع حالة: يد بلا قطعة تصلح، وفي البنك 3 قطع
     const s: DominoState = {
       ...base, handNo: 2, turn: 0, line: [{ tile: t(6, 6), seat: 1, outer: 6, side: 'first' }],
-      hands: [[t(1, 2)], [t(3, 4)]], boneyard: [t(6, 5), t(0, 0)],
+      hands: [[t(1, 2)], [t(3, 4)]], boneyard: [t(6, 5), t(0, 0), t(1, 1)],
     };
     expect(canDraw(s, 0)).toBe(true);
     expect(canPass(s, 0)).toBe(false);
     const drawn = applyDomino(s, { type: 'draw', seat: 0 });
     expect(drawn.hands[0]).toHaveLength(2);
     expect(playable(drawn, 0)).toEqual([t(6, 5)]);
+    // بقيت قطعتان فقط: لا سحب، يدق
+    const stuck: DominoState = { ...s, boneyard: [t(0, 0), t(1, 1)] };
+    expect(canDraw(stuck, 0)).toBe(false);
+    expect(canPass(stuck, 0)).toBe(true);
+    expect(() => applyDomino(stuck, { type: 'draw', seat: 0 })).toThrow(DominoError);
+  });
+
+  it('blocked draw game: the lowest player scores the others pips minus his own (Pagat)', () => {
+    const base = newMatch(seededRng(13), { players: 2, target: 100 });
+    const s: DominoState = {
+      ...base, handNo: 2, turn: 0, line: [{ tile: t(6, 6), seat: 1, outer: 6, side: 'first' }],
+      hands: [[t(1, 2)], [t(4, 5)]], boneyard: [t(0, 0), t(1, 1)],
+    };
+    let x = applyDomino(s, { type: 'pass', seat: 0 });
+    x = applyDomino(x, { type: 'pass', seat: 1 });
+    expect(x.lastHand!.kind).toBe('blocked');
+    // 3 مقابل 9: الفائز يأخذ 9 − 3 = 6
+    expect(x.lastHand!.points).toEqual([6, 0]);
+  });
+
+  it('match targets follow Pagat: 100 for two players and partnerships, 61 for three', () => {
+    expect(defaultTarget(2)).toBe(100);
+    expect(defaultTarget(4)).toBe(100);
+    expect(defaultTarget(3)).toBe(61);
   });
 
   it('domino: the winner scores the pips left in opponents hands (team play counts both opponents)', () => {
@@ -82,7 +106,7 @@ describe('domino', () => {
     for (const players of [2, 3, 4] as const) {
       for (let seed = 1; seed <= 15; seed++) {
         const rng = seededRng(seed * 31 + players);
-        let s = newMatch(rng, { players, target: 101 });
+        let s = newMatch(rng, { players, target: defaultTarget(players) });
         let steps = 0;
         while (s.phase !== 'matchOver') {
           if (s.phase === 'handOver') { s = nextHand(s, rng); continue; }
@@ -97,7 +121,7 @@ describe('domino', () => {
           }
           if (++steps > 20000) throw new Error('too many steps');
         }
-        expect(Math.max(...s.scores)).toBeGreaterThanOrEqual(101);
+        expect(Math.max(...s.scores)).toBeGreaterThanOrEqual(defaultTarget(players));
         expect(s.scores).toHaveLength(players === 4 ? 2 : players);
         expect(sideOf(s.rules, 2)).toBe(players === 4 ? 0 : 2);
       }
