@@ -69,7 +69,7 @@ export function DominoBoard({ s, mySeat, names, isOwner, act, restart }: Props) 
     [s, names, me],
   );
   const readBoard = useCallback(() => announceNow(`${lineLabel(s)}. ${endsLabel(s)}`), [s]);
-  const readScore = useCallback(() => announceNow(`${endsLabel(s)}. ${scoreText()}. في البنك ${s.boneyard.length} قطعة`), [s, scoreText]);
+  const readScore = useCallback(() => announceNow(`${endsLabel(s)}. ${scoreText()}${s.boneyard.length ? `. في البنك ${s.boneyard.length} قطعة` : ''}`), [s, scoreText]);
   useEffect(() => {
     const onTwo = (e: Event) => {
       const dir = (e as CustomEvent<SwipeDir>).detail;

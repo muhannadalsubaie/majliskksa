@@ -210,6 +210,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   };
 
   const readTrickRef = useRef((_dir: SwipeDir) => {});
+  // نوع اللعبة الحالي لمعالج اللمس (يُسجَّل مرة واحدة)
+  const kindRef = useRef(view?.kind ?? 'baloot');
+  kindRef.current = view?.kind ?? 'baloot';
   readTrickRef.current = (dir: SwipeDir) => {
     // الدومينو والجاكارو لهما قراءاتهما الخاصة
     if (view && view.kind !== 'baloot') return;
@@ -247,7 +250,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     const onEnd = (e: TouchEvent) => {
       if (!two || e.touches.length > 0) return;
       const dir = performance.now() - two.t < 1200 ? swipeDir(last.x - two.x, last.y - two.y) : null;
-      if (dir) readTrickRef.current(dir);
+      // الدومينو والجاكارو: نرسل الإيماءة للوحة اللعبة (تستمع لنفس حدث قارئ التطبيق)
+      if (dir && kindRef.current !== 'baloot') window.dispatchEvent(new CustomEvent<SwipeDir>(TWO_FINGER, { detail: dir }));
+      else if (dir) readTrickRef.current(dir);
       two = null;
     };
     window.addEventListener('touchstart', onStart, { passive: true });
