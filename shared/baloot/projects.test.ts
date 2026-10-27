@@ -68,7 +68,8 @@ it('baloot needs K and Q of trump', () => {
   expect(hasBaloot(cards('KH QH'), null)).toBe(false);
 });
 
-it('sira is 4 points in sun and 2 in hokm', () => {
-  expect(abnatToPoints(projectValue('sira', 'sun'))).toBe(4);
-  expect(abnatToPoints(projectValue('sira', 'hokm'))).toBe(2);
+it('project points: sun doubles sira, fifty and hundred; four hundred stays 40', () => {
+  const pts = (k: Parameters<typeof projectValue>[0], m: 'sun' | 'hokm') => abnatToPoints(projectValue(k, m));
+  expect([pts('sira', 'sun'), pts('fifty', 'sun'), pts('hundred', 'sun'), pts('fourHundred', 'sun')]).toEqual([4, 10, 20, 40]);
+  expect([pts('sira', 'hokm'), pts('fifty', 'hokm'), pts('hundred', 'hokm')]).toEqual([2, 5, 10]);
 });

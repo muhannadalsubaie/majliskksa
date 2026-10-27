@@ -84,9 +84,13 @@ export function findProjects(hand: Card[], mode: GameMode): Project[] {
   return best;
 }
 
-/** أبناط المشروع حسب نوع اللعب: السرا في الصن 40 (4 نقاط)، وفي الحكم 20 (نقطتان) */
+/**
+ * أبناط المشروع حسب نوع اللعب: الصن يضاعف السرا والخمسين والمية
+ * (سرا 4 نقاط، خمسين 10، مية 20)، والأربعمية 40 كما هي. في الحكم: سرا 2، خمسين 5، مية 10.
+ */
 export function projectValue(kind: ProjectKind, mode: GameMode = 'hokm'): number {
-  return kind === 'sira' && mode === 'sun' ? 40 : PROJECT_ABNAT[kind];
+  const doubled = mode === 'sun' && (kind === 'sira' || kind === 'fifty' || kind === 'hundred');
+  return PROJECT_ABNAT[kind] * (doubled ? 2 : 1);
 }
 
 export function projectsAbnat(projects: Project[], mode: GameMode = 'hokm'): number {
