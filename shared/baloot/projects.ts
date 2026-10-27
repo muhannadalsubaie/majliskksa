@@ -7,7 +7,7 @@ export const PROJECT_ABNAT: Record<ProjectKind, number> = {
   fifty: 50,
   hundred: 100,
   hundredFifty: 150, // لم يعد يُستخدم (الأربعة أولاد صارت مية) — باقٍ لصكات قديمة محفوظة فقط
-  fourHundred: 400, // أربع أكات — صن فقط
+  fourHundred: 400, // أربع إكك في الصن (وفي الحكم مية)
 };
 
 export const PROJECT_NAMES: Record<ProjectKind, string> = {
@@ -52,7 +52,8 @@ function candidates(hand: Card[], mode: GameMode): Project[] {
   for (const [rank, cards] of byRank) {
     if (cards.length !== 4) continue;
     let kind: ProjectKind | null = null;
-    if (rank === 'A') kind = mode === 'sun' ? 'fourHundred' : null;
+    // أربع إكك: أربعمية في الصن، ومية في الحكم
+    if (rank === 'A') kind = mode === 'sun' ? 'fourHundred' : 'hundred';
     // أربعة أولاد أو شياب أو بنات أو عشرات: مية (في الحكم والصن)
     else if (rank === 'J' || rank === 'K' || rank === 'Q' || rank === '10') kind = 'hundred';
     if (kind) out.push({ kind, cards, topRank: rank });

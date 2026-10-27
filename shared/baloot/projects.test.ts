@@ -21,7 +21,7 @@ describe('findProjects', () => {
     expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']);
     expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']);
     expect(kinds('AS AH AC AD 7S 8D 9H 7C', 'sun')).toEqual(['fourHundred']);
-    expect(kinds('AS AH AC AD 7S 8D 9H 7C', 'hokm')).toEqual([]);
+    expect(kinds('AS AH AC AD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']); // أربع إكك في الحكم: مية
     expect(kinds('9S 9H 9C 9D 7S 8D 7H 7C', 'sun')).toEqual([]);
   });
   it('8-card run yields hundred + sira', () => {
