@@ -23,6 +23,8 @@ export const listFriends = () => post<HubState>('/friends/list');
 export const requestFriend = (username: string) => post<{ ok: true; friends?: boolean }>('/friends/request', { username });
 export const respondFriend = (uid: string, accept: boolean) => post('/friends/respond', { uid, accept });
 export const removeFriend = (uid: string) => post('/friends/remove', { uid });
+export const listBans = () => post<{ bans: { uid: string; username: string }[] }>('/bans/list');
+export const unbanUser = (uid: string) => post('/bans/remove', { uid });
 export const inviteFriend = (tableId: string, uid: string, seat?: number) => post(`/tables/${tableId}/inviteFriend`, { uid, seat });
 export const respondInvite = (tableId: string, accept: boolean) => post<{ ok: true; tableId?: string }>('/invites/respond', { tableId, accept });
 

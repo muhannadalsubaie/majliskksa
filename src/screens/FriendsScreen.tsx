@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { announce } from '../services/announcer';
-import { type Friend, type HubState, listFriends, removeFriend, requestFriend, respondFriend, socialError } from '../services/social';
+import { type Friend, type HubState, listBans, listFriends, removeFriend, requestFriend, respondFriend, socialError, unbanUser } from '../services/social';
 import type { Navigate } from '../state/navigation';
 
-type Tab = 'friends' | 'requests';
+type Tab = 'friends' | 'requests' | 'bans';
+const TABS: Tab[] = ['friends', 'requests', 'bans'];
 
 /** أيقونة شخص مع علامة زائد */
 function AddPersonIcon() {
@@ -27,7 +28,8 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
   const [tab, setTab] = useState<Tab>('friends');
   const [adding, setAdding] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const tabRefs = { friends: useRef<HTMLButtonElement>(null), requests: useRef<HTMLButtonElement>(null) };
+  const tabRefs = { friends: useRef<HTMLButtonElement>(null), requests: useRef<HTMLButtonElement>(null), bans: useRef<HTMLButtonElement>(null) };
+  const [bans, setBans] = useState<{ uid: string; username: string }[] | null>(null);
 
   // نافذة الإضافة: التركيز على الحقل، وEscape (أو زر الرجوع في الجهاز) يغلقها
   useEffect(() => {
@@ -41,10 +43,17 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
   // الأسهم تنقل بين التبويبين
   const onTabKey = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    const next: Tab = tab === 'friends' ? 'requests' : 'friends';
+    // في الصفحة العربية: السهم الأيسر للتبويب التالي
+    const step = e.key === 'ArrowLeft' ? 1 : -1;
+    const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length];
     setTab(next);
     tabRefs[next].current?.focus();
   };
+
+  useEffect(() => {
+    if (tab !== 'bans') return;
+    listBans().then((r) => setBans(r.bans)).catch(() => setBans([]));
+  }, [tab]);
 
   const refresh = useCallback(() => {
     listFriends().then((s) => setFriends(s.friends)).catch(() => setFriends([]));
@@ -101,7 +110,7 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
 
       {message && <p role="status" style={{ margin: 0, color: 'var(--gold-soft)' }}>{message}</p>}
 
-      <div className="tabs" role="tablist" aria-label="الأصدقاء والطلبات">
+      <div className="tabs" role="tablist" aria-label="الأصدقاء والطلبات والمحظورون">
         <button
           ref={tabRefs.friends} role="tab" id="tab-friends" aria-controls="panel-friends"
           aria-selected={tab === 'friends'} tabIndex={tab === 'friends' ? 0 : -1}
@@ -117,6 +126,13 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
           طلبات الصداقة
           {hub.requests.length > 0 && <span className="badge"> {hub.requests.length}</span>}
         </button>
+        <button
+          ref={tabRefs.bans} role="tab" id="tab-bans" aria-controls="panel-bans"
+          aria-selected={tab === 'bans'} tabIndex={tab === 'bans' ? 0 : -1}
+          onClick={() => setTab('bans')} onKeyDown={onTabKey}
+        >
+          المحظورون
+        </button>
       </div>
 
       {tab === 'friends' ? (
@@ -130,6 +146,24 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
                 {f.username}، {f.online ? 'متصل' : 'غير متصل'}
               </span>
               <button className="secondary" onClick={() => setToRemove(f)} aria-label={`حذف ${f.username} من الأصدقاء`}>حذف</button>
+            </div>
+          ))}
+        </section>
+      ) : tab === 'bans' ? (
+        <section id="panel-bans" role="tabpanel" aria-labelledby="tab-bans" className="stack">
+          <p className="note" style={{ margin: 0 }}>من حظرتهم لا يستطيعون دخول أي طاولة تملكها.</p>
+          {bans === null && <p role="status">جارٍ التحميل…</p>}
+          {bans?.length === 0 && <p className="note">لا يوجد محظورون.</p>}
+          {bans?.map((b) => (
+            <div key={b.uid} className="seat-row">
+              <span>{b.username}</span>
+              <button className="secondary" aria-label={`رفع الحظر عن ${b.username}`} onClick={async () => {
+                try {
+                  await unbanUser(b.uid);
+                  setBans((list) => list?.filter((x) => x.uid !== b.uid) ?? null);
+                  announce(`رُفع الحظر عن ${b.username}`);
+                } catch (e) { announce(socialError(e)); }
+              }}>رفع الحظر</button>
             </div>
           ))}
         </section>

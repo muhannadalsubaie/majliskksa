@@ -242,6 +242,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ...state, friends });
     }
 
+    // المحظورون: من حظرهم اللاعب من طاولاته، ورفع الحظر
+    if (pathname === '/bans/list' && request.method === 'POST') {
+      return json({ bans: await hub(user.uid).bans() });
+    }
+    if (pathname === '/bans/remove' && request.method === 'POST') {
+      const target = String((await body()).uid ?? '');
+      if (!target) return json({ error: 'bad-request' }, 400);
+      await hub(user.uid).unban(target);
+      return json({ ok: true });
+    }
+
     if (pathname === '/friends/request' && request.method === 'POST') {
       const target = await uidOfUsername(String((await body()).username ?? '').trim());
       if (!target) return json({ error: 'user-not-found' }, 404);

@@ -153,6 +153,16 @@ export class UserHub extends DurableObject<Env> {
     await this.ctx.storage.put('banned', { ...banned, [uid]: username });
   }
 
+  async bans(): Promise<{ uid: string; username: string }[]> {
+    return Object.entries(await this.map('banned')).map(([uid, username]) => ({ uid, username }));
+  }
+
+  async unban(uid: string): Promise<void> {
+    const banned = await this.map('banned');
+    delete banned[uid];
+    await this.ctx.storage.put('banned', banned);
+  }
+
   async isBanned(uid: string): Promise<boolean> {
     return uid in (await this.map('banned'));
   }
