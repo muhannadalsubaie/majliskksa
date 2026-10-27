@@ -3,7 +3,7 @@ import type { Seat } from './cards';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER, teamOf } from './cards';
 import {
   type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn,
-  canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
+  canDeclareProject, dealHand, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './game';
 import { seededRng } from './testing';
 
@@ -34,6 +34,28 @@ function playHand(s: GameState, rng: () => number): GameState {
   }
   return s;
 }
+
+// التوزيع عادل: كل ورقة لها نفس الفرصة أن تكون مع أي لاعب (اختبار إحصائي على آلاف التوزيعات)
+it('deals are uniformly random: every card is equally likely to land with each seat', () => {
+  const rng = () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+  const N = 8000;
+  const counts = new Map<string, number[]>();
+  for (let n = 0; n < N; n++) {
+    const s = dealHand(0, [0, 0], rng);
+    s.hands.forEach((hand, seat) => hand.forEach((c) => {
+      const k = `${c.rank}${c.suit}`;
+      if (!counts.has(k)) counts.set(k, [0, 0, 0, 0]);
+      counts.get(k)![seat]++;
+    }));
+  }
+  // كل لاعب يأخذ 5 من 32 ورقة: المتوقع لكل ورقة عند كل لاعب N×5/32 = 1250، ونسمح بانحراف ±12%
+  const expected = (N * 5) / 32;
+  for (const [, perSeat] of counts) for (const n of perSeat) expect(Math.abs(n - expected) / expected).toBeLessThan(0.12);
+  // وتوزيعان متتاليان لا يتكرران
+  const a = dealHand(0, [0, 0], rng).hands.flat().map((c) => c.rank + c.suit).join();
+  const b = dealHand(0, [0, 0], rng).hands.flat().map((c) => c.rank + c.suit).join();
+  expect(a).not.toBe(b);
+});
 
 describe('game flow', () => {
   it('initial deal: 5 cards each + qaba, bidding starts right of dealer', () => {

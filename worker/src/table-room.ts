@@ -30,7 +30,11 @@ type ClientMessage =
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
   | { type: 'setPrivate'; isPrivate: boolean };
 
-const rng = () => Math.random();
+/**
+ * عشوائية آمنة لخلط الورق والتوزيع: من مولّد التشفير في النظام (crypto.getRandomValues)،
+ * لا يمكن توقعه ولا التلاعب به، وكل توزيع مستقل تماماً عن الذي قبله.
+ */
+const rng = () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
 
 /** اسم مسار الميكروفون داخل جلسة كل شخص */
 const VOICE_TRACK = 'mic';
