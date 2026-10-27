@@ -4,7 +4,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Switch } from '../components/Switch';
 import { isMuted, isTurnChimeOn, setMuted, setTurnChime } from '../services/preferences';
 import { connectFirebase } from '../services/firebase';
-import { ANNOUNCE_PACES, type AnnouncePace, announce, getAnnouncePace, isSpeechEnabled, setAnnouncePace, setSpeechEnabled } from '../services/announcer';
+import { announce } from '../services/announcer';
 import { deleteMyAccount } from '../services/tables';
 import { SITE_URL } from '../services/api';
 import { isScreenReaderSettingOn, setScreenReader } from '../services/screenReader';
@@ -19,12 +19,10 @@ import type { Navigate } from '../state/navigation';
 export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onClose?: () => void }) {
   const embedded = Boolean(onClose);
   const Root = embedded ? 'div' : 'main';
-  const [speech, setSpeech] = useState(isSpeechEnabled());
   const [reader, setReader] = useState(isScreenReaderSettingOn());
   const [muted, setMutedState] = useState(isMuted());
   const [turnChime, setTurnChimeState] = useState(isTurnChimeOn());
   const [rate, setRate] = useState(getSpeechRate());
-  const [pace, setPace] = useState<AnnouncePace>(getAnnouncePace());
 
   const changeRate = (delta: number) => {
     const r = setSpeechRate(rate + delta);
@@ -79,38 +77,6 @@ export function SettingsScreen({ navigate, onClose }: { navigate: Navigate; onCl
         )}
       </section>
 
-      <section aria-labelledby="sec-speech" className="stack">
-        <h2 id="sec-speech">نطق الأحداث</h2>
-        <h3 id="pace-title" style={{ margin: '6px 0 0', fontSize: 17 }}>سرعة إعلانات اللعب</h3>
-        <p className="note" style={{ margin: 0 }}>
-          كم ينتظر التطبيق بين إعلان وآخر حتى لا يقطع قارئ الشاشة جملته. جرّب بزر "تجربة الإعلانات": إن انقطعت جملة قبل أن تكتمل اختر سرعة أبطأ، وإن كان الانتظار طويلاً اختر أسرع.
-        </p>
-        <div className="rate-row" role="radiogroup" aria-labelledby="pace-title" style={{ flexWrap: 'wrap' }}>
-          {ANNOUNCE_PACES.map((p) => (
-            <button
-              key={p.id}
-              role="radio"
-              aria-checked={pace === p.id}
-              className={pace === p.id ? '' : 'secondary'}
-              onClick={() => { setPace(p.id); setAnnouncePace(p.id); announce(`سرعة الإعلانات ${p.label}`); }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {/* أربع حركات متتالية كما في اللعب: إن انقطع أي منها اختر سرعة أبطأ */}
-        <button className="secondary" onClick={() => {
-          // كل حركة تصل بعد الأخرى بلحظة، كما يلعب الروبوتات
-          ['سالم رمى 10 شريا', 'فهد رمى الإكه شريا', 'علي رمى 7 شريا', 'يوسف رمى 8 شريا', 'الأكلة لسالم، دور سالم']
-            .forEach((m, i) => setTimeout(() => announce(m), i * 600));
-        }}>تجربة الإعلانات</button>
-        <Switch
-          label="نطق أحداث اللعبة بصوت التطبيق"
-          checked={speech}
-          onChange={(on) => { setSpeech(on); setSpeechEnabled(on); }}
-          description="لمن لا يستخدم أي قارئ شاشة. مع TalkBack أو VoiceOver اتركه مغلقاً: قارئك ينطق الأحداث تلقائياً."
-        />
-      </section>
 
       {!embedded && (
       <section aria-labelledby="sec-account" className="stack">
