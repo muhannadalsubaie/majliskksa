@@ -9,7 +9,7 @@ import type { TableView } from '../../shared/table';
 import { announce } from '../services/announcer';
 import type { ClientMessage } from '../services/tables';
 import { watchRewardedAd } from '../services/ads';
-import { type Friend, inviteFriend, listFriends, socialError } from '../services/social';
+import { type Friend, inviteFriend, listFriends, requestFriend, socialError } from '../services/social';
 
 interface Props {
   view: TableView;
@@ -53,6 +53,21 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
 
   const memberLabel = (u: string) =>
     view.seats[view.seatUids.indexOf(u)]?.username ?? view.spectators.find((s) => s.uid === u)?.username ?? 'هذا الشخص';
+
+  // أصدقائي (لإظهار "إضافة صديق" لمن ليس منهم) — تُحمَّل عند فتح اللاعبين
+  const [friendIds, setFriendIds] = useState<Set<string> | null>(null);
+  const [requested, setRequested] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (page !== 'players') return;
+    listFriends().then((r) => setFriendIds(new Set(r.friends.map((f) => f.uid)))).catch(() => setFriendIds(new Set()));
+  }, [page]);
+  const addFriend = async (u: string, name: string) => {
+    try {
+      const r = await requestFriend(name);
+      setRequested((x) => new Set(x).add(u));
+      announce(r.friends ? `أصبح ${name} صديقك` : `أُرسل طلب صداقة إلى ${name}`);
+    } catch (e) { announce(socialError(e)); }
+  };
 
   // صفحة الدعوة: قائمة الأصدقاء مع حالة الاتصال (تُحدَّث كل 10 ثوانٍ)
   useEffect(() => {
@@ -156,7 +171,8 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
     );
   } else if (page === 'players') {
     // المالك يضغط على أي حاضر (غيره) فتظهر خياراته: كتم، طرد، حظر، استبدال
-    const canManage = (u: string | undefined) => isOwner && !!u && u !== uid && !u.startsWith('bot-');
+    // أي حاضر حقيقي غيرك: تضغطه فتظهر خياراته (إضافة صديق، ولمالك الطاولة: كتم وطرد وحظر)
+    const canManage = (u: string | undefined) => !!u && u !== uid && !u.startsWith('bot-');
     body = (
       <>
         <h2 id="menu-title" ref={titleRef} tabIndex={-1}>اللاعبون</h2>
@@ -169,7 +185,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
                 {canManage(u)
                   ? <button className="secondary member-btn" onClick={() => setPage({ member: u })}>{seatLabel(i)}{muted}</button>
                   : <span>{seatLabel(i)}</span>}
-                {isOwner && i !== view.mySeat && !canManage(u) && (
+                {isOwner && i !== view.mySeat && !canManage(u) && (view.seats[i]?.isBot || !view.seats[i]) && (
                   <button className="secondary" onClick={() => setPage({ replace: i })} aria-label={`استبدال ${view.seats[i]?.username ?? 'المقعد الفارغ'}`}>
                     استبدال
                   </button>
@@ -190,7 +206,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
             ))}
           </ul>
         ) : <p className="note">لا يوجد مشاهدون</p>}
-        {isOwner && <p className="note" style={{ margin: 0 }}>اضغط على أي شخص لكتمه أو طرده أو حظره.</p>}
+        <p className="note" style={{ margin: 0 }}>{isOwner ? 'اضغط على أي شخص لإضافته صديقاً، أو لكتمه أو طرده أو حظره.' : 'اضغط على أي شخص لإضافته صديقاً.'}</p>
         <button className="secondary back-btn" onClick={() => setPage('main')}>رجوع</button>
       </>
     );
@@ -209,6 +225,10 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
       <>
         <h2 id="menu-title" ref={titleRef} tabIndex={-1}>{name}</h2>
         <div className="stack">
+          {friendIds?.has(u) ? <p className="note" style={{ margin: 0 }}>صديقك</p>
+            : requested.has(u) ? <p className="note" style={{ margin: 0 }}>أُرسل طلب الصداقة</p>
+              : <button onClick={() => void addFriend(u, name)}>إضافة صديق</button>}
+          {isOwner && <>
           <button className="secondary" onClick={() => { send({ type: 'voiceBlock', uid: u, blocked: !blocked }); setPage('players'); }}>
             {blocked ? 'إلغاء الكتم في المحادثة الصوتية' : 'كتم في المحادثة الصوتية'}
           </button>
@@ -221,6 +241,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           {seat >= 0 && (
             <button className="secondary" onClick={() => setPage({ replace: seat as Seat })}>استبداله بمشاهد</button>
           )}
+          </>}
         </div>
         <button className="secondary back-btn" onClick={() => setPage('players')}>رجوع</button>
       </>
