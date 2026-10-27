@@ -269,7 +269,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     return (
       <main className="screen center" aria-labelledby="table-kicked">
         <h1 id="table-kicked">{kicked === 'banned' ? 'حظرك مالك الطاولة' : 'أخرجك مالك الطاولة'}</h1>
-        <p>{kicked === 'banned' ? 'لا يمكنك الدخول لهذه الطاولة مرة أخرى.' : 'يمكنك الانضمام لطاولة أخرى.'}</p>
+        <p>{kicked === 'banned'
+          ? 'لا يمكنك دخول هذه الطاولة ولا أي طاولة يملكها.'
+          : 'يمكنك دخول أي طاولة أخرى الآن، والعودة لهذه الطاولة بعد ساعة.'}</p>
         <button onClick={() => navigate('menu')}>العودة للقائمة الرئيسية</button>
       </main>
     );

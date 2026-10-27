@@ -147,6 +147,16 @@ export class UserHub extends DurableObject<Env> {
   }
 
   /** ملاحظة تشخيصية قصيرة (تُستخدم لآخر سبب رفض لطلبات SSV) */
+  // ───── الحظر: من حظرهم هذا اللاعب لا يدخلون أي طاولة يملكها ─────
+  async ban(uid: string, username: string): Promise<void> {
+    const banned = await this.map('banned');
+    await this.ctx.storage.put('banned', { ...banned, [uid]: username });
+  }
+
+  async isBanned(uid: string): Promise<boolean> {
+    return uid in (await this.map('banned'));
+  }
+
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
 

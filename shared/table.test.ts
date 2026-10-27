@@ -209,10 +209,14 @@ describe('owner moderation', () => {
     expect(isVoiceBlocked(muted, 'u2')).toBe(true);
     expect(muted.voice!.u2.muted).toBe(true);
     expect(isVoiceBlocked(setVoiceBlocked(muted, 'u2', false), 'u2')).toBe(false);
-    // طرد: يخرج ويستطيع العودة
-    const kicked = kick(t, 'u2', false).table;
+    // طرد: يخرج، ولا يعود لنفس الطاولة إلا بعد ساعة
+    const kicked = kick(t, 'u2', false, Math.random, 1000).table;
     expect(memberName(kicked, 'u2')).toBeNull();
-    expect(memberName(join(kicked, { uid: 'u2', username: 'سالم' }).table, 'u2')).toBe('سالم');
+    expect(() => join(kicked, { uid: 'u2', username: 'سالم' }, undefined, 1000 + 59 * 60_000)).toThrow(TableError);
+    expect(memberName(join(kicked, { uid: 'u2', username: 'سالم' }, undefined, 1000 + 60 * 60_000).table, 'u2')).toBe('سالم');
+    // الكتم يزول إذا غادر وعاد
+    const left = leave(muted, 'u2').table;
+    expect(isVoiceBlocked(join(left, { uid: 'u2', username: 'سالم' }).table, 'u2')).toBe(false);
     // حظر: لا يعود
     const banned = kick(t, 'u3', true).table;
     expect(() => join(banned, { uid: 'u3', username: 'فهد' })).toThrow(TableError);

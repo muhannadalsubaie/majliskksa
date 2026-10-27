@@ -7,7 +7,7 @@ import {
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
 import { RULES } from './baloot/scoring';
-import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
+import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
 
@@ -36,6 +36,8 @@ export interface TableData {
   lobbyAway?: Record<string, number>;
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
   banned?: string[];
+  /** مطرودون: uid → متى يُسمح له بالعودة لهذه الطاولة */
+  kicked?: Record<string, number>;
   /** كتمهم المالك في المحادثة الصوتية: لا يصل صوتهم لأحد ولا يستطيعون فتح الميكروفون */
   voiceBlocked?: string[];
 }
@@ -187,9 +189,10 @@ function botName(t: TableData, rng: () => number): string {
  * ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول.
  * بدعوة صالحة: لا رسوم (دفعها المالك)، ويمكن دخول الطاولة الخاصة. الدعوة تُستهلك.
  */
-export function join(t: TableData, user: { uid: string; username: string }, invite?: string): { table: TableData; charge: boolean } {
+export function join(t: TableData, user: { uid: string; username: string }, invite?: string, now = Date.now()): { table: TableData; charge: boolean } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (t.banned?.includes(user.uid)) throw new TableError('banned');
+  if ((t.kicked?.[user.uid] ?? 0) > now) throw new TableError('kicked');
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
   const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
   const inv = invite ? invites.find((i) => i.code === invite) : undefined;
@@ -211,11 +214,17 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
 }
 
 /** المالك يُخرج حاضراً (ويحظره إن طلب): أثناء اللعب يحل روبوت مكانه */
-export function kick(t: TableData, uid: string, ban: boolean, rng: () => number = Math.random) {
+export function kick(t: TableData, uid: string, ban: boolean, rng: () => number = Math.random, now = Date.now()) {
   if (uid === t.ownerUid || !memberName(t, uid)) throw new TableError('bad-request');
   const r = leave(t, uid, rng);
-  return { ...r, table: ban ? { ...r.table, banned: [...new Set([...(r.table.banned ?? []), uid])] } : r.table };
+  const table = ban
+    ? { ...r.table, banned: [...new Set([...(r.table.banned ?? []), uid])] }
+    : { ...r.table, kicked: { ...pruneKicked(r.table.kicked, now), [uid]: now + KICK_BLOCK_MS } };
+  return { ...r, table };
 }
+
+/** نحذف من انتهت مدة منعه */
+const pruneKicked = (k: TableData['kicked'], now: number) => Object.fromEntries(Object.entries(k ?? {}).filter(([, until]) => until > now));
 
 /** المالك يكتم حاضراً في المحادثة الصوتية أو يلغي كتمه */
 export function setVoiceBlocked(t: TableData, uid: string, blocked: boolean): TableData {
@@ -229,7 +238,9 @@ export const isVoiceBlocked = (t: TableData, uid: string) => Boolean(t.voiceBloc
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
 export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean; newOwner?: string } {
-  const t = markLobbyBack(markBack(withoutVoice(t0, uid), uid), uid);
+  const left = markLobbyBack(markBack(withoutVoice(t0, uid), uid), uid);
+  // الكتم يبقى حتى يلغيه المالك أو يغادر صاحبه الطاولة
+  const t = left.voiceBlocked?.includes(uid) ? { ...left, voiceBlocked: left.voiceBlocked.filter((u) => u !== uid) } : left;
   const seat = seatOf(t, uid);
   let table: TableData;
   let botReplaced = false;

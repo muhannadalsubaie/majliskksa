@@ -201,6 +201,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           <button className="secondary" onClick={() => { send({ type: 'voiceBlock', uid: u, blocked: !blocked }); setPage('players'); }}>
             {blocked ? 'إلغاء الكتم في المحادثة الصوتية' : 'كتم في المحادثة الصوتية'}
           </button>
+          {!blocked && <p className="note" style={{ margin: 0 }}>يبقى مكتوماً حتى تلغي الكتم، أو يغادر الطاولة ويعود.</p>}
           <button className="danger" onClick={() => setPage({ confirm: 'kick', uid: u })}>طرد من الطاولة</button>
           <button className="danger" onClick={() => setPage({ confirm: 'ban', uid: u })}>حظر من الطاولة</button>
           {seat >= 0 && view.seats[seat]?.away && (
@@ -221,8 +222,8 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
         <h2 id="menu-title" ref={titleRef} tabIndex={-1}>{ban ? `حظر ${name}؟` : `طرد ${name}؟`}</h2>
         <p style={{ margin: 0 }}>
           {ban
-            ? 'سيخرج من الطاولة ولن يستطيع الدخول إليها مرة أخرى.'
-            : 'سيخرج من الطاولة، ويستطيع الدخول مرة أخرى لاحقاً.'}
+            ? 'سيخرج من الطاولة، ولن يستطيع دخول هذه الطاولة ولا أي طاولة تملكها.'
+            : 'سيخرج من الطاولة. يستطيع دخول أي طاولة أخرى فوراً، والعودة لهذه الطاولة بعد ساعة.'}
           {view.game && view.game.phase !== 'matchOver' && view.seatUids.includes(page.uid) ? ' يحل روبوت مكانه في اللعب.' : ''}
         </p>
         <div className="actions">

@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
 import { Realtime, type SessionDescription } from './realtime';
@@ -162,6 +162,10 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     try {
+      // من حظره مالك هذه الطاولة لا يدخل أي طاولة يملكها
+      if (!inTable(t, user.uid) && await this.env.HUBS.get(this.env.HUBS.idFromName(t.ownerUid)).isBanned(user.uid)) {
+        return { error: 'banned-by-owner' };
+      }
       const r = join(t, user, invite);
       if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable);
       await this.save(r.table);
@@ -435,6 +439,8 @@ export class TableRoom extends DurableObject<Env> {
         const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
         const seat = seatOf(t, msg.uid);
         const r = kick(t.voice?.[msg.uid] ? await this.accountVoice(t) : t, msg.uid, msg.type === 'ban', rng);
+        // الحظر عند المالك نفسه: يشمل كل طاولاته الحالية والقادمة
+        if (msg.type === 'ban') await this.env.HUBS.get(this.env.HUBS.idFromName(uid)).ban(msg.uid, who);
         await this.save(r.table);
         // نبلغه ونغلق اتصاله بالطاولة
         for (const w of this.ctx.getWebSockets()) {
