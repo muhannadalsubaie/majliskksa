@@ -383,12 +383,10 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
             </div>
           </section>
 
-          {/* ليس منطقة حية: "دورك" يُعلن مرة واحدة، وتحديثها مع كل ورقة كان يقطع إعلانات اللعب */}
-          <p className="turn-line" tabIndex={-1}>
-            {g.phase === 'matchOver'
-              ? (g.outcome.status === 'won' ? (g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر') : '')
-              : myTurn ? 'دورك' : g.phase === 'doubling' ? (g.doubling.lockPending != null ? `بانتظار ${name(g.doubling.lockPending)}: مقفل أو مفتوح` : g.doubling.awaitingSeat != null ? `بانتظار قرار ${name(g.doubling.awaitingSeat)} في الدبل` : 'بانتظار قرار الدبل') : `دور ${name(g.turn)}`}
-          </p>
+          {/* لا مربع للدور: الدور يُعلن صوتياً فقط ("دورك")، ويظهر بإطار حول اسم صاحب الدور */}
+          {g.phase === 'matchOver' && g.outcome.status === 'won' && (
+            <p className="turn-line">{g.outcome.winner === myTeam ? '🎉 فاز فريقك!' : 'فاز الفريق الآخر'}</p>
+          )}
 
           {/* أزرار المزايدة */}
           {g.actions.bids.length > 0 && (
