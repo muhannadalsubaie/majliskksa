@@ -1,0 +1,2 @@
+/* اختيار اللعبة */
+.game-option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; padding: 12px 14px; }

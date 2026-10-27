@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { seededRng } from '../../shared/baloot/testing';
 import { jackarooBotAction } from './bot';
 import {
-  type Card, type JackarooState, type Marble, JackarooError, applyJackaroo, fullDeck, legalMoves,
+  type Card, type JackarooState, type Marble, COMPLEX_RULES, JackarooError, applyJackaroo, fullDeck, legalMoves,
   movesForCard, mustBurn, newGame, startOf, trackLen,
 } from './engine';
 import { boardSummary, cardName, moveAnnouncement } from './labels';
@@ -122,5 +122,53 @@ describe('jackaroo', () => {
     expect(cardName(card('K'))).toBe('شايب');
     expect(moveAnnouncement(after, names, 0)[0]).toBe('أنت لعب أص: إنزال حجرك 1');
     expect(boardSummary(after, names, 0)).toMatch(/^أحجارك: 1 على قاعدته/);
+  });
+});
+
+describe('jackaroo complex', () => {
+  const cx = (marbles: Marble[][], hand: Card[]) => ({ ...setup(marbles, hand), rules: COMPLEX_RULES });
+
+  it('king runs 13 and captures every marble it passes, even one protected on its base', () => {
+    // حجر اللاعب 1 على قاعدته (19) في الطريق، وحجر للاعب 2 مكان الوقوف
+    const s = cx([[track(10)], [track(19)], [track(23)], []], [card('K')]);
+    const runs = movesForCard(s, 0, card('K')).filter((m) => m.kind === 'kingRun');
+    expect(runs).toHaveLength(1);
+    const after = applyJackaroo(s, { type: 'play', seat: 0, card: card('K'), move: runs[0] }, seededRng(1));
+    expect(after.marbles[0][0]).toEqual(track(23));
+    expect(after.marbles[1][0]).toEqual(home);
+    expect(after.marbles[2][0]).toEqual(home);
+    expect(after.lastMove!.captured).toHaveLength(2);
+  });
+
+  it('red jack moves 11, black jack swaps', () => {
+    const s = cx([[track(30)], [track(50)], [], []], [card('J', 'H'), card('J', 'S')]);
+    expect(movesForCard(s, 0, card('J', 'H'))).toEqual([{ kind: 'forward', marble: { owner: 0, index: 0 }, steps: 11 }]);
+    expect(movesForCard(s, 0, card('J', 'S'))).toEqual([{ kind: 'swap', mine: { owner: 0, index: 0 }, other: { owner: 1, index: 0 } }]);
+  });
+
+  it('red queen moves 12; black queen makes the next player burn the card you pick (he keeps his turn)', () => {
+    const s = cx([[track(30)], [], [], []], [card('Q', 'D'), card('Q', 'C')]);
+    expect(movesForCard(s, 0, card('Q', 'D'))).toEqual([{ kind: 'forward', marble: { owner: 0, index: 0 }, steps: 12 }]);
+    const picks = movesForCard(s, 0, card('Q', 'C'));
+    expect(picks).toEqual([{ kind: 'discardNext', index: 0 }]);
+    const after = applyJackaroo(s, { type: 'play', seat: 0, card: card('Q', 'C'), move: picks[0] }, seededRng(2));
+    expect(after.hands[1]).toHaveLength(0);
+    expect(after.lastMove!.discarded).toEqual(card('2', 'H'));
+  });
+
+  it('bots finish complete complex games', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const rng = seededRng(seed * 7);
+      let s = newGame(rng, COMPLEX_RULES);
+      let steps = 0;
+      while (s.phase === 'playing') {
+        const a = jackarooBotAction(s, s.turn);
+        expect(a, `seed ${seed}: stuck`).not.toBeNull();
+        s = applyJackaroo(s, a!, rng);
+        expect(s.hands.flat().length + s.deck.length + s.pile.length).toBe(52);
+        if (++steps > 20000) throw new Error('too long');
+      }
+      expect(s.winnerTeam).not.toBeNull();
+    }
   });
 });

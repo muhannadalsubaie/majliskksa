@@ -126,7 +126,7 @@ export function JackarooTable({ onExit, rules = DEFAULT_RULES, names: given }: P
             return (
               <button
                 key={`${c.rank}${c.suit}`} className={`jk-card${red ? ' red' : ''}`} aria-disabled={!usable}
-                aria-label={`${cardName(c)}، ${burning ? 'حرق' : cardHint(c, rules.kingThirteen)}`}
+                aria-label={`${cardName(c)}، ${burning ? 'حرق' : cardHint(c, rules.kingThirteen, rules.complex)}`}
                 onClick={() => onCard(c)}
               >
                 <span aria-hidden="true">{c.rank === '10' ? '10' : c.rank}{SUIT_SYMBOL[c.suit]}</span>
