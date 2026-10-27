@@ -16,7 +16,9 @@ describe('findProjects', () => {
   });
   it('four of a kind', () => {
     expect(kinds('KS KH KC KD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']);
-    expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'sun')).toEqual(['hundredFifty']);
+    // أربعة أولاد: مية في الصن والحكم
+    expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'sun')).toEqual(['hundred']);
+    expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']);
     expect(kinds('JS JH JC JD 7S 8D 9H 7C', 'hokm')).toEqual(['hundred']);
     expect(kinds('AS AH AC AD 7S 8D 9H 7C', 'sun')).toEqual(['fourHundred']);
     expect(kinds('AS AH AC AD 7S 8D 9H 7C', 'hokm')).toEqual([]);
