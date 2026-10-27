@@ -27,7 +27,8 @@ type ClientMessage =
   | { type: 'stop' }
   | { type: 'kick'; uid: string }
   | { type: 'ban'; uid: string }
-  | { type: 'voiceBlock'; uid: string; blocked: boolean };
+  | { type: 'voiceBlock'; uid: string; blocked: boolean }
+  | { type: 'setPrivate'; isPrivate: boolean };
 
 const rng = () => Math.random();
 
@@ -452,6 +453,15 @@ export class TableRoom extends DurableObject<Env> {
           ...(r.botReplaced && seat !== null ? [`حلّ ${r.table.seats[seat]!.username} مكانه`] : []),
         ]);
         await this.publish(r.table);
+        break;
+      }
+      case 'setPrivate': {
+        // المالك يجعل الطاولة خاصة (بالدعوة فقط، لا تظهر في القائمة العامة) أو عامة
+        if (!isOwner) throw new Error('not-owner');
+        const next = { ...t, isPrivate: msg.isPrivate === true };
+        await this.save(next);
+        this.broadcast([next.isPrivate ? 'أصبحت الطاولة خاصة: الدخول بالدعوة فقط' : 'أصبحت الطاولة عامة: تظهر لكل اللاعبين']);
+        await this.publish(next);
         break;
       }
       case 'voiceBlock': {

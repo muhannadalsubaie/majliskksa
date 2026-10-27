@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { joinVoice, leaveVoice, useVoice } from '../services/voice';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { Switch } from './Switch';
 import type { Seat } from '../../shared/baloot/cards';
 import { teamOf } from '../../shared/baloot/cards';
 import { COINS } from '../../shared/economy';
@@ -80,6 +81,16 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
       <>
         <h2 id="menu-title" ref={titleRef} tabIndex={-1}>القائمة</h2>
         <div className="stack">
+          {isOwner ? (
+            <Switch
+              label="طاولة خاصة"
+              checked={view.isPrivate}
+              onChange={(on) => send({ type: 'setPrivate', isPrivate: on })}
+              description={view.isPrivate ? 'تظهر مقفلة في قائمة الطاولات، والدخول بالدعوة فقط.' : 'عامة: تظهر في قائمة الطاولات ويدخلها أي لاعب.'}
+            />
+          ) : (
+            <p className="note" style={{ margin: 0 }}>{view.isPrivate ? 'طاولة خاصة: الدخول بالدعوة فقط' : 'طاولة عامة'}</p>
+          )}
           <button className="secondary" onClick={() => setPage('players')}>اللاعبون</button>
           {isOwner && (
             <button className="secondary" onClick={() => setPage('invite')}>دعوة صديق</button>

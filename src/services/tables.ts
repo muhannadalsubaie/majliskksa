@@ -67,7 +67,8 @@ export type ClientMessage =
   | { type: 'stop' }
   | { type: 'kick'; uid: string }
   | { type: 'ban'; uid: string }
-  | { type: 'voiceBlock'; uid: string; blocked: boolean };
+  | { type: 'voiceBlock'; uid: string; blocked: boolean }
+  | { type: 'setPrivate'; isPrivate: boolean };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {
