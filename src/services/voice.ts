@@ -118,6 +118,11 @@ export function leaveVoice(quiet = false): Promise<void> {
 /** فتح/كتم الميكروفون. أول فتح يطلب إذن الميكروفون وينشره في الجلسة. */
 export function setVoiceMuted(muted: boolean): Promise<void> {
   if (!state.joined) return Promise.resolve();
+  // كتمه مالك الطاولة: لا يستطيع فتح الميكروفون حتى يلغي المالك الكتم
+  if (!muted && members.find((m) => m.uid === myUid)?.blocked) {
+    announce('كتمك مالك الطاولة، لا يمكنك فتح الميكروفون الآن');
+    return Promise.resolve();
+  }
   if (mic) {
     mic.enabled = !muted;
     set({ muted });
@@ -175,11 +180,18 @@ export function syncVoice(list: TableView['voice']) {
     return Promise.resolve();
   }
   if (missingTimer) { clearTimeout(missingTimer); missingTimer = null; }
+  // كتمني المالك وميكروفوني مفتوح: نغلقه فوراً
+  if (members.find((m) => m.uid === myUid)?.blocked && mic && !state.muted) {
+    mic.enabled = false;
+    set({ muted: true });
+    announce('كتمك مالك الطاولة في المحادثة الصوتية');
+  }
   return serial(async () => {
     if (!pc || !sessionId) return;
     // المفتاح uid + الجلسة: من أعاد الانضمام بجلسة جديدة نسحب صوته من جديد
     const key = (m: { uid: string; sessionId: string }) => `${m.uid}:${m.sessionId}`;
-    const others = new Map(members.filter((m) => m.uid !== myUid && m.mic).map((m) => [key(m), m]));
+    // من كتمه المالك لا نسحب صوته (والخادم يرفض سحبه أصلاً)
+    const others = new Map(members.filter((m) => m.uid !== myUid && m.mic && !m.blocked).map((m) => [key(m), m]));
     const gone = [...pulled.keys()].filter((k) => !others.has(k));
     if (gone.length) {
       const mids = gone.map((k) => pulled.get(k)!);

@@ -4,7 +4,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
 } from '../../shared/table';
 import { Realtime, type SessionDescription } from './realtime';
@@ -24,7 +24,10 @@ type ClientMessage =
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
   | { type: 'botNow'; seat: number }
-  | { type: 'stop' };
+  | { type: 'stop' }
+  | { type: 'kick'; uid: string }
+  | { type: 'ban'; uid: string }
+  | { type: 'voiceBlock'; uid: string; blocked: boolean };
 
 const rng = () => Math.random();
 
@@ -258,6 +261,7 @@ export class TableRoom extends DurableObject<Env> {
       case 'publish': {
         // أول مرة يفتح الميكروفون: ننشره في جلسته
         let sessionId = own(req.sessionId);
+        if (isVoiceBlocked(t, uid)) throw new Error('voice-blocked');
         if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
         const offer = req.offer, mid = req.mid;
         let answer: SessionDescription;
@@ -277,6 +281,8 @@ export class TableRoom extends DurableObject<Env> {
         const sessionId = own(req.sessionId);
         const remote = typeof req.uid === 'string' ? t.voice?.[req.uid] : undefined;
         if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
+        // صوت من كتمه المالك لا يُسحب لأحد
+        if (isVoiceBlocked(t, req.uid as string)) throw new Error('voice-blocked');
         try {
           return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
         } catch (e) {
@@ -299,6 +305,7 @@ export class TableRoom extends DurableObject<Env> {
       }
       case 'mute': {
         own(req.sessionId);
+        if (req.muted !== true && isVoiceBlocked(t, uid)) throw new Error('voice-blocked');
         const next = { ...t, voice: { ...t.voice, [uid]: { ...mine!, muted: req.muted === true } } };
         await this.save(next);
         this.broadcast([]);
@@ -418,6 +425,36 @@ export class TableRoom extends DurableObject<Env> {
         await this.save(next);
         this.broadcast([`حلّ ${next.seats[msg.seat]!.username} مكان ${who.username}`]);
         await this.publish(next);
+        break;
+      }
+      case 'kick':
+      case 'ban': {
+        // المالك يُخرج حاضراً، أو يحظره فلا يعود لهذه الطاولة
+        if (!isOwner) throw new Error('not-owner');
+        if (typeof msg.uid !== 'string') throw new Error('bad-request');
+        const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
+        const seat = seatOf(t, msg.uid);
+        const r = kick(t.voice?.[msg.uid] ? await this.accountVoice(t) : t, msg.uid, msg.type === 'ban', rng);
+        await this.save(r.table);
+        // نبلغه ونغلق اتصاله بالطاولة
+        for (const w of this.ctx.getWebSockets()) {
+          if ((w.deserializeAttachment() as { uid: string }).uid !== msg.uid) continue;
+          try { w.send(JSON.stringify({ type: 'kicked', banned: msg.type === 'ban' })); w.close(1000, 'kicked'); } catch { /* مغلق أصلاً */ }
+        }
+        this.broadcast([
+          msg.type === 'ban' ? `حظر مالك الطاولة ${who}` : `أخرج مالك الطاولة ${who}`,
+          ...(r.botReplaced && seat !== null ? [`حلّ ${r.table.seats[seat]!.username} مكانه`] : []),
+        ]);
+        await this.publish(r.table);
+        break;
+      }
+      case 'voiceBlock': {
+        // المالك يكتم حاضراً في المحادثة الصوتية (أو يلغي كتمه)
+        if (!isOwner) throw new Error('not-owner');
+        if (typeof msg.uid !== 'string') throw new Error('bad-request');
+        const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
+        await this.save(setVoiceBlocked(t, msg.uid, msg.blocked === true));
+        this.broadcast([msg.blocked ? `كتم مالك الطاولة ${who} في المحادثة الصوتية` : `ألغى مالك الطاولة كتم ${who}`]);
         break;
       }
       case 'stop': {

@@ -61,7 +61,7 @@ const sortHand = (hand: Card[]) =>
 const TRICK_HOLD_MS = 1200;
 
 export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: string; navigate: Navigate }) {
-  const { view, connected, closed, send } = useTable(tableId);
+  const { view, connected, closed, kicked, send } = useTable(tableId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -264,6 +264,16 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   const act = (action: Record<string, unknown>) => send({ type: 'action', action });
   const leaveTable = () => { send({ type: 'leave' }); navigate('menu'); };
+
+  if (kicked) {
+    return (
+      <main className="screen center" aria-labelledby="table-kicked">
+        <h1 id="table-kicked">{kicked === 'banned' ? 'حظرك مالك الطاولة' : 'أخرجك مالك الطاولة'}</h1>
+        <p>{kicked === 'banned' ? 'لا يمكنك الدخول لهذه الطاولة مرة أخرى.' : 'يمكنك الانضمام لطاولة أخرى.'}</p>
+        <button onClick={() => navigate('menu')}>العودة للقائمة الرئيسية</button>
+      </main>
+    );
+  }
 
   if (closed) {
     return (

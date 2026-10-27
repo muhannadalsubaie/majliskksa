@@ -6,8 +6,8 @@ it('lists voice members in the view and drops them when they leave', () => {
   t = join(t, { uid: 'b', username: 'بدر' }).table;
   t = { ...t, voice: { a: { sessionId: 's-a', muted: true, mic: false }, b: { sessionId: 's-b', muted: false, mic: true } } };
   expect(viewFor(t, 'a').voice).toEqual([
-    { uid: 'a', username: 'أحمد', sessionId: 's-a', muted: true, mic: false },
-    { uid: 'b', username: 'بدر', sessionId: 's-b', muted: false, mic: true },
+    { uid: 'a', username: 'أحمد', sessionId: 's-a', muted: true, mic: false, blocked: false },
+    { uid: 'b', username: 'بدر', sessionId: 's-b', muted: false, mic: true, blocked: false },
   ]);
   expect(Object.keys(leave(t, 'b').table.voice ?? {})).toEqual(['a']);
   expect(withoutVoice(t, 'a').voice).toEqual({ b: { sessionId: 's-b', muted: false, mic: true } });

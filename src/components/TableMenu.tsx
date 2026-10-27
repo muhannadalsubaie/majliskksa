@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = 'main' | 'players' | 'invite' | 'settings' | 'stop' | { replace: Seat };
+type Page = 'main' | 'players' | 'invite' | 'settings' | 'stop' | { replace: Seat } | { member: string } | { confirm: 'kick' | 'ban'; uid: string };
 
 /** قائمة الطاولة: اللاعبون، دعوة صديق، مشاهدة إعلان، مغادرة */
 export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
@@ -49,6 +49,9 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
     ].filter(Boolean);
     return `${s.username}${tags.length ? ` (${tags.join('، ')})` : ''}`;
   };
+
+  const memberLabel = (u: string) =>
+    view.seats[view.seatUids.indexOf(u)]?.username ?? view.spectators.find((s) => s.uid === u)?.username ?? 'هذا الشخص';
 
   // صفحة الدعوة: قائمة الأصدقاء مع حالة الاتصال (تُحدَّث كل 10 ثوانٍ)
   useEffect(() => {
@@ -141,31 +144,91 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
       </>
     );
   } else if (page === 'players') {
+    // المالك يضغط على أي حاضر (غيره) فتظهر خياراته: كتم، طرد، حظر، استبدال
+    const canManage = (u: string | undefined) => isOwner && !!u && u !== uid && !u.startsWith('bot-');
     body = (
       <>
         <h2 id="menu-title" ref={titleRef} tabIndex={-1}>اللاعبون</h2>
         <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {([0, 1, 2, 3] as Seat[]).map((i) => (
-            <li key={i} className="seat-row">
-              <span>{seatLabel(i)}</span>
-              {isOwner && view.seats[i]?.away && (
-                <button onClick={() => send({ type: 'botNow', seat: i })} aria-label={`روبوت مكان ${view.seats[i]!.username} الآن`}>
-                  روبوت الآن
-                </button>
-              )}
-              {isOwner && i !== view.mySeat && (
-                <button className="secondary" onClick={() => setPage({ replace: i })} aria-label={`استبدال ${view.seats[i]?.username ?? 'المقعد الفارغ'}`}>
-                  استبدال
-                </button>
-              )}
-            </li>
-          ))}
+          {([0, 1, 2, 3] as Seat[]).map((i) => {
+            const u = view.seatUids[i];
+            const muted = view.voiceBlocked?.includes(u) ? '، مكتوم' : '';
+            return (
+              <li key={i} className="seat-row">
+                {canManage(u)
+                  ? <button className="secondary member-btn" onClick={() => setPage({ member: u })}>{seatLabel(i)}{muted}</button>
+                  : <span>{seatLabel(i)}</span>}
+                {isOwner && i !== view.mySeat && !canManage(u) && (
+                  <button className="secondary" onClick={() => setPage({ replace: i })} aria-label={`استبدال ${view.seats[i]?.username ?? 'المقعد الفارغ'}`}>
+                    استبدال
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
         <h3 style={{ fontSize: 17, margin: '8px 0 0' }}>المشاهدون</h3>
-        {view.spectators.length
-          ? <ul className="stack" style={{ margin: 0 }}>{view.spectators.map((s) => <li key={s.uid}>{s.username}</li>)}</ul>
-          : <p className="note">لا يوجد مشاهدون</p>}
+        {view.spectators.length ? (
+          <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {view.spectators.map((s) => (
+              <li key={s.uid}>
+                {canManage(s.uid)
+                  ? <button className="secondary member-btn" onClick={() => setPage({ member: s.uid })}>{s.username} (مشاهد){view.voiceBlocked?.includes(s.uid) ? '، مكتوم' : ''}</button>
+                  : <span>{s.username}{s.uid === uid ? ' (أنت)' : ''}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="note">لا يوجد مشاهدون</p>}
+        {isOwner && <p className="note" style={{ margin: 0 }}>اضغط على أي شخص لكتمه أو طرده أو حظره.</p>}
         <button className="secondary back-btn" onClick={() => setPage('main')}>رجوع</button>
+      </>
+    );
+  } else if ('member' in page) {
+    // خيارات المالك لشخص واحد
+    const u = page.member;
+    const seat = view.seatUids.indexOf(u);
+    const name = seat >= 0 ? view.seats[seat]?.username : view.spectators.find((s) => s.uid === u)?.username;
+    const blocked = view.voiceBlocked?.includes(u) ?? false;
+    body = !name ? (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1}>لم يعد على الطاولة</h2>
+        <button className="secondary back-btn" onClick={() => setPage('players')}>رجوع</button>
+      </>
+    ) : (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1}>{name}</h2>
+        <div className="stack">
+          <button className="secondary" onClick={() => { send({ type: 'voiceBlock', uid: u, blocked: !blocked }); setPage('players'); }}>
+            {blocked ? 'إلغاء الكتم في المحادثة الصوتية' : 'كتم في المحادثة الصوتية'}
+          </button>
+          <button className="danger" onClick={() => setPage({ confirm: 'kick', uid: u })}>طرد من الطاولة</button>
+          <button className="danger" onClick={() => setPage({ confirm: 'ban', uid: u })}>حظر من الطاولة</button>
+          {seat >= 0 && view.seats[seat]?.away && (
+            <button className="secondary" onClick={() => { send({ type: 'botNow', seat: seat as Seat }); setPage('players'); }}>روبوت مكانه الآن</button>
+          )}
+          {seat >= 0 && (
+            <button className="secondary" onClick={() => setPage({ replace: seat as Seat })}>استبداله بمشاهد</button>
+          )}
+        </div>
+        <button className="secondary back-btn" onClick={() => setPage('players')}>رجوع</button>
+      </>
+    );
+  } else if ('confirm' in page) {
+    const name = memberLabel(page.uid);
+    const ban = page.confirm === 'ban';
+    body = (
+      <>
+        <h2 id="menu-title" ref={titleRef} tabIndex={-1}>{ban ? `حظر ${name}؟` : `طرد ${name}؟`}</h2>
+        <p style={{ margin: 0 }}>
+          {ban
+            ? 'سيخرج من الطاولة ولن يستطيع الدخول إليها مرة أخرى.'
+            : 'سيخرج من الطاولة، ويستطيع الدخول مرة أخرى لاحقاً.'}
+          {view.game && view.game.phase !== 'matchOver' && view.seatUids.includes(page.uid) ? ' يحل روبوت مكانه في اللعب.' : ''}
+        </p>
+        <div className="actions">
+          <button className="danger" onClick={() => { send({ type: ban ? 'ban' : 'kick', uid: page.uid }); setPage('players'); }}>{ban ? 'حظر' : 'طرد'}</button>
+          <button className="secondary" onClick={() => setPage({ member: page.uid })}>إلغاء</button>
+        </div>
       </>
     );
   } else {

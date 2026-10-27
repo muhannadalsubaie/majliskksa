@@ -47,6 +47,7 @@ export const API_ERRORS: Record<string, string> = {
   'not-enough-coins': 'رصيدك من العملات لا يكفي',
   'no-username': 'اختر اسم مستخدم أولاً',
   'table-full': 'الطاولة ممتلئة',
+  banned: 'مالك الطاولة حظرك من هذه الطاولة',
   'not-found': 'الطاولة غير موجودة',
   'not-a-member': 'لست عضواً في هذه الطاولة',
   'private': 'هذه طاولة خاصة — تحتاج دعوة من مالكها',
@@ -61,13 +62,18 @@ export type ClientMessage =
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
   | { type: 'botNow'; seat: number }
-  | { type: 'stop' };
+  | { type: 'stop' }
+  | { type: 'kick'; uid: string }
+  | { type: 'ban'; uid: string }
+  | { type: 'voiceBlock'; uid: string; blocked: boolean };
 
 /** اتصال حي بالطاولة: يستقبل الحالة والإعلانات، ويعيد الاتصال تلقائياً عند الانقطاع. */
 export function useTable(tableId: string) {
   const [view, setView] = useState<TableView | null>(null);
   const [connected, setConnected] = useState(false);
   const [closed, setClosed] = useState(false);
+  /** أخرجه المالك (أو حظره): لا نعيد الاتصال */
+  const [kicked, setKicked] = useState<null | 'kicked' | 'banned'>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const closedByUs = useRef(false);
 
@@ -93,6 +99,11 @@ export function useTable(tableId: string) {
           for (const e of msg.events as string[]) announce(e);
         }
         if (msg.type === 'error') announce(msg.message);
+        if (msg.type === 'kicked') {
+          closedByUs.current = true;
+          setKicked(msg.banned ? 'banned' : 'kicked');
+          announce(msg.banned ? 'حظرك مالك الطاولة' : 'أخرجك مالك الطاولة');
+        }
         if (msg.type === 'closed') {
           closedByUs.current = true; // لا نعيد الاتصال بطاولة مغلقة
           setClosed(true);
@@ -140,5 +151,5 @@ export function useTable(tableId: string) {
     else announce('جارٍ إعادة الاتصال بالطاولة…');
   }, []);
 
-  return { view, connected, closed, send };
+  return { view, connected, closed, kicked, send };
 }

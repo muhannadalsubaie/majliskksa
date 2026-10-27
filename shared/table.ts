@@ -34,6 +34,10 @@ export interface TableData {
   history?: HandRecord[];
   /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
   lobbyAway?: Record<string, number>;
+  /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
+  banned?: string[];
+  /** كتمهم المالك في المحادثة الصوتية: لا يصل صوتهم لأحد ولا يستطيعون فتح الميكروفون */
+  voiceBlocked?: string[];
 }
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
@@ -185,6 +189,7 @@ function botName(t: TableData, rng: () => number): string {
  */
 export function join(t: TableData, user: { uid: string; username: string }, invite?: string): { table: TableData; charge: boolean } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
+  if (t.banned?.includes(user.uid)) throw new TableError('banned');
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
   const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
   const inv = invite ? invites.find((i) => i.code === invite) : undefined;
@@ -204,6 +209,23 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   }
   return { table: { ...t, spectators: [...t.spectators, member], paid }, charge };
 }
+
+/** المالك يُخرج حاضراً (ويحظره إن طلب): أثناء اللعب يحل روبوت مكانه */
+export function kick(t: TableData, uid: string, ban: boolean, rng: () => number = Math.random) {
+  if (uid === t.ownerUid || !memberName(t, uid)) throw new TableError('bad-request');
+  const r = leave(t, uid, rng);
+  return { ...r, table: ban ? { ...r.table, banned: [...new Set([...(r.table.banned ?? []), uid])] } : r.table };
+}
+
+/** المالك يكتم حاضراً في المحادثة الصوتية أو يلغي كتمه */
+export function setVoiceBlocked(t: TableData, uid: string, blocked: boolean): TableData {
+  if (uid === t.ownerUid || !memberName(t, uid)) throw new TableError('bad-request');
+  const list = (t.voiceBlocked ?? []).filter((u) => u !== uid);
+  const voice = blocked && t.voice?.[uid] ? { ...t.voice, [uid]: { ...t.voice[uid], muted: true } } : t.voice;
+  return { ...t, voice, voiceBlocked: blocked ? [...list, uid] : list };
+}
+
+export const isVoiceBlocked = (t: TableData, uid: string) => Boolean(t.voiceBlocked?.includes(uid));
 
 /** يغادر مستخدم. أثناء اللعب يحل مكانه روبوت. يرجع هل حلّ روبوت مكانه. */
 export function leave(t0: TableData, uid: string, rng: () => number = Math.random): { table: TableData; botReplaced: boolean; newOwner?: string } {
@@ -559,7 +581,9 @@ export interface TableView {
   seatUids: string[];
   spectators: { uid: string; username: string }[];
   /** من في المحادثة الصوتية */
-  voice: { uid: string; username: string; sessionId: string; muted: boolean; mic: boolean }[];
+  voice: { uid: string; username: string; sessionId: string; muted: boolean; mic: boolean; blocked?: boolean }[];
+  /** من كتمهم المالك في المحادثة الصوتية */
+  voiceBlocked?: string[];
   game: GameView | null;
   /** سجل صكات المباراة الحالية */
   history: HandRecord[];
@@ -611,7 +635,8 @@ export function viewFor(t: TableData, uid: string): TableView {
     seatUids: t.seats.map((m) => m?.uid ?? ''),
     history: t.history ?? [],
     spectators: t.spectators.map((m) => ({ uid: m.uid, username: m.username })),
-    voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted, mic: v.mic !== false })),
+    voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted, mic: v.mic !== false, blocked: isVoiceBlocked(t, u) })),
+    voiceBlocked: t.voiceBlocked ?? [],
     game,
   };
 }

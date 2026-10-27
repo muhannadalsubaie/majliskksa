@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER } from './baloot/cards';
-import { BOT_NAMES, addBot, addInvite, assignSeat, join, leave, replaceSeat, vacateSeat, newTable, nextAutoStep, runAutoStep, start, stopGame, TableError, viewFor, type TableData } from './table';
+import { BOT_NAMES, addBot, addInvite, assignSeat, join, leave, replaceSeat, vacateSeat, newTable, nextAutoStep, runAutoStep, start, stopGame, kick, setVoiceBlocked, isVoiceBlocked, memberName, TableError, viewFor, type TableData } from './table';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -195,5 +195,28 @@ describe('table', () => {
       if (++guard > 50) break;
     }
     if (t.game!.phase === 'bidding' && t.game!.turn === 0) expect(nextAutoStep(t, rng)).toBeNull();
+  });
+});
+
+describe('owner moderation', () => {
+  it('kick removes, ban also blocks rejoining, voice block mutes', () => {
+    let t = newTable('t1', owner, false, 0);
+    t = join(t, { uid: 'u2', username: 'سالم' }).table;
+    t = join(t, { uid: 'u3', username: 'فهد' }).table;
+    // كتم في المحادثة الصوتية
+    t = { ...t, voice: { u2: { sessionId: 's', muted: false, mic: true } } };
+    const muted = setVoiceBlocked(t, 'u2', true);
+    expect(isVoiceBlocked(muted, 'u2')).toBe(true);
+    expect(muted.voice!.u2.muted).toBe(true);
+    expect(isVoiceBlocked(setVoiceBlocked(muted, 'u2', false), 'u2')).toBe(false);
+    // طرد: يخرج ويستطيع العودة
+    const kicked = kick(t, 'u2', false).table;
+    expect(memberName(kicked, 'u2')).toBeNull();
+    expect(memberName(join(kicked, { uid: 'u2', username: 'سالم' }).table, 'u2')).toBe('سالم');
+    // حظر: لا يعود
+    const banned = kick(t, 'u3', true).table;
+    expect(() => join(banned, { uid: 'u3', username: 'فهد' })).toThrow(TableError);
+    // لا يُطرد المالك
+    expect(() => kick(t, owner.uid, false)).toThrow(TableError);
   });
 });
