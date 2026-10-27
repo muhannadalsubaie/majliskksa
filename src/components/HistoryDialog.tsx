@@ -3,23 +3,22 @@ import type { HandRecord } from '../../shared/table';
 
 const LEVELS: Record<number, string> = { 2: 'دبل', 3: 'ثري', 4: 'فور' };
 
-/** نص سطر واحد في السجل: يُقرأ كاملاً بنقرة واحدة من قارئ الشاشة */
-function line(r: HandRecord, i: number): { title: string; rows: string[] } {
+/** سطر صكة واحدة: نوعها، والمشتري، وأبناط ونقاط كل فريق فيها هي فقط، والخاسر */
+function handLines(r: HandRecord, n: number): { title: string; rows: string[] } {
   const level = r.gahwa ? 'قهوة' : LEVELS[r.level] ?? '';
   const winner = r.kaboot ?? (r.buyerFailed ? 1 - r.buyerTeam : r.buyerTeam);
-  const loser = 1 - winner;
   return {
-    title: `الصكة ${i + 1}: ${r.contract}${level ? ` ${level}` : ''}${r.kaboot !== null ? '، كبوت' : ''}`,
+    title: `الصكة ${n}: ${r.contract}${level ? ` ${level}` : ''}${r.kaboot !== null ? '، كبوت' : ''}`,
     rows: [
       `المشتري: ${r.buyer} (${r.teams[r.buyerTeam]})`,
-      `${r.teams[0]}: ${r.abnat[0]} بنط، ${r.points[0]} نقطة`,
-      `${r.teams[1]}: ${r.abnat[1]} بنط، ${r.points[1]} نقطة`,
-      `الخاسر: ${r.teams[loser]}${r.buyerFailed && r.kaboot === null ? ' (خسر المشتري)' : ''}`,
+      `أبناط ${r.teams[0]}: ${r.abnat[0]}، ونقاطه ${r.points[0]}`,
+      `أبناط ${r.teams[1]}: ${r.abnat[1]}، ونقاطه ${r.points[1]}`,
+      `الخاسر: ${r.teams[1 - winner]}${r.buyerFailed && r.kaboot === null ? ' (خسر المشتري)' : ''}`,
     ],
   };
 }
 
-/** سجل المباراة: نتيجة كل صكة فقط (نوع اللعب، المشتري، أبناط ونقاط كل فريق، الخاسر) بلا أوراق */
+/** السجل: كل مباراة في قسم لحالها، وكل صكة فيها بأبناطها هي — بلا أوراق */
 export function HistoryDialog({ history, onClose }: { history: HandRecord[]; onClose: () => void }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -29,26 +28,43 @@ export function HistoryDialog({ history, onClose }: { history: HandRecord[]; onC
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // نجمع الصكات حسب المباراة، والأحدث أولاً
+  const matches = new Map<number, HandRecord[]>();
+  for (const r of history) {
+    const m = r.match ?? 1;
+    matches.set(m, [...(matches.get(m) ?? []), r]);
+  }
+  const ordered = [...matches.entries()].sort((a, b) => b[0] - a[0]);
+
   return (
     <div className="dialog-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="dialog stack" role="dialog" aria-modal="true" aria-labelledby="history-title">
         <h2 id="history-title" ref={titleRef} tabIndex={-1}>السجل</h2>
-        {history.length === 0 ? <p>لم تنتهِ أي صكة بعد</p> : (
-          <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {history.map((r, i) => {
-              const l = line(r, i);
-              return (
-                <li key={i} className="history-item">
-                  {/* فقرة واحدة: يقرؤها قارئ الشاشة كاملة دفعة واحدة */}
-                  <p style={{ margin: 0 }}>
-                    <strong>{l.title}.</strong>
-                    {l.rows.map((row) => <span key={row}><br />{row}.</span>)}
-                  </p>
-                </li>
-              );
-            })}
-          </ol>
-        )}
+        {ordered.length === 0 && <p>لم تنتهِ أي صكة بعد</p>}
+        {ordered.map(([match, hands]) => {
+          const total = hands.reduce((acc, r) => [acc[0] + r.points[0], acc[1] + r.points[1]], [0, 0]);
+          return (
+            <section key={match} className="stack history-match" aria-labelledby={`match-${match}`}>
+              <h3 id={`match-${match}`} style={{ margin: 0, fontSize: 18 }}>
+                المباراة {match}: {hands[0].teams[0]} {total[0]}، {hands[0].teams[1]} {total[1]}
+              </h3>
+              <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {hands.map((r, i) => {
+                  const l = handLines(r, i + 1);
+                  return (
+                    <li key={i} className="history-item">
+                      {/* فقرة واحدة: يقرؤها قارئ الشاشة كاملة دفعة واحدة */}
+                      <p style={{ margin: 0 }}>
+                        <strong>{l.title}.</strong>
+                        {l.rows.map((row) => <span key={row}><br />{row}.</span>)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          );
+        })}
         <button className="secondary" onClick={onClose}>إغلاق</button>
       </div>
     </div>

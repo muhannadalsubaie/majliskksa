@@ -29,8 +29,10 @@ export interface TableData {
   voiceSince?: number;
   /** لاعبون انقطع اتصالهم أثناء المباراة: uid → وقت الانقطاع (مقعدهم محجوز 3 دقائق) */
   away?: Record<string, number>;
-  /** سجل المباراة الحالية: نتيجة كل صكة (بلا أوراق) */
+  /** سجل المباريات على هذه الطاولة: نتيجة كل صكة (بلا أوراق) */
   history?: HandRecord[];
+  /** رقم المباراة الحالية */
+  matchNo?: number;
   /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
   lobbyAway?: Record<string, number>;
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
@@ -43,6 +45,8 @@ export interface TableData {
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
 export interface HandRecord {
+  /** رقم المباراة على هذه الطاولة (السجل يحفظ كل المباريات، كل واحدة لحالها) */
+  match?: number;
   /** أسماء الفريقين وقت الصكة */
   teams: [string, string];
   contract: string;
@@ -321,7 +325,7 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
 export function stopGame(t: TableData): TableData {
   const humans = t.seats.filter((m): m is Member => m !== null && !m.isBot);
   return {
-    ...t, game: null, history: [], away: {},
+    ...t, game: null, history: [], matchNo: 0, away: {},
     seats: [null, null, null, null],
     spectators: [...humans, ...t.spectators.filter((s) => !humans.some((h) => h.uid === s.uid))],
   };
@@ -347,7 +351,8 @@ export function removeBot(t: TableData, seat: Seat): TableData {
 export function start(t: TableData, rng: Rng): TableData {
   if (!isFull(t)) throw new TableError('not-full');
   if (t.game && t.game.phase !== 'matchOver') throw new TableError('game-started');
-  return { ...t, game: newMatch(rng, 0), history: [], lobbyAway: {} };
+  // مباراة جديدة: السجل يبقى، وتبدأ مباراة برقم جديد (نحتفظ بآخر 200 صكة فقط)
+  return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: (t.history ?? []).slice(-200), lobbyAway: {} };
 }
 
 // ───── أسماء ونصوص الإعلانات ─────
@@ -472,6 +477,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         const abnat = r.abnat ?? [0, 0];
         const level = after.doubling.level;
         const record: HandRecord = {
+          match: t.matchNo ?? 1,
           teams: [teamName(t, 0), teamName(t, 1)], contract: contractText(after), level, gahwa: after.doubling.gahwa,
           buyer: nameOf(t, c.buyer), buyerTeam, abnat, points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
         };
