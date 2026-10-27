@@ -154,7 +154,7 @@ button.back-btn { padding: 6px 14px; min-height: 40px; font-size: 14px; flex: 0 
 .member-btn { flex: 1; text-align: start; padding: 8px 12px; }
 .history-match { border: 1px solid var(--green-700); border-radius: var(--radius); padding: 10px; }
 /* اختيار اللعبة */
-.game-option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; padding: 12px 14px; }
+.game-option { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; padding: 12px 14px; }
 /* الدومينو — ألوان مجلسك (أخضر وذهبي) */
 .domino-players { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .domino-players li { padding: 6px 10px; border-radius: 10px; background: var(--green-800); border: 1px solid var(--green-700); font-size: 14px; }

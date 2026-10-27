@@ -39,10 +39,10 @@ export function GamePicker({ onPick, onCancel }: Props) {
           <h2 id="picker-title" ref={titleRef} tabIndex={-1}>اختر اللعبة</h2>
           <div className="stack" role="list">
             {GAMES.map((g) => (
-              <button key={g.id} role="listitem" className="secondary game-option" onClick={() => choose(g.id)} aria-label={`${g.name}، ${g.desc}`}>
+              <div key={g.id} role="listitem"><button className="secondary game-option" onClick={() => choose(g.id)} aria-label={`${g.name}، ${g.desc}`}>
                 <strong>{g.name}</strong>
                 <span className="note">{g.desc}</span>
-              </button>
+              </button></div>
             ))}
           </div>
           <button className="secondary back-btn" onClick={onCancel}>رجوع</button>
@@ -52,10 +52,10 @@ export function GamePicker({ onPick, onCancel }: Props) {
           <h2 id="picker-title" ref={titleRef} tabIndex={-1}>جاكارو: اختر النسخة</h2>
           <div className="stack" role="list">
             {VARIANTS.map((v) => (
-              <button key={v.id} role="listitem" className="secondary game-option" onClick={() => onPick({ game: 'jackaroo', variant: v.id })} aria-label={`${v.name}، ${v.desc}`}>
+              <div key={v.id} role="listitem"><button className="secondary game-option" onClick={() => onPick({ game: 'jackaroo', variant: v.id })} aria-label={`${v.name}، ${v.desc}`}>
                 <strong>{v.name}</strong>
                 <span className="note">{v.desc}</span>
-              </button>
+              </button></div>
             ))}
           </div>
           <button className="secondary back-btn" onClick={() => setStep('game')}>رجوع</button>

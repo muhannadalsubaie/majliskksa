@@ -82,6 +82,8 @@ try {
   log('both signed in');
 
   await pa.getByRole('button', { name: 'إنشاء طاولة' }).click();
+  // أولاً اختيار اللعبة
+  await pa.getByRole('button', { name: /^بلوت/ }).click();
   await pa.getByRole('button', { name: /إنشاء الطاولة/ }).click();
   await pa.locator('.voice-btn').waitFor({ timeout: 30000 });
   log('A created a table');
