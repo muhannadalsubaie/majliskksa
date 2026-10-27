@@ -16,8 +16,8 @@ const GAMES = [
 ] as const;
 
 const VARIANTS = [
-  { id: 'classic', name: 'عادي', desc: 'القوانين الكلاسيكية' },
-  { id: 'complex', name: 'كمبلكس', desc: 'الشايب يأكل كل ما يمر عليه، الولد الأحمر 11، البنت السوداء تحرق ورقة من التالي' },
+  { id: 'classic', name: 'عادي' },
+  { id: 'complex', name: 'كمبلكس' },
 ] as const;
 
 interface Props { onPick: (choice: GameChoice) => void; onCancel: () => void }
@@ -51,9 +51,8 @@ export function GamePicker({ onPick, onCancel }: Props) {
           <h2 id="picker-title" ref={titleRef} tabIndex={-1}>جاكارو: اختر النسخة</h2>
           <div className="stack" role="list">
             {VARIANTS.map((v) => (
-              <div key={v.id} role="listitem"><button className="secondary game-option" onClick={() => onPick({ game: 'jackaroo', variant: v.id })} aria-label={`${v.name}، ${v.desc}`}>
+              <div key={v.id} role="listitem"><button className="secondary game-option" onClick={() => onPick({ game: 'jackaroo', variant: v.id })}>
                 <strong>{v.name}</strong>
-                <span className="note">{v.desc}</span>
               </button></div>
             ))}
           </div>
