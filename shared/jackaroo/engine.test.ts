@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seededRng } from '../../shared/baloot/testing';
+import { seededRng } from '../baloot/testing';
 import { jackarooBotAction } from './bot';
 import {
   type Card, type JackarooState, type Marble, COMPLEX_RULES, JackarooError, applyJackaroo, fullDeck, legalMoves,

@@ -133,7 +133,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     // إنشاء طاولة: عملتان من المنشئ
     if (pathname === '/tables' && request.method === 'POST') {
-      const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown };
+      const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown; kind?: unknown; variant?: unknown };
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
@@ -142,7 +142,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       const id = env.TABLES.newUniqueId();
       try {
-        await env.TABLES.get(id).create(id.toString(), { uid: user.uid, username }, body.isPrivate === true);
+        await env.TABLES.get(id).create(id.toString(), { uid: user.uid, username }, body.isPrivate === true,
+          body.kind === 'domino' || body.kind === 'jackaroo' ? body.kind : 'baloot', body.variant === 'complex' ? 'complex' : 'classic');
       } catch (e) {
         if (!devAuth) await db.adjustCoins(user.uid, COINS.createTable).catch(() => {}); // استرجاع عند الفشل
         throw e;

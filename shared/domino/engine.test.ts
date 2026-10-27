@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seededRng } from '../../shared/baloot/testing';
+import { seededRng } from '../baloot/testing';
 import { dominoBotAction } from './bot';
 import {
   type DominoState, type Tile, DominoError, applyDomino, canDraw, canPass, defaultTarget, ends, fullSet, newMatch, nextHand,

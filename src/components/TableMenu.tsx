@@ -5,7 +5,7 @@ import { Switch } from './Switch';
 import type { Seat } from '../../shared/baloot/cards';
 import { teamOf } from '../../shared/baloot/cards';
 import { COINS } from '../../shared/economy';
-import type { TableView } from '../../shared/table';
+import { type TableView, viewHasGame, viewPlaying } from '../../shared/table';
 import { announce } from '../services/announcer';
 import type { ClientMessage } from '../services/tables';
 import { watchRewardedAd } from '../services/ads';
@@ -121,7 +121,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
             {voice.joined ? 'مغادرة المحادثة الصوتية' : 'الانضمام للمحادثة الصوتية'}
           </button>
           <button className="secondary" onClick={() => setPage('settings')}>الإعدادات</button>
-          {isOwner && (view.game || view.seats.some(Boolean)) && (
+          {isOwner && (viewHasGame(view) || view.seats.some(Boolean)) && (
             <button className="danger" onClick={() => setPage('stop')}>إيقاف اللعبة</button>
           )}
           <button className="danger" onClick={onLeave}>مغادرة الطاولة</button>
@@ -256,7 +256,7 @@ export function TableMenu({ view, uid, send, onLeave, onClose }: Props) {
           {ban
             ? 'سيخرج من الطاولة، ولن يستطيع دخول هذه الطاولة ولا أي طاولة تملكها.'
             : 'سيخرج من الطاولة. يستطيع دخول أي طاولة أخرى فوراً، والعودة لهذه الطاولة بعد ساعة.'}
-          {view.game && view.game.phase !== 'matchOver' && view.seatUids.includes(page.uid) ? ' يحل روبوت مكانه في اللعب.' : ''}
+          {viewPlaying(view) && view.seatUids.includes(page.uid) ? ' يحل روبوت مكانه في اللعب.' : ''}
         </p>
         <div className="actions">
           <button className="danger" onClick={() => { send({ type: ban ? 'ban' : 'kick', uid: page.uid }); setPage('players'); }}>{ban ? 'حظر' : 'طرد'}</button>

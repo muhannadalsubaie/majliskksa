@@ -4,9 +4,12 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, dealAnnouncement, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, start, viewFor, withoutVoice,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, startAny, viewFor, withoutVoice,
 } from '../../shared/table';
+import { type GameKind, type GameVariant, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo } from '../../shared/games';
+import { DominoError } from '../../shared/domino/engine';
+import { JackarooError } from '../../shared/jackaroo/engine';
 import { Realtime, type SessionDescription } from './realtime';
 import type { Env } from './env';
 import { Firestore } from './firestore';
@@ -18,6 +21,8 @@ import { Firestore } from './firestore';
 
 type ClientMessage =
   | { type: 'action'; action: unknown }
+  | { type: 'domino'; action: unknown }
+  | { type: 'jackaroo'; action: unknown }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }
@@ -114,8 +119,9 @@ export class TableRoom extends DurableObject<Env> {
   private grace() {
     if (this.env.DEV_AUTH === '1') return 3000;
     // أثناء المباراة ننتظر أطول من مهلة حجز المقعد، حتى لا تُغلق الطاولة على لاعب في مكالمة
-    const g = this.table?.game;
-    return g && g.phase !== 'matchOver' ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
+    const t = this.table;
+    const playing = !!t && (Boolean(t.game && t.game.phase !== 'matchOver') || otherActive(t));
+    return playing ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
   }
 
   private db() {
@@ -144,7 +150,9 @@ export class TableRoom extends DurableObject<Env> {
         isPrivate: t.isPrivate,
         players: t.seats.filter(Boolean).length,
         people: peopleCount(t),
-        status: !t.game ? 'waiting' : t.game.phase === 'matchOver' ? 'finished' : 'playing',
+        kind: kindOf(t),
+        variant: t.variant ?? 'classic',
+        status: kindOf(t) !== 'baloot' ? otherStatus(t) : !t.game ? 'waiting' : t.game.phase === 'matchOver' ? 'finished' : 'playing',
         updatedAt: new Date(),
       });
     } catch (e) {
@@ -154,8 +162,8 @@ export class TableRoom extends DurableObject<Env> {
 
   // ───── استدعاءات من الخادم الرئيسي (RPC) ─────
 
-  async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean): Promise<void> {
-    const t = newTable(id, owner, isPrivate, Date.now());
+  async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
+    const t = newTable(id, owner, isPrivate, Date.now(), kind, variant);
     await this.save(t);
     await this.publish(t);
     // إن لم يتصل أحد خلال المهلة تُغلق الطاولة
@@ -370,7 +378,7 @@ export class TableRoom extends DurableObject<Env> {
       await this.handle(t, uid, msg);
     } catch (e) {
       const code = (e as Error).message;
-      const text = e instanceof IllegalAction ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
+      const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
       ws.send(JSON.stringify({ type: 'error', message: text }));
     }
   }
@@ -387,6 +395,18 @@ export class TableRoom extends DurableObject<Env> {
         await this.save(r.table);
         this.broadcast(r.events);
         if (r.table.game?.phase === 'matchOver') await this.publish(r.table);
+        break;
+      }
+      case 'domino':
+      case 'jackaroo': {
+        const seat = seatOf(t, uid);
+        if (seat === null || !(msg.type === 'domino' ? t.domino : t.jackaroo)) throw new Error('not-a-player');
+        const action = msg.type === 'domino' ? parseDomino(msg.action, seat) : parseJackaroo(msg.action, seat);
+        if (!action) throw new Error('bad-action');
+        const r = applyOther(t, action, rng);
+        await this.save(r.table);
+        this.broadcast(r.events);
+        if (!otherActive(r.table)) await this.publish(r.table);
         break;
       }
       case 'addBot': {
@@ -406,9 +426,9 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (!isFull(t)) throw new TableError('not-full');
-        const next = start(t, rng);
+        const { table: next, events } = startAny(t, rng);
         await this.save(next);
-        this.broadcast(['بدأت المباراة', dealAnnouncement(next)]);
+        this.broadcast(events);
         await this.publish(next);
         break;
       }
@@ -639,7 +659,7 @@ export class TableRoom extends DurableObject<Env> {
       const r = runAutoStep(cur, step, rng);
       await this.save(r.table);
       this.broadcast(r.events);
-      if (r.table.game?.phase === 'matchOver') await this.publish(r.table);
+      if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo) && !otherActive(r.table))) await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity));

@@ -6,6 +6,9 @@ import {
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { PROJECT_NAMES } from './baloot/projects';
+import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
+import type { DominoState } from './domino/engine';
+import type { JackarooState } from './jackaroo/engine';
 import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
@@ -41,6 +44,11 @@ export interface TableData {
   kicked?: Record<string, number>;
   /** كتمهم المالك في المحادثة الصوتية: لا يصل صوتهم لأحد ولا يستطيعون فتح الميكروفون */
   voiceBlocked?: string[];
+  /** نوع اللعبة على الطاولة (الافتراضي بلوت) ونسختها (الجاكارو: عادي أو كمبلكس) */
+  kind?: GameKind;
+  variant?: GameVariant;
+  domino?: DominoState | null;
+  jackaroo?: JackarooState | null;
 }
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
@@ -61,7 +69,9 @@ export interface HandRecord {
   kaboot: Team | null;
 }
 
-const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOver');
+const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOver') || otherActive(t);
+/** بدأت لعبة على الطاولة (حتى لو انتهت المباراة) */
+const hasGame = (t: TableData) => Boolean(t.game || t.domino || t.jackaroo);
 
 /** انقطع اتصال لاعب جالس أثناء المباراة: نحجز مقعده */
 export function markAway(t: TableData, uid: string, now: number): TableData {
@@ -152,9 +162,11 @@ export function withoutVoice(t: TableData, uid: string): TableData {
   return { ...t, voice };
 }
 
-export function newTable(id: string, owner: { uid: string; username: string }, isPrivate: boolean, now: number): TableData {
+export function newTable(
+  id: string, owner: { uid: string; username: string }, isPrivate: boolean, now: number, kind: GameKind = 'baloot', variant: GameVariant = 'classic',
+): TableData {
   return {
-    id, ownerUid: owner.uid, isPrivate, createdAt: now,
+    id, ownerUid: owner.uid, isPrivate, createdAt: now, kind, variant,
     seats: [{ uid: owner.uid, username: owner.username, isBot: false }, null, null, null],
     spectators: [], paid: [owner.uid], game: null, botCount: 0,
   };
@@ -205,8 +217,8 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
   if (invited) t = { ...t, invites: invites.filter((i) => i.code !== invite) };
   // المقعد المحجوز في الدعوة أولاً، ثم أول مقعد فارغ (قبل بدء اللعب فقط)
-  const reserved = inv?.seat !== undefined && !t.game && t.seats[inv.seat] === null ? inv.seat : -1;
-  const free = t.game ? -1 : reserved >= 0 ? reserved : t.seats.findIndex((m) => m === null);
+  const reserved = inv?.seat !== undefined && !hasGame(t) && t.seats[inv.seat] === null ? inv.seat : -1;
+  const free = hasGame(t) ? -1 : reserved >= 0 ? reserved : t.seats.findIndex((m) => m === null);
   const member: Member = { uid: user.uid, username: user.username, isBot: false };
   if (free >= 0) {
     const seats = [...t.seats];
@@ -251,7 +263,7 @@ export function leave(t0: TableData, uid: string, rng: () => number = Math.rando
     table = { ...t, spectators: t.spectators.filter((m) => m.uid !== uid) };
   } else {
     const seats = [...t.seats];
-    if (t.game && t.game.phase !== 'matchOver') {
+    if (gameActive(t)) {
       const n = t.botCount + 1;
       seats[seat] = { uid: `bot-${n}`, username: botName(t, rng), isBot: true };
       table = { ...t, seats, botCount: n };
@@ -274,7 +286,7 @@ export function addInvite(t: TableData, code: string, seat?: Seat): TableData {
   return { ...t, invites: [...(t.invites ?? []), { code, seat }].slice(-30) };
 }
 
-const inLobby = (t: TableData) => !t.game || t.game.phase === 'matchOver';
+const inLobby = (t: TableData) => !gameActive(t);
 
 /**
  * المالك يضع شخصاً في مقعد:
@@ -325,7 +337,7 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
 export function stopGame(t: TableData): TableData {
   const humans = t.seats.filter((m): m is Member => m !== null && !m.isBot);
   return {
-    ...t, game: null, history: [], matchNo: 0, away: {},
+    ...t, game: null, domino: null, jackaroo: null, history: [], matchNo: 0, away: {},
     seats: [null, null, null, null],
     spectators: [...humans, ...t.spectators.filter((s) => !humans.some((h) => h.uid === s.uid))],
   };
@@ -341,7 +353,7 @@ export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random
 }
 
 export function removeBot(t: TableData, seat: Seat): TableData {
-  if (t.game) throw new TableError('game-started');
+  if (hasGame(t)) throw new TableError('game-started');
   if (!t.seats[seat]?.isBot) throw new TableError('not-a-bot');
   const seats = [...t.seats];
   seats[seat] = null;
@@ -350,9 +362,21 @@ export function removeBot(t: TableData, seat: Seat): TableData {
 
 export function start(t: TableData, rng: Rng): TableData {
   if (!isFull(t)) throw new TableError('not-full');
-  if (t.game && t.game.phase !== 'matchOver') throw new TableError('game-started');
+  if (gameActive(t)) throw new TableError('game-started');
   // مباراة جديدة: سجل جديد لها وحدها (سجل المباراة السابقة يُمسح)
   return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} };
+}
+
+/** بدء مباراة بحسب نوع الطاولة، مع إعلانات البداية */
+export function startAny(t: TableData, rng: Rng): { table: TableData; events: string[] } {
+  if ((t.kind ?? 'baloot') === 'baloot') {
+    const table = start(t, rng);
+    return { table, events: ['بدأت المباراة', dealAnnouncement(table)] };
+  }
+  if (!isFull(t)) throw new TableError('not-full');
+  if (gameActive(t)) throw new TableError('game-started');
+  const r = startOther({ ...t, matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} }, rng);
+  return r;
 }
 
 // ───── أسماء ونصوص الإعلانات ─────
@@ -500,10 +524,16 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
 export type AutoStep =
   | { kind: 'bot'; seat: Seat; action: Action; delayMs: number }
   | { kind: 'redeal'; delayMs: number }
-  | { kind: 'nextHand'; delayMs: number };
+  | { kind: 'nextHand'; delayMs: number }
+  /** دومينو أو جاكارو: دور روبوت أو صكة جديدة */
+  | { kind: 'other'; delayMs: number };
 
 /** ما الذي يجب أن يحدث تلقائياً بعد الآن؟ (null = ننتظر لاعباً بشرياً) */
 export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
+  if (t.domino || t.jackaroo) {
+    const delayMs = otherAutoDelay(t, rng);
+    return delayMs === null ? null : { kind: 'other', delayMs };
+  }
   const g = t.game;
   if (!g || g.phase === 'matchOver') return null;
   if (needsRedeal(g)) return { kind: 'redeal', delayMs: 2500 };
@@ -525,6 +555,7 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
 }
 
 export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[] } {
+  if (step.kind === 'other') return runOtherAuto(t, rng);
   if (step.kind === 'redeal') {
     const table = { ...t, game: redeal(t.game!, rng) };
     return { table, events: ['توزيع جديد', dealAnnouncement(table)] };
@@ -587,6 +618,11 @@ export interface TableView {
   /** من كتمهم المالك في المحادثة الصوتية */
   voiceBlocked?: string[];
   game: GameView | null;
+  kind: GameKind;
+  variant: GameVariant;
+  /** الدومينو والجاكارو: الحالة كاملة مع إخفاء قطع/أوراق الآخرين */
+  domino: DominoState | null;
+  jackaroo: JackarooState | null;
   /** سجل صكات المباراة الحالية */
   history: HandRecord[];
 }
@@ -640,5 +676,15 @@ export function viewFor(t: TableData, uid: string): TableView {
     voice: Object.entries(t.voice ?? {}).map(([u, v]) => ({ uid: u, username: memberName(t, u) ?? '', sessionId: v.sessionId, muted: v.muted, mic: v.mic !== false, blocked: isVoiceBlocked(t, u) })),
     voiceBlocked: t.voiceBlocked ?? [],
     game,
+    kind: t.kind ?? 'baloot',
+    variant: t.variant ?? 'classic',
+    domino: t.domino ? dominoViewFor(t.domino, mySeat) : null,
+    jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
   };
 }
+
+/** للعميل: هل بدأت لعبة على الطاولة (أي نوع)، وهل هي جارية الآن */
+export const viewHasGame = (v: TableView) => Boolean(v.game || v.domino || v.jackaroo);
+export const viewPlaying = (v: TableView) => Boolean(
+  (v.game && v.game.phase !== 'matchOver') || (v.domino && v.domino.phase !== 'matchOver') || v.jackaroo?.phase === 'playing',
+);

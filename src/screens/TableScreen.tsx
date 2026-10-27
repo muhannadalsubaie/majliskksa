@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Card, type Seat, SUIT_NAMES, SUIT_SYMBOLS, SUITS, cardId, cardLabel, teamOf } from '../../shared/baloot/cards';
 import type { Bid } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
-import type { GameView } from '../../shared/table';
+import { GAME_NAMES } from '../../shared/games';
+import { type GameView, viewHasGame, viewPlaying } from '../../shared/table';
+import { DominoBoard } from '../games/DominoBoard';
+import { JackarooBoard } from '../games/JackarooBoard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
 import { HistoryDialog } from '../components/HistoryDialog';
@@ -208,6 +211,8 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   const readTrickRef = useRef((_dir: SwipeDir) => {});
   readTrickRef.current = (dir: SwipeDir) => {
+    // الدومينو والجاكارو لهما قراءاتهما الخاصة
+    if (view && view.kind !== 'baloot') return;
     // ردّ الإيماءة فوري (لا ينتظر طابور إعلانات اللعب)
     if (dir === 'left') announceNow(trickSummary());
     else if (dir === 'right') announceNow(contractSummary());
@@ -300,6 +305,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   }
 
   const isOwner = view.ownerUid === uid;
+  const seatNames = view.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
   const myTeam = teamOf(me);
   const scoreUs = g ? g.scores[myTeam] : 0;
   const scoreThem = g ? g.scores[(1 - myTeam) as 0 | 1] : 0;
@@ -309,9 +315,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       <header className="topbar">
         <span style={{ display: 'flex', gap: 8 }}>
           <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
-          <button className="secondary" onClick={() => setHistoryOpen(true)} aria-haspopup="dialog">السجل</button>
+          {view.kind === 'baloot' && <button className="secondary" onClick={() => setHistoryOpen(true)} aria-haspopup="dialog">السجل</button>}
         </span>
-        <h1 id="table-title" className="sr-only">الطاولة</h1>
+        <h1 id="table-title" className="sr-only">طاولة {GAME_NAMES[view.kind]}{view.kind === 'jackaroo' && view.variant === 'complex' ? ' كمبلكس' : ''}</h1>
       </header>
 
       {!connected && <p role="status" className="note">انقطع الاتصال — جارٍ إعادة المحاولة…</p>}
@@ -337,7 +343,20 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
 
       {/* ───── قبل بدء المباراة: المقاعد ───── */}
-      {!g && <SeatsLobby view={view} uid={uid} send={send} />}
+      {!viewHasGame(view) && <SeatsLobby view={view} uid={uid} send={send} />}
+
+      {view.domino && (
+        <DominoBoard
+          s={view.domino} mySeat={mySeat} names={seatNames} isOwner={isOwner}
+          act={(action) => send({ type: 'domino', action })} restart={() => send({ type: 'start' })}
+        />
+      )}
+      {view.jackaroo && (
+        <JackarooBoard
+          s={view.jackaroo} mySeat={mySeat} names={seatNames} isOwner={isOwner}
+          act={(action) => send({ type: 'jackaroo', action })} restart={() => send({ type: 'start' })}
+        />
+      )}
 
       {/* ───── اللعب ───── */}
       {g && (
@@ -465,7 +484,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
       {confirmLeave && (
         <ConfirmDialog
           title="مغادرة الطاولة"
-          message={g && g.phase !== 'matchOver' && mySeat !== null ? 'المباراة جارية — سيحل روبوت مكانك. هل تريد المغادرة؟' : 'هل تريد مغادرة الطاولة؟'}
+          message={viewPlaying(view) && mySeat !== null ? 'المباراة جارية — سيحل روبوت مكانك. هل تريد المغادرة؟' : 'هل تريد مغادرة الطاولة؟'}
           confirmLabel="مغادرة"
           onConfirm={leaveTable}
           onCancel={() => { setConfirmLeave(false); setMenuOpen(false); }}

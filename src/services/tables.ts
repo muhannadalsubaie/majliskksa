@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TableView } from '../../shared/table';
+import type { GameKind, GameVariant } from '../../shared/games';
 import { announce } from './announcer';
 import { API_URL } from './api';
 import { connectFirebase } from './firebase';
@@ -39,7 +40,8 @@ async function isMember(tableId: string): Promise<boolean | null> {
 /** حذف الحساب نهائياً من الخادم (الملف، اسم المستخدم، الأصدقاء، وحساب الدخول) */
 export const deleteMyAccount = () => post<{ ok: true }>('/me/delete');
 
-export const createTable = (isPrivate: boolean) => post<{ id: string }>('/tables', { isPrivate }).then((r) => r.id);
+export const createTable = (isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic') =>
+  post<{ id: string }>('/tables', { isPrivate, kind, variant }).then((r) => r.id);
 export const joinTable = (id: string, invite?: string) => post<{ ok: true }>(`/tables/${id}/join`, { invite });
 
 
@@ -58,6 +60,8 @@ export const API_ERRORS: Record<string, string> = {
 
 export type ClientMessage =
   | { type: 'action'; action: Record<string, unknown> }
+  | { type: 'domino'; action: Record<string, unknown> }
+  | { type: 'jackaroo'; action: Record<string, unknown> }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }
