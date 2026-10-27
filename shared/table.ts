@@ -476,10 +476,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
           buyer: nameOf(t, c.buyer), buyerTeam, abnat, points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
         };
         history = [...(t.history ?? []), record];
-        // يُنطق: النقاط والفائز والخاسر فقط — الأبناط وتفاصيلها في السجل
-        const winner = r.kaboot ?? (r.buyerFailed ? 1 - buyerTeam : buyerTeam);
+        // يُنطق نقاط كل فريق فقط — الفائز والأبناط وباقي التفاصيل في السجل
         events.push(`انتهت الصكة. نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
-        events.push(`${r.kaboot !== null ? 'كبوت! ' : ''}فاز ${teamName(t, winner as Team)}، وخسر ${teamName(t, (1 - winner) as Team)}`);
         events.push(`المجموع: ${after.scores[0]} مقابل ${after.scores[1]}`);
         if (after.outcome.status === 'won') events.push(`انتهت المباراة — فاز ${teamName(t, after.outcome.winner)}`);
         if (after.outcome.status === 'tiebreak') events.push('تعادل — جولة فاصلة');

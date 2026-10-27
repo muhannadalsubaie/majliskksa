@@ -148,7 +148,7 @@ describe('table', () => {
           // يُنطق النقاط والفائز والخاسر فقط، والأبناط في السجل
           expect(r.events.some((e) => e.includes('بنط'))).toBe(false);
           expect(r.events.some((e) => e.includes(`نتيجة الصكة:`) && e.includes(String(rec.points[0])))).toBe(true);
-          expect(r.events.some((e) => /فاز فريق .+، وخسر فريق /.test(e))).toBe(true);
+          expect(r.events.some((e) => /وخسر|كبوت لـ|نجح المشتري/.test(e))).toBe(false);
         }
         t = r.table;
         events.push(...r.events);
