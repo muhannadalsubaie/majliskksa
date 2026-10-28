@@ -29,11 +29,14 @@ jobs:
     # جهاز الماك في GitHub يُحسب بعشرة أضعاف الدقائق (المستودع خاص)، فلا نبني الآيفون مع كل تعديل:
     # فقط عند تشغيله يدوياً، أو إذا كانت رسالة التعديل فيها [ios]
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ios]')
-    runs-on: macos-15
+    # macOS 26 فيه Xcode 26 افتراضياً — Apple لا تقبل الرفع إلا بـ Xcode 26 (حزمة iOS 26) منذ أبريل 2026
+    runs-on: macos-26
     env:
       HAS_KEYS: ${{ secrets.ASC_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version
       - uses: actions/setup-node@v4
         with:
           node-version: 22
