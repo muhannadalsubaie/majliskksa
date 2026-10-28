@@ -1,5 +1,7 @@
 // التوقيع التلقائي في Xcode يحتاج جهازاً واحداً مسجلاً على الأقل في حساب Apple لإنشاء ملفات التوقيع،
 // حتى عند الرفع إلى TestFlight فقط. إن لم يوجد أي جهاز نسجّل جهازاً بديلاً عبر App Store Connect API.
+// وكل بناء يعمل على جهاز ماك جديد: شهادة التطوير التي أنشأها بناء سابق مفتاحها ليس هنا، فنلغيها
+// ليُنشئ Xcode شهادة جديدة (التوقيع للمتجر نفسه تديره Apple سحابياً ولا يتأثر). وافق صاحب الحساب على ذلك.
 // المتغيرات: KEY (مسار ملف p8)، KEY_ID، ISSUER
 import { createPrivateKey, randomBytes, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -16,7 +18,7 @@ const api = async (path, init = {}) => {
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${path} → ${res.status}: ${text.slice(0, 500)}`);
-  return JSON.parse(text);
+  return text ? JSON.parse(text) : {};
 };
 
 const list = await api('devices?filter[platform]=IOS&filter[status]=ENABLED&limit=1');
@@ -29,4 +31,11 @@ if (list.data.length) {
     body: JSON.stringify({ data: { type: 'devices', attributes: { name: 'CI build placeholder', platform: 'IOS', udid } } }),
   });
   console.log('registered placeholder device:', r.data.attributes.name);
+}
+
+// شهادات التطوير القديمة (أنشأتها بناءات سابقة على أجهزة لم تعد موجودة)
+const certs = await api('certificates?filter[certificateType]=DEVELOPMENT,IOS_DEVELOPMENT&limit=200');
+for (const c of certs.data) {
+  await api(`certificates/${c.id}`, { method: 'DELETE' });
+  console.log('revoked old development certificate:', c.attributes.name ?? c.id);
 }
