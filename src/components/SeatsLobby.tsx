@@ -86,7 +86,7 @@ export function SeatsLobby({ view, uid, send }: Props) {
                   {!view.seats[i] ? (
                     <>
                       <button className="secondary" onClick={() => setPanel({ invite: i })} aria-label={`دعوة صديق للمقعد ${i + 1}`}>دعوة صديق</button>
-                      <button className="secondary" onClick={() => setPanel({ add: i })} aria-haspopup="dialog" aria-label={`إضافة لاعب في المقعد ${i + 1}`}>إضافة لاعب</button>
+                      <button className="secondary" onClick={() => setPanel({ add: i })} aria-label={`إضافة لاعب في المقعد ${i + 1}`}>إضافة لاعب</button>
                     </>
                   ) : (
                     <button className="secondary" onClick={() => setPanel({ change: i })} aria-label={`تغيير المقعد ${i + 1}`}>تغيير</button>

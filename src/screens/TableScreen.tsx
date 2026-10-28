@@ -11,7 +11,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
 import { HistoryDialog } from '../components/HistoryDialog';
 import { TABLE_BACK } from '../services/backButton';
-import { isSystemReaderOn } from '../services/nativeA11y';
+import { Capacitor } from '@capacitor/core';
+import { isSystemReaderOn, onSystemReaderChange } from '../services/nativeA11y';
 import { SeatsLobby } from '../components/SeatsLobby';
 import { VoiceButton } from '../components/VoiceButton';
 import { announce, announceNow } from '../services/announcer';
@@ -61,6 +62,14 @@ const RANK_ORDER = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'];
 const sortHand = (hand: Card[]) =>
   [...hand].sort((a, b) => SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank));
 
+/** أزرار القراءة السريعة (مع VoiceOver): نفس قراءات إيماءة الإصبعين لكل لعبة */
+const QUICK_READS: Record<'baloot' | 'domino' | 'jackaroo' | 'ludo', [SwipeDir, string][]> = {
+  baloot: [['left', 'أوراق الطاولة'], ['right', 'نوع اللعب'], ['up', 'المشاريع']],
+  domino: [['left', 'قطع الطاولة'], ['right', 'الطرفان والنقاط']],
+  jackaroo: [['left', 'كل الأحجار'], ['right', 'أحجاري']],
+  ludo: [['left', 'كل الأحجار'], ['right', 'أحجاري']],
+};
+
 /** كم تبقى الأكلة المكتملة ظاهرة قبل أن تذهب لصاحبها */
 const TRICK_HOLD_MS = 1200;
 
@@ -69,6 +78,9 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // VoiceOver يعمل الآن (الآيفون)؟ نعرض أزرار القراءة السريعة بدل الإيماءات
+  const [voiceOver, setVoiceOver] = useState(() => Capacitor.getPlatform() === 'ios' && isSystemReaderOn());
+  useEffect(() => onSystemReaderChange((on) => setVoiceOver(Capacitor.getPlatform() === 'ios' && on)), []);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
   const wasMyTurn = useRef(false);
 
@@ -241,7 +253,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
     };
     // مع TalkBack: النظام يستهلك إيماءات الإصبع الواحد، ويمرر سحب الإصبعين للتطبيق
     // (أحياناً كإصبع واحد في المنتصف)، فأي سحب يصلنا وقتها هو سحب بإصبعين
-    const fingersOk = (n: number) => n === 2 || (n === 1 && isSystemReaderOn());
+    const fingersOk = (n: number) => n === 2 || (n === 1 && isSystemReaderOn() && Capacitor.getPlatform() === 'android');
     const onStart = (e: TouchEvent) => {
       if (isScreenReaderOn()) return;
       if (fingersOk(e.touches.length)) { last = mid(e); two = { ...last, t: performance.now() }; }
@@ -311,6 +323,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
   }
 
   const isOwner = view.ownerUid === uid;
+  const quickReads = voiceOver && viewHasGame(view);
   const seatNames = view.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
   const myTeam = teamOf(me);
   const scoreUs = g ? g.scores[myTeam] : 0;
@@ -318,10 +331,19 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
 
   return (
     <main className="screen table-screen" aria-labelledby="table-title">
+      {/* VoiceOver في الآيفون يأخذ سحب الإصبعين لنفسه (قراءة الكل) فلا يصل للتطبيق:
+          أزرار تقوم مقام الإيماءات، تظهر فقط حين يعمل VoiceOver */}
+      {quickReads && (
+        <nav className="quick-reads" aria-label="قراءة سريعة">
+          {QUICK_READS[view.kind].map(([dir, label]) => (
+            <button key={dir} className="secondary" onClick={() => window.dispatchEvent(new CustomEvent<SwipeDir>(TWO_FINGER, { detail: dir }))}>{label}</button>
+          ))}
+        </nav>
+      )}
       <header className="topbar">
         <span style={{ display: 'flex', gap: 8 }}>
-          <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
-          {view.kind === 'baloot' && <button className="secondary" onClick={() => setHistoryOpen(true)} aria-haspopup="dialog">السجل</button>}
+          <button className="secondary" onClick={() => setMenuOpen(true)}>القائمة</button>
+          {view.kind === 'baloot' && <button className="secondary" onClick={() => setHistoryOpen(true)}>السجل</button>}
         </span>
         <h1 id="table-title" className="sr-only">طاولة {gameTitle(view.kind, view.variant)}</h1>
       </header>

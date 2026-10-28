@@ -37,7 +37,7 @@ export function MainMenuScreen({ navigate, profile }: { navigate: Navigate; prof
         <button onClick={() => navigate('createTable')}>إنشاء طاولة</button>
         <button onClick={() => navigate('joinTable')}>انضمام إلى طاولة</button>
         <button className="secondary" onClick={() => navigate('friends')}>الأصدقاء</button>
-        <button ref={triggerRef} className="secondary" aria-haspopup="dialog" onClick={() => setGetCoins(true)}>الحصول على عملات 🪙</button>
+        <button ref={triggerRef} className="secondary" onClick={() => setGetCoins(true)}>الحصول على عملات 🪙</button>
         <button className="secondary" onClick={() => navigate('settings')}>الإعدادات</button>
       </nav>
 

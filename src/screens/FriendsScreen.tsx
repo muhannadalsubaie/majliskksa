@@ -100,7 +100,7 @@ export function FriendsScreen({ navigate, hub }: { navigate: Navigate; hub: HubS
       <header className="topbar">
         <h1 id="friends-title">الأصدقاء</h1>
         <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="secondary icon-btn" onClick={() => setAdding(true)} aria-haspopup="dialog">
+          <button className="secondary icon-btn" onClick={() => setAdding(true)}>
             <AddPersonIcon />
             <span>إضافة صديق</span>
           </button>

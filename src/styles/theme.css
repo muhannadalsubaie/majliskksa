@@ -206,3 +206,6 @@ button.back-btn { padding: 6px 14px; min-height: 40px; font-size: 14px; flex: 0 
 .ludo-dice i { width: 9px; height: 9px; border-radius: 50%; place-self: center; }
 .ludo-dice i.on { background: #0d2b20; }
 .ludo-option { text-align: start; }
+/* أزرار القراءة السريعة (تظهر مع VoiceOver بدل إيماءة الإصبعين) */
+.quick-reads { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick-reads button { flex: 1; min-height: 40px; padding: 6px 8px; font-size: 14px; }

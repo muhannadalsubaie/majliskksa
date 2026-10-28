@@ -41,7 +41,6 @@ export function UsernameField({ value, onChange }: { value: string; onChange: (v
         autoCapitalize="off"
         spellCheck={false}
         maxLength={USERNAME_MAX + 8}
-        aria-describedby="username-hint"
         aria-invalid={status.kind === 'error'}
         required
       />
