@@ -8,7 +8,7 @@ import type { ClientMessage } from '../services/tables';
 
 interface Props { view: TableView; uid: string; send: (m: ClientMessage) => void }
 
-type Panel = null | { invite: Seat } | { change: Seat };
+type Panel = null | { invite: Seat } | { change: Seat } | { add: Seat };
 
 const TEAMS: { title: string; seats: Seat[] }[] = [
   { title: 'الفريق الأول', seats: [0, 2] },
@@ -17,7 +17,7 @@ const TEAMS: { title: string; seats: Seat[] }[] = [
 
 /**
  * شاشة المقاعد قبل بدء المباراة: مقسّمة بالفريقين.
- * مالك الطاولة: يدعو صديقاً لمقعد فارغ أو يضيف روبوتاً، ويغيّر من يجلس في كل مقعد
+ * مالك الطاولة: يدعو صديقاً لمقعد فارغ، أو "إضافة لاعب": يجلس فيه أحد الموجودين بالطاولة أو روبوت، ويغيّر من يجلس في كل مقعد
  * (تبادل بين الجالسين أو إجلاس مشاهد)، ويُخلي أي مقعد — بما فيه مقعده ليصبح مشاهداً.
  */
 export function SeatsLobby({ view, uid, send }: Props) {
@@ -86,7 +86,7 @@ export function SeatsLobby({ view, uid, send }: Props) {
                   {!view.seats[i] ? (
                     <>
                       <button className="secondary" onClick={() => setPanel({ invite: i })} aria-label={`دعوة صديق للمقعد ${i + 1}`}>دعوة صديق</button>
-                      <button className="secondary" onClick={() => send({ type: 'addBot', seat: i })} aria-label={`إضافة روبوت في المقعد ${i + 1}، ${COINS.addBot} عملة`}>روبوت ({COINS.addBot} 🪙)</button>
+                      <button className="secondary" onClick={() => setPanel({ add: i })} aria-haspopup="dialog" aria-label={`إضافة لاعب في المقعد ${i + 1}`}>إضافة لاعب</button>
                     </>
                   ) : (
                     <button className="secondary" onClick={() => setPanel({ change: i })} aria-label={`تغيير المقعد ${i + 1}`}>تغيير</button>
@@ -123,6 +123,22 @@ export function SeatsLobby({ view, uid, send }: Props) {
                     </li>
                   ))}
                 </ul>
+              </>
+            ) : 'add' in panel ? (
+              <>
+                <h2 id="seat-panel-title" ref={titleRef} tabIndex={-1}>إضافة لاعب في المقعد {panel.add + 1}</h2>
+                <p className="note">اختر من الموجودين في الطاولة، أو أضف روبوتاً.</p>
+                <div className="stack">
+                  {candidates(panel.add).map((c) => (
+                    <button key={c.uid} className="secondary" onClick={() => { send({ type: 'replace', seat: panel.add, uid: c.uid }); setPanel(null); }}>
+                      {c.label}
+                    </button>
+                  ))}
+                  {candidates(panel.add).length === 0 && <p>لا يوجد أحد آخر في الطاولة.</p>}
+                  <button onClick={() => { send({ type: 'addBot', seat: panel.add }); setPanel(null); }} aria-label={`إضافة روبوت، ${COINS.addBot} عملة`}>
+                    إضافة روبوت ({COINS.addBot} 🪙)
+                  </button>
+                </div>
               </>
             ) : (
               <>
