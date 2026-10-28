@@ -1,70 +1,56 @@
-// شاشة لعبة لودو (لعب محلي ضد الروبوتات) — جاهزة للربط بمجلسك لاحقاً.
+// لودو على طاولة مجلسك: الحالة من الخادم (والنرد يرميه الخادم) والحركات تُرسل إليه.
 // لقارئ الشاشة: زر "ارمِ النرد"، ثم كل حجر يمكن تحريكه زر يقول أين يصل وماذا يحدث (أكل، خانة آمنة، خطر)،
-// وكل رمية وحركة تُعلن، والضغط على اللوحة يقرأ أماكن كل الأحجار.
+// وكل رمية وحركة يعلنها الخادم للجميع، والضغط على اللوحة يقرأ أماكن كل الأحجار.
 // إيماءة الإصبعين: من اليمين لليسار = أماكن كل الأحجار، من اليسار لليمين = أحجارك فقط.
-import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { announce, announceNow } from '../../src/services/announcer';
-import { TWO_FINGER, type SwipeDir } from '../../src/services/screenReader';
-import { ludoBotAction } from './bot';
+import { type ReactElement, useCallback, useEffect, useRef } from 'react';
 import {
-  type LudoRules, type LudoState, DEFAULT_RULES, FINISH, LAST_TRACK, SAFE, STARTS, absPos, applyLudo, controlledOwner, movableTokens, newGame, teamOf,
-} from './engine';
-import { COLOR_NAMES, boardSummary, moveAnnouncement, optionText, placeText, rollName } from './labels';
-import './ludo.css';
+  type LudoState, FINISH, LAST_TRACK, SAFE, STARTS, absPos, controlledOwner, movableTokens, teamOf,
+} from '../../shared/ludo/engine';
+import { COLOR_NAMES, boardSummary, optionText, placeText, rollName } from '../../shared/ludo/labels';
+import { announce, announceNow } from '../services/announcer';
+import { isSystemReaderOn } from '../services/nativeA11y';
+import { TWO_FINGER, type SwipeDir, isScreenReaderOn } from '../services/screenReader';
+import { sounds } from '../services/sounds';
 
-const ME = 0;
-const BOT_DELAY_MS = 900;
 export const COLORS = ['#d9453b', '#2ea661', '#e6b422', '#2f7fd8'];
 
-interface Props { onExit: () => void; rules?: LudoRules; names?: string[]; /** حالة بداية (للمعاينة والاختبار) */ initial?: LudoState }
+interface Props {
+  s: LudoState;
+  mySeat: number | null;
+  names: string[];
+  isOwner: boolean;
+  act: (action: Record<string, unknown>) => void;
+  restart: () => void;
+}
 
-export function LudoTable({ onExit, rules = DEFAULT_RULES, names: given, initial }: Props) {
-  const names = useMemo(() => given ?? ['أنت', 'سالم', 'فهد', 'علي'], [given]);
-  const rng = useRef(Math.random);
-  const [s, setS] = useState<LudoState>(() => initial ?? newGame(rng.current, rules));
-  const prev = useRef<LudoState | null>(null);
+export function LudoBoard({ s, mySeat, names, isOwner, act, restart }: Props) {
+  const me = mySeat ?? -1;
+  const teams = s.rules.teams;
+  const myTurn = mySeat !== null && s.phase !== 'over' && s.turn === mySeat;
+  const options = mySeat === null ? [] : movableTokens(s, mySeat);
 
-  // الإعلانات: كل رمية وحركة، و"دورك"
+  // "دورك، ارمِ النرد" أو "اختر الحجر"، وصوت الحركة. الحالة تصل كائناً جديداً مع كل تحديث
+  // من الخادم، فنقارن ببصمة الحركة لا بالكائن
+  const prev = useRef<string | null>(null);
   useEffect(() => {
     const before = prev.current;
-    prev.current = s;
-    if (!before) {
-      announce(rules.teams ? `بدأت اللعبة. أنت و${names[2]} ضد ${names[1]} و${names[3]}` : `بدأت اللعبة. لونك ${COLOR_NAMES[ME]}`);
-    } else if (s.lastMove !== before.lastMove) moveAnnouncement(s, names, ME).forEach(announce);
-    if (s.phase === 'move' && s.turn === ME && before?.phase !== 'move') {
-      const n = movableTokens(s, ME).length;
-      announce(`رميت ${rollName(s.dice!)}${n > 1 ? `، اختر الحجر` : ''}`);
-    }
-    if (s.phase === 'roll' && s.turn === ME && (before?.turn !== ME || before.phase !== 'roll' || before.lastMove !== s.lastMove)) announce('دورك، ارمِ النرد');
-  }, [s, names, rules]);
+    const sig = JSON.stringify([s.lastMove, s.turn, s.phase, s.dice]);
+    prev.current = sig;
+    if (before === sig) return;
+    if (before && s.lastMove?.token && s.phase !== 'move') sounds.card();
+    if (!myTurn) return;
+    if (s.phase === 'roll') {
+      sounds.turn(isSystemReaderOn() || isScreenReaderOn());
+      announce('دورك، ارمِ النرد');
+    } else if (options.length > 1) announce('اختر الحجر');
+  }, [s, myTurn, options.length]);
 
-  // دور الروبوتات
-  useEffect(() => {
-    if (s.phase === 'over' || s.turn === ME) return;
-    const t = setTimeout(() => setS((cur) => {
-      const a = ludoBotAction(cur, cur.turn);
-      return a ? applyLudo(cur, a, rng.current) : cur;
-    }), BOT_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [s]);
-
-  const act = (a: Parameters<typeof applyLudo>[1]) => {
-    try { setS(applyLudo(s, a, rng.current)); } catch (e) { announceNow((e as Error).message); }
-  };
-
-  // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً بعد لحظة
-  const options = movableTokens(s, ME);
-  useEffect(() => {
-    if (options.length !== 1) return;
-    const t = setTimeout(() => setS((cur) => (cur === s ? applyLudo(cur, { type: 'move', seat: ME, token: options[0] }, rng.current) : cur)), 700);
-    return () => clearTimeout(t);
-  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const readBoard = useCallback(() => announceNow(boardSummary(s, names, ME)), [s, names]);
+  const readBoard = useCallback(() => announceNow(boardSummary(s, names, me)), [s, names, me]);
   const readMine = useCallback(() => {
-    const owner = controlledOwner(s, ME);
-    announceNow(`${owner === ME ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p)}`).join('، ')}`);
-  }, [s, names]);
+    if (mySeat === null) { readBoard(); return; }
+    const owner = controlledOwner(s, mySeat);
+    announceNow(`${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p)}`).join('، ')}`);
+  }, [s, names, mySeat, readBoard]);
   useEffect(() => {
     const onTwo = (e: Event) => {
       const dir = (e as CustomEvent<SwipeDir>).detail;
@@ -74,40 +60,36 @@ export function LudoTable({ onExit, rules = DEFAULT_RULES, names: given, initial
     return () => window.removeEventListener(TWO_FINGER, onTwo);
   }, [readBoard, readMine]);
 
-  const myTurn = s.phase !== 'over' && s.turn === ME;
   const home = (o: number) => s.tokens[o].filter((p) => p === FINISH).length;
-  const won = s.winner !== null && (rules.teams ? s.winner === teamOf(ME) : s.winner === ME);
+  const partner = mySeat === null ? -1 : (mySeat + 2) % 4;
+  const won = s.winner !== null && mySeat !== null && (teams ? s.winner === teamOf(mySeat) : s.winner === mySeat);
+  const winnerText = s.winner === null ? '' : teams ? `فاز فريق ${names[s.winner]} و${names[s.winner + 2]}` : `فاز ${names[s.winner]}`;
 
   return (
-    <main className="screen ludo-screen" aria-labelledby="ludo-title">
-      <header className="topbar">
-        <h1 id="ludo-title">لودو</h1>
-        <button className="secondary back-btn" onClick={onExit}>خروج</button>
-      </header>
-
+    <>
       <ul className="ludo-players" aria-label="اللاعبون">
         {s.seats.map((o) => (
           <li key={o} className={s.turn === o && s.phase !== 'over' ? 'turn' : ''} style={{ borderInlineStartColor: COLORS[o] }}>
-            <span className="sr-only">{names[o]}{rules.teams && o === 2 ? ' شريكك' : ''}، {COLOR_NAMES[o]}، وصل {home(o)} من 4</span>
-            <span aria-hidden="true">{names[o]}{rules.teams && o === 2 ? ' (شريكك)' : ''}</span>
+            <span className="sr-only">{o === mySeat ? 'أنت' : names[o]}{teams && o === partner ? '، شريكك' : ''}، {COLOR_NAMES[o]}، وصل {home(o)} من 4</span>
+            <span aria-hidden="true">{names[o]}{o === mySeat ? ' (أنت)' : teams && o === partner ? ' (شريكك)' : ''}</span>
             <span aria-hidden="true" className="ludo-home">{home(o)}/4</span>
           </li>
         ))}
       </ul>
 
-      <button className="ludo-board-btn" onClick={readBoard} aria-label={`اللوحة: ${boardSummary(s, names, ME)}`}>
-        <Board s={s} bottom={ME} movable={myTurn && s.phase === 'move' ? options.map((index) => ({ owner: controlledOwner(s, ME), index })) : []} />
+      <button className="ludo-board-btn" onClick={readBoard} aria-label={`اللوحة: ${boardSummary(s, names, me)}`}>
+        <Board s={s} bottom={mySeat ?? 0} movable={myTurn && s.phase === 'move' ? options.map((index) => ({ owner: controlledOwner(s, me), index })) : []} />
       </button>
 
       {s.phase === 'over' ? (
         <>
-          <p className="turn-line">{won ? '🎉 فزت!' : rules.teams ? 'فاز الفريق الآخر' : `فاز ${names[s.winner!]}`}</p>
-          <button onClick={() => { prev.current = null; setS(newGame(rng.current, rules)); }}>لعبة جديدة</button>
+          <p className="turn-line">{won ? '🎉 فزت!' : winnerText}</p>
+          {isOwner && <button onClick={restart}>لعبة جديدة</button>}
         </>
       ) : (
         <div className="ludo-controls">
           <Dice value={s.phase === 'move' ? s.dice : s.lastMove?.roll ?? null} color={COLORS[s.turn]} />
-          {myTurn && s.phase === 'roll' && <button className="ludo-roll" onClick={() => act({ type: 'roll', seat: ME })}>ارمِ النرد</button>}
+          {myTurn && s.phase === 'roll' && <button className="ludo-roll" onClick={() => act({ type: 'roll' })}>ارمِ النرد</button>}
           {!myTurn && <p className="note" aria-hidden="true">دور {names[s.turn]}</p>}
         </div>
       )}
@@ -116,13 +98,14 @@ export function LudoTable({ onExit, rules = DEFAULT_RULES, names: given, initial
         <section className="stack" aria-labelledby="ludo-opts">
           <h2 id="ludo-opts" className="sr-only">رميت {rollName(s.dice!)}: اختر الحجر</h2>
           {options.map((i) => (
-            <button key={i} className="secondary ludo-option" onClick={() => act({ type: 'move', seat: ME, token: i })}>
-              {optionText(s, ME, i, names)}
+            <button key={i} className="secondary ludo-option" onClick={() => act({ type: 'move', token: i })}>
+              {optionText(s, me, i, names)}
             </button>
           ))}
         </section>
       )}
-    </main>
+      {mySeat === null && <p className="note">أنت تشاهد هذه الطاولة.</p>}
+    </>
   );
 }
 

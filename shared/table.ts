@@ -9,6 +9,7 @@ import { PROJECT_NAMES } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
+import type { LudoState } from './ludo/engine';
 import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
@@ -49,6 +50,7 @@ export interface TableData {
   variant?: GameVariant;
   domino?: DominoState | null;
   jackaroo?: JackarooState | null;
+  ludo?: LudoState | null;
 }
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
@@ -71,7 +73,7 @@ export interface HandRecord {
 
 const gameActive = (t: TableData) => Boolean(t.game && t.game.phase !== 'matchOver') || otherActive(t);
 /** بدأت لعبة على الطاولة (حتى لو انتهت المباراة) */
-const hasGame = (t: TableData) => Boolean(t.game || t.domino || t.jackaroo);
+const hasGame = (t: TableData) => Boolean(t.game || t.domino || t.jackaroo || t.ludo);
 
 /** انقطع اتصال لاعب جالس أثناء المباراة: نحجز مقعده */
 export function markAway(t: TableData, uid: string, now: number): TableData {
@@ -337,7 +339,7 @@ export function replaceSeat(t: TableData, seat: Seat, spectatorUid: string): Tab
 export function stopGame(t: TableData): TableData {
   const humans = t.seats.filter((m): m is Member => m !== null && !m.isBot);
   return {
-    ...t, game: null, domino: null, jackaroo: null, history: [], matchNo: 0, away: {},
+    ...t, game: null, domino: null, jackaroo: null, ludo: null, history: [], matchNo: 0, away: {},
     seats: [null, null, null, null],
     spectators: [...humans, ...t.spectators.filter((s) => !humans.some((h) => h.uid === s.uid))],
   };
@@ -530,7 +532,7 @@ export type AutoStep =
 
 /** ما الذي يجب أن يحدث تلقائياً بعد الآن؟ (null = ننتظر لاعباً بشرياً) */
 export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
-  if (t.domino || t.jackaroo) {
+  if (t.domino || t.jackaroo || t.ludo) {
     const delayMs = otherAutoDelay(t, rng);
     return delayMs === null ? null : { kind: 'other', delayMs };
   }
@@ -623,6 +625,8 @@ export interface TableView {
   /** الدومينو والجاكارو: الحالة كاملة مع إخفاء قطع/أوراق الآخرين */
   domino: DominoState | null;
   jackaroo: JackarooState | null;
+  /** لودو: لا شيء مخفي (النرد يرميه الخادم) */
+  ludo: LudoState | null;
   /** سجل صكات المباراة الحالية */
   history: HandRecord[];
 }
@@ -680,11 +684,12 @@ export function viewFor(t: TableData, uid: string): TableView {
     variant: t.variant ?? 'classic',
     domino: t.domino ? dominoViewFor(t.domino, mySeat) : null,
     jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
+    ludo: t.ludo ?? null,
   };
 }
 
 /** للعميل: هل بدأت لعبة على الطاولة (أي نوع)، وهل هي جارية الآن */
-export const viewHasGame = (v: TableView) => Boolean(v.game || v.domino || v.jackaroo);
+export const viewHasGame = (v: TableView) => Boolean(v.game || v.domino || v.jackaroo || v.ludo);
 export const viewPlaying = (v: TableView) => Boolean(
-  (v.game && v.game.phase !== 'matchOver') || (v.domino && v.domino.phase !== 'matchOver') || v.jackaroo?.phase === 'playing',
+  (v.game && v.game.phase !== 'matchOver') || (v.domino && v.domino.phase !== 'matchOver') || v.jackaroo?.phase === 'playing' || (v.ludo && v.ludo.phase !== 'over'),
 );

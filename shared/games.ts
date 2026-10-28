@@ -13,10 +13,19 @@ import {
 } from './jackaroo/engine';
 import { jackarooBotAction } from './jackaroo/bot';
 import { moveAnnouncement as jackarooMoveText } from './jackaroo/labels';
+import { type LudoAction, type LudoState, DEFAULT_RULES as LUDO_SOLO, TEAM_RULES as LUDO_TEAMS, applyLudo, movableTokens, newGame as newLudo } from './ludo/engine';
+import { ludoBotAction } from './ludo/bot';
+import { COLOR_NAMES, moveAnnouncement as ludoMoveText, rollName } from './ludo/labels';
 
-export type GameKind = 'baloot' | 'domino' | 'jackaroo';
-export type GameVariant = 'classic' | 'complex';
-export const GAME_NAMES: Record<GameKind, string> = { baloot: 'بلوت', domino: 'دومينو', jackaroo: 'جاكارو' };
+export type GameKind = 'baloot' | 'domino' | 'jackaroo' | 'ludo';
+/** classic: الافتراضي (والفردي في لودو)، complex: جاكارو كمبلكس، teams: لودو فرق */
+export type GameVariant = 'classic' | 'complex' | 'teams';
+export const GAME_NAMES: Record<GameKind, string> = { baloot: 'بلوت', domino: 'دومينو', jackaroo: 'جاكارو', ludo: 'لودو' };
+/** اسم اللعبة مع نسختها: "جاكارو كمبلكس"، "لودو فرق" */
+export const gameTitle = (kind: GameKind, variant?: GameVariant) =>
+  GAME_NAMES[kind] + (kind === 'jackaroo' && variant === 'complex' ? ' كمبلكس' : kind === 'ludo' && variant === 'teams' ? ' فرق' : '');
+/** النسخ الصالحة لكل لعبة (الأولى هي الافتراضية) */
+export const VARIANTS: Record<GameKind, GameVariant[]> = { baloot: ['classic'], domino: ['classic'], jackaroo: ['classic', 'complex'], ludo: ['classic', 'teams'] };
 
 /** الدومينو على الطاولة: 4 لاعبين شراكة حتى 100 */
 export const TABLE_DOMINO_RULES = { players: 4, target: 100 } as const;
@@ -30,6 +39,7 @@ export const kindOf = (t: TableData): GameKind => t.kind ?? 'baloot';
 export function otherActive(t: TableData): boolean {
   if (t.domino) return t.domino.phase !== 'matchOver';
   if (t.jackaroo) return t.jackaroo.phase === 'playing';
+  if (t.ludo) return t.ludo.phase !== 'over';
   return false;
 }
 
@@ -37,13 +47,23 @@ export function startOther(t: TableData, rng: Rng): { table: TableData; events: 
   if (kindOf(t) === 'domino') {
     const domino = newDomino(rng, { ...TABLE_DOMINO_RULES });
     return {
-      table: { ...t, domino, jackaroo: null, game: null },
+      table: { ...t, domino, jackaroo: null, ludo: null, game: null },
       events: ['بدأت مباراة الدومينو، الهدف 100 نقطة', `يبدأ ${names(t)[domino.turn]} بدوس الستة`],
+    };
+  }
+  if (kindOf(t) === 'ludo') {
+    const ludo = newLudo(rng, t.variant === 'teams' ? LUDO_TEAMS : LUDO_SOLO);
+    return {
+      table: { ...t, ludo, domino: null, jackaroo: null, game: null },
+      events: [
+        `بدأت لودو${t.variant === 'teams' ? ' فرق' : ''}. ${names(t).map((n, i) => `${n} ${COLOR_NAMES[i]}`).join('، ')}`,
+        `يبدأ ${names(t)[ludo.turn]}`,
+      ],
     };
   }
   const jackaroo = newJackaroo(rng, t.variant === 'complex' ? COMPLEX_RULES : JACKAROO_CLASSIC);
   return {
-    table: { ...t, jackaroo, domino: null, game: null },
+    table: { ...t, jackaroo, domino: null, ludo: null, game: null },
     events: [`بدأت الجاكارو${t.variant === 'complex' ? ' كمبلكس' : ''}. وُزّعت ${jackaroo.hands[0].length} أوراق، يبدأ ${names(t)[jackaroo.turn]}`],
   };
 }
@@ -80,7 +100,25 @@ export function parseJackaroo(raw: unknown, seat: number): JackarooAction | null
   return null;
 }
 
-export function applyOther(t: TableData, action: DominoAction | JackarooAction, rng: Rng): { table: TableData; events: string[] } {
+/** حركة لودو: رمي النرد، أو تحريك حجر برقمه */
+export function parseLudo(raw: unknown, seat: number): LudoAction | null {
+  const a = raw as { type?: unknown; token?: unknown } | null;
+  if (!a) return null;
+  if (a.type === 'roll') return { type: 'roll', seat };
+  if (a.type === 'move' && Number.isInteger(a.token)) return { type: 'move', seat, token: a.token as number };
+  return null;
+}
+
+function applyLudoEvents(t: TableData, action: LudoAction, rng: Rng): { table: TableData; events: string[] } {
+  const after = applyLudo(t.ludo!, action, rng);
+  const table = { ...t, ludo: after };
+  // رمية تنتظر اختيار الحجر: نعلن الرمية وحدها (والحركة تُعلن بعدها بلا تكرار الرمية)
+  if (action.type === 'roll' && after.phase === 'move') return { table, events: [`${names(t)[action.seat]} رمى ${rollName(after.dice!)}`] };
+  return { table, events: ludoMoveText(after, names(t), -1, action.type === 'roll') };
+}
+
+export function applyOther(t: TableData, action: DominoAction | JackarooAction | LudoAction, rng: Rng): { table: TableData; events: string[] } {
+  if (t.ludo) return applyLudoEvents(t, action as LudoAction, rng);
   if (t.domino) {
     const after = applyDomino(t.domino, action as DominoAction);
     const events = [dominoMoveText(after, names(t))];
@@ -108,6 +146,11 @@ export function otherAutoDelay(t: TableData, rng: Rng): number | null {
     if (t.domino.phase === 'playing' && t.seats[t.domino.turn]?.isBot) return think();
   }
   if (t.jackaroo?.phase === 'playing' && t.seats[t.jackaroo.turn]?.isBot) return think();
+  if (t.ludo && t.ludo.phase !== 'over') {
+    if (t.seats[t.ludo.turn]?.isBot) return t.ludo.phase === 'move' ? 700 : think();
+    // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً للاعب أيضاً
+    if (movableTokens(t.ludo, t.ludo.turn).length === 1) return 900;
+  }
   return null;
 }
 
@@ -118,6 +161,12 @@ export function runOtherAuto(t: TableData, rng: Rng): { table: TableData; events
   }
   if (t.domino) {
     const a = dominoBotAction(t.domino, t.domino.turn);
+    return a ? applyOther(t, a, rng) : { table: t, events: [] };
+  }
+  if (t.ludo) {
+    const s = t.ludo;
+    const only = movableTokens(s, s.turn);
+    const a = t.seats[s.turn]?.isBot ? ludoBotAction(s, s.turn) : only.length === 1 ? { type: 'move' as const, seat: s.turn, token: only[0] } : null;
     return a ? applyOther(t, a, rng) : { table: t, events: [] };
   }
   const a = t.jackaroo ? jackarooBotAction(t.jackaroo, t.jackaroo.turn) : null;
@@ -149,6 +198,7 @@ export function jackarooViewFor(s: JackarooState, mySeat: number | null): Jackar
 export function otherStatus(t: TableData): 'waiting' | 'playing' | 'finished' {
   if (t.domino) return t.domino.phase === 'matchOver' ? 'finished' : 'playing';
   if (t.jackaroo) return t.jackaroo.phase === 'over' ? 'finished' : 'playing';
+  if (t.ludo) return t.ludo.phase === 'over' ? 'finished' : 'playing';
   return 'waiting';
 }
 

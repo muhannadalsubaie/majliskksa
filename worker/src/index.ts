@@ -1,5 +1,6 @@
 import { COINS, ONE_TIME_GIFTS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
+import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS } from '../../shared/games';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore, deleteAuthUser } from './firestore';
@@ -134,6 +135,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // إنشاء طاولة: عملتان من المنشئ
     if (pathname === '/tables' && request.method === 'POST') {
       const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown; kind?: unknown; variant?: unknown };
+      const kind: GameKind = typeof body.kind === 'string' && Object.hasOwn(GAME_NAMES, body.kind) ? (body.kind as GameKind) : 'baloot';
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
@@ -143,7 +145,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const id = env.TABLES.newUniqueId();
       try {
         await env.TABLES.get(id).create(id.toString(), { uid: user.uid, username }, body.isPrivate === true,
-          body.kind === 'domino' || body.kind === 'jackaroo' ? body.kind : 'baloot', body.variant === 'complex' ? 'complex' : 'classic');
+          kind, VARIANTS[kind].includes(body.variant as GameVariant) ? (body.variant as GameVariant) : 'classic');
       } catch (e) {
         if (!devAuth) await db.adjustCoins(user.uid, COINS.createTable).catch(() => {}); // استرجاع عند الفشل
         throw e;

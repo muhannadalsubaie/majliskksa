@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Card, type Seat, SUIT_NAMES, SUIT_SYMBOLS, SUITS, cardId, cardLabel, teamOf } from '../../shared/baloot/cards';
 import type { Bid } from '../../shared/baloot/game';
 import { COINS } from '../../shared/economy';
-import { GAME_NAMES } from '../../shared/games';
+import { gameTitle } from '../../shared/games';
 import { type GameView, viewHasGame, viewPlaying } from '../../shared/table';
 import { DominoBoard } from '../games/DominoBoard';
 import { JackarooBoard } from '../games/JackarooBoard';
+import { LudoBoard } from '../games/LudoBoard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TableMenu } from '../components/TableMenu';
 import { HistoryDialog } from '../components/HistoryDialog';
@@ -322,7 +323,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
           <button className="secondary" onClick={() => setMenuOpen(true)} aria-haspopup="dialog">القائمة</button>
           {view.kind === 'baloot' && <button className="secondary" onClick={() => setHistoryOpen(true)} aria-haspopup="dialog">السجل</button>}
         </span>
-        <h1 id="table-title" className="sr-only">طاولة {GAME_NAMES[view.kind]}{view.kind === 'jackaroo' && view.variant === 'complex' ? ' كمبلكس' : ''}</h1>
+        <h1 id="table-title" className="sr-only">طاولة {gameTitle(view.kind, view.variant)}</h1>
       </header>
 
       {!connected && <p role="status" className="note">انقطع الاتصال — جارٍ إعادة المحاولة…</p>}
@@ -354,6 +355,12 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
         <DominoBoard
           s={view.domino} mySeat={mySeat} names={seatNames} isOwner={isOwner}
           act={(action) => send({ type: 'domino', action })} restart={() => send({ type: 'start' })}
+        />
+      )}
+      {view.ludo && (
+        <LudoBoard
+          s={view.ludo} mySeat={mySeat} names={seatNames} isOwner={isOwner}
+          act={(action) => send({ type: 'ludo', action })} restart={() => send({ type: 'start' })}
         />
       )}
       {view.jackaroo && (

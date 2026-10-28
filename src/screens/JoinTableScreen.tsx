@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { COINS } from '../../shared/economy';
-import { type GameKind, GAME_NAMES } from '../../shared/games';
+import { type GameKind, type GameVariant, gameTitle } from '../../shared/games';
 import { announce } from '../services/announcer';
 import { connectFirebase } from '../services/firebase';
 import { API_ERRORS, joinTable } from '../services/tables';
 import type { Navigate } from '../state/navigation';
 
-interface TableRow { id: string; ownerName: string; isPrivate: boolean; players: number; people: number; status: string; kind?: GameKind; variant?: string }
+interface TableRow { id: string; ownerName: string; isPrivate: boolean; players: number; people: number; status: string; kind?: GameKind; variant?: GameVariant }
 
 /** اسم اللعبة (الطاولات القديمة بلا نوع = بلوت) */
-const gameName = (r: TableRow) => GAME_NAMES[r.kind ?? 'baloot'] + (r.kind === 'jackaroo' && r.variant === 'complex' ? ' كمبلكس' : '');
+const gameName = (r: TableRow) => gameTitle(r.kind ?? 'baloot', r.variant);
 
 const STATUS: Record<string, string> = { waiting: 'بانتظار اللاعبين', playing: 'جارية', finished: 'بانتظار مباراة جديدة' };
 

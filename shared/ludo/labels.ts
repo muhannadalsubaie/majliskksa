@@ -49,14 +49,18 @@ export function danger(s: LudoState, owner: number, p: Progress): boolean {
 }
 
 /** إعلان آخر حركة للجميع */
-export function moveAnnouncement(s: LudoState, names: string[], me: number): string[] {
+/** withRoll = false: الرمية أُعلنت قبل الحركة (اللعب على الطاولة)، فلا نكررها */
+export function moveAnnouncement(s: LudoState, names: string[], me: number, withRoll = true): string[] {
   const r = s.lastMove;
   if (!r) return [];
   const who = r.seat === me ? 'أنت' : names[r.seat];
   if (r.threeSixes) return [`${who} رمى ستة ثالثة، ضاع الدور`];
   if (!r.token) return [`${who} رمى ${rollName(r.roll)}، لا حركة${r.extraTurn ? '، ويرمي مرة أخرى' : ''}`];
   const t = tokenName(r.token, names, me);
-  const out = [r.from === -1 ? `${who} رمى ستة، وطلّع ${t}` : `${who} رمى ${rollName(r.roll)}، ${t} ${r.finished ? 'وصل الوسط' : `يتقدم`}`];
+  const step = r.finished ? 'وصل الوسط' : `يتقدم ${rollName(r.roll)}`;
+  const out = withRoll
+    ? [r.from === -1 ? `${who} رمى ستة، وطلّع ${t}` : `${who} رمى ${rollName(r.roll)}، ${t} ${step}`]
+    : [r.from === -1 ? `${who} طلّع ${r.token.owner === r.seat && r.seat !== me ? `حجره ${r.token.index + 1}` : t}` : `${t} ${step}`];
   for (const c of r.captured) out.push(`أكل ${tokenName(c, names, me)}، ورجع للبيت`);
   if (s.phase === 'over' && s.winner !== null) {
     if (s.rules.teams) out.push(teamOf(me) === s.winner ? 'فاز فريقك!' : `فاز فريق ${names[s.winner]} و${names[s.winner + 2]}`);

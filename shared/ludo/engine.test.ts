@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seededRng } from '../../shared/baloot/testing';
+import { seededRng } from '../baloot/testing';
 import { ludoBotAction } from './bot';
 import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, newGame } from './engine';
 import { moveAnnouncement, optionText } from './labels';

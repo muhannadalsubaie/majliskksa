@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
-import { applyOther, parseDomino, parseJackaroo } from './games';
+import { applyOther, gameTitle, parseDomino, parseJackaroo, parseLudo } from './games';
 import { addBot, leave, newTable, nextAutoStep, runAutoStep, startAny, stopGame, viewFor, type TableData } from './table';
 import { playable } from './domino/engine';
 import { legalMoves } from './jackaroo/engine';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
-function table(kind: 'domino' | 'jackaroo', variant: 'classic' | 'complex' = 'classic'): TableData {
+function table(kind: 'domino' | 'jackaroo' | 'ludo', variant: 'classic' | 'complex' | 'teams' = 'classic'): TableData {
   let t = newTable('t1', owner, false, 0, kind, variant);
   t = addBot(t, 1); t = addBot(t, 2); t = addBot(t, 3);
   return t;
@@ -82,4 +82,35 @@ describe('domino and jackaroo tables', () => {
     expect(stopped.jackaroo).toBeNull();
     expect(() => startAny(table('jackaroo'), rng)).not.toThrow();
   });
+
+  it('ludo: solo and teams start, bots finish, nothing hidden', () => {
+    for (const variant of ['classic', 'teams'] as const) {
+      const rng = seededRng(13);
+      const { table: t, events } = startAny(table('ludo', variant), rng);
+      expect(t.ludo!.rules.teams).toBe(variant === 'teams');
+      expect(events[0]).toContain('لودو');
+      expect(viewFor(t, 'u1').ludo).toEqual(t.ludo);
+      const done = playOut(t, rng);
+      expect(done.ludo!.phase).toBe('over');
+      expect(done.ludo!.winner).not.toBeNull();
+    }
+    expect(gameTitle('ludo', 'teams')).toBe('لودو فرق');
+  });
+
+  it('ludo: the human rolls (roll announced alone), single choice moves automatically', () => {
+    const rng = seededRng(21);
+    let t = startAny(table('ludo'), rng).table;
+    t = { ...t, ludo: { ...t.ludo!, turn: 0, tokens: [[10, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] } };
+    // نرد ثابت 3: حجر واحد فقط يتحرك (البقية في البيت)
+    const three = () => 2.5 / 6;
+    const r = applyOther(t, parseLudo({ type: 'roll' }, 0)!, three);
+    expect(r.events).toEqual(['مهند رمى ثلاثة']);
+    const step = nextAutoStep(r.table, rng);
+    expect(step?.kind).toBe('other');
+    const moved = runAutoStep(r.table, step!, rng);
+    expect(moved.table.ludo!.tokens[0][0]).toBe(13);
+    expect(moved.events[0]).toBe('حجر مهند 1 يتقدم ثلاثة');
+    expect(parseLudo({ type: 'move', token: 'x' }, 0)).toBeNull();
+  });
 });
+

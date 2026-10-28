@@ -62,6 +62,7 @@ export type ClientMessage =
   | { type: 'action'; action: Record<string, unknown> }
   | { type: 'domino'; action: Record<string, unknown> }
   | { type: 'jackaroo'; action: Record<string, unknown> }
+  | { type: 'ludo'; action: Record<string, unknown> }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }

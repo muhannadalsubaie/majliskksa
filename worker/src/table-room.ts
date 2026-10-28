@@ -7,7 +7,8 @@ import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, startAny, viewFor, withoutVoice,
 } from '../../shared/table';
-import { type GameKind, type GameVariant, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo } from '../../shared/games';
+import { type GameKind, type GameVariant, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
+import { LudoError } from '../../shared/ludo/engine';
 import { DominoError } from '../../shared/domino/engine';
 import { JackarooError } from '../../shared/jackaroo/engine';
 import { Realtime, type SessionDescription } from './realtime';
@@ -23,6 +24,7 @@ type ClientMessage =
   | { type: 'action'; action: unknown }
   | { type: 'domino'; action: unknown }
   | { type: 'jackaroo'; action: unknown }
+  | { type: 'ludo'; action: unknown }
   | { type: 'addBot'; seat: number }
   | { type: 'start' }
   | { type: 'leave' }
@@ -378,7 +380,7 @@ export class TableRoom extends DurableObject<Env> {
       await this.handle(t, uid, msg);
     } catch (e) {
       const code = (e as Error).message;
-      const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
+      const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError || e instanceof LudoError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
       ws.send(JSON.stringify({ type: 'error', message: text }));
     }
   }
@@ -398,10 +400,11 @@ export class TableRoom extends DurableObject<Env> {
         break;
       }
       case 'domino':
-      case 'jackaroo': {
+      case 'jackaroo':
+      case 'ludo': {
         const seat = seatOf(t, uid);
-        if (seat === null || !(msg.type === 'domino' ? t.domino : t.jackaroo)) throw new Error('not-a-player');
-        const action = msg.type === 'domino' ? parseDomino(msg.action, seat) : parseJackaroo(msg.action, seat);
+        if (seat === null || !t[msg.type]) throw new Error('not-a-player');
+        const action = msg.type === 'domino' ? parseDomino(msg.action, seat) : msg.type === 'jackaroo' ? parseJackaroo(msg.action, seat) : parseLudo(msg.action, seat);
         if (!action) throw new Error('bad-action');
         const r = applyOther(t, action, rng);
         await this.save(r.table);
@@ -659,7 +662,7 @@ export class TableRoom extends DurableObject<Env> {
       const r = runAutoStep(cur, step, rng);
       await this.save(r.table);
       this.broadcast(r.events);
-      if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo) && !otherActive(r.table))) await this.publish(r.table);
+      if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity));
