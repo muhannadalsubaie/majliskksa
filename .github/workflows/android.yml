@@ -3,6 +3,9 @@
 #   - أول مرة يُنشأ مفتاح التوقيع ويُحفظ في المستودع مشفّراً بها (android/keystore/upload.jks.enc)
 #   - ويُبنى APK و AAB موقّعان بمفتاح النشر (الـ AAB هو ما يُرفع إلى Google Play)
 # وبدونه يُبنى APK تجريبي (debug) كما كان.
+# وإن وُجد سر PLAY_SERVICE_ACCOUNT_JSON (مفتاح حساب خدمة من Google Cloud مربوط بحساب Google Play):
+#   يُرفع الـ AAB تلقائياً إلى مسار "الاختبار الداخلي" في Google Play مع كل تحديث.
+#   (أول نسخة فقط تُرفع يدوياً من Play Console — شرط من Google للتطبيق الجديد.)
 name: Android APK
 
 on:
@@ -28,6 +31,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -90,3 +95,25 @@ jobs:
           files: |
             majlisk.apk
             majlisk.aab
+      # الرفع إلى Google Play (الاختبار الداخلي). التطبيق الذي لم يُنشر بعد لا يقبل إلا نسخة "مسودة"،
+      # فإن رُفض الرفع العادي نرفعها مسودة ويكملها صاحب التطبيق بضغطة من Play Console.
+      - name: Upload to Google Play (internal testing)
+        id: play
+        if: steps.key.outputs.signed == 'true' && env.HAS_PLAY == 'true'
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.majlisk.app
+          releaseFiles: majlisk.aab
+          track: internal
+          status: completed
+      - name: Upload to Google Play as draft (app not published yet)
+        if: steps.play.outcome == 'failure'
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.majlisk.app
+          releaseFiles: majlisk.aab
+          track: internal
+          status: draft

@@ -15,10 +15,10 @@ export async function verifyUser(request: Request, projectId: string, devAuth = 
 
 export async function verifyToken(token: string, projectId: string, devAuth = false): Promise<AuthUser | null> {
   if (!token) return null;
-  // للتطوير المحلي فقط: dev:<uid>:<name>
+  // للتطوير المحلي فقط: dev:<uid>:<name> (الاسم بترميز الروابط ليقبل العربية)
   if (devAuth && token.startsWith('dev:')) {
     const [, uid, name = uid] = token.split(':');
-    return uid ? { uid, name } : null;
+    return uid ? { uid, name: decodeURIComponent(name) } : null;
   }
   try {
     const { payload } = await jwtVerify(token, JWKS, {

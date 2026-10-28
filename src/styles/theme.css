@@ -78,21 +78,22 @@ h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
 .turn-line { margin: 0; text-align: center; font-weight: 700; min-height: 1.4em; }
 .board {
   display: grid; gap: 6px; align-items: center;
-  grid-template-columns: .9fr 2.4fr .9fr;
+  /* minmax(0, …): الأعمدة تصغر مع الشاشات الضيقة بدل أن تتجاوز عرضها */
+  grid-template-columns: minmax(0, .8fr) minmax(0, 3fr) minmax(0, .8fr);
   grid-template-areas: ". top ." "right center left";
   background: radial-gradient(ellipse at center, #1b4d3966, transparent 70%);
   border-radius: 24px; padding: 6px 0;
 }
 .player { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: var(--radius); border: 1px solid transparent; text-align: center; }
 .player.turn { border-color: var(--gold); background: #d4af3714; }
-.player-name { font-weight: 700; font-size: 15px; }
+.player-name { font-weight: 700; font-size: clamp(12px, 3.8vw, 15px); overflow-wrap: break-word; }
 .player-info .note { white-space: nowrap; }
 .pos-2 { grid-area: top; }
 .pos-1 { grid-area: right; }
 .pos-3 { grid-area: left; }
 /* وسط الطاولة: الأوراق تتكدّس فوق بعض، كل ورقة مزاحة ومائلة قليلاً باتجاه من رماها، والأخيرة في الأعلى */
 .trick-area {
-  grid-area: center; position: relative; aspect-ratio: 1 / 1; min-height: 250px;
+  grid-area: center; position: relative; aspect-ratio: 1 / 1; width: 100%; max-width: 300px; justify-self: center;
   border-radius: 50%; border: 1px solid #d4af3733; background: #0b241b;
 }
 .trick-slot {

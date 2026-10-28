@@ -7,9 +7,11 @@ import { connectFirebase } from './firebase';
 
 /** للتطوير المحلي فقط: ?devUser=اسم يستخدم توكن وهمي يقبله الخادم المحلي */
 const devUser = import.meta.env.DEV ? new URLSearchParams(location.search).get('devUser') : null;
+/** ?devName=اسم عربي للعرض (اختياري) */
+const devName = import.meta.env.DEV ? new URLSearchParams(location.search).get('devName') : null;
 
 export async function getToken(): Promise<string> {
-  if (devUser) return `dev:${devUser}:${devUser}`;
+  if (devUser) return `dev:${devUser}:${encodeURIComponent(devName ?? devUser)}`;
   const { auth } = await connectFirebase();
   if (!auth.currentUser) throw new Error('unauthenticated');
   return auth.currentUser.getIdToken();
