@@ -31,4 +31,5 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           USERNAMES: ${{ inputs.usernames }}
           AMOUNT: ${{ inputs.amount }}
+        shell: bash -eo pipefail {0}
         run: npx -y tsx@4.19.2 scripts/grant-coins.ts "$AMOUNT" "$USERNAMES" | tee -a $GITHUB_STEP_SUMMARY

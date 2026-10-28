@@ -1,13 +1,14 @@
 // منح عملات لمستخدمين بأسماء المستخدمين (يشغّله صاحب التطبيق من GitHub Actions: Grant coins).
 // الاستخدام: FIREBASE_SERVICE_ACCOUNT=... npx tsx scripts/grant-coins.ts 500 "ياسر,خالد"
-import { Firestore } from '../worker/src/firestore';
+import { Firestore, parseServiceAccount } from '../worker/src/firestore';
 import { usernameKey } from '../shared/username';
 
 const [amountRaw, namesRaw = ''] = process.argv.slice(2);
 const amount = Number(amountRaw);
 if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100_000) throw new Error(`مبلغ غير صالح: ${amountRaw}`);
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT ?? '';
-const projectId = (JSON.parse(sa) as { project_id: string }).project_id;
+// المفتاح قد يُحفظ في الأسرار بأسطر حقيقية داخل النص — نفس قارئ الخادم يتسامح مع ذلك
+const projectId = parseServiceAccount(sa).project_id;
 const db = new Firestore(projectId, sa);
 
 const names = namesRaw.split(/[,،\n]/).map((n) => n.trim()).filter(Boolean);
