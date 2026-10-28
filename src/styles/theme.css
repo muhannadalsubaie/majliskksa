@@ -9,11 +9,17 @@
   --danger: #c0392b;
   --radius: 14px;
   color-scheme: dark;
-  font-family: system-ui, "Segoe UI", Tahoma, "Noto Kufi Arabic", sans-serif;
+  font-family: -apple-system, system-ui, "Segoe UI", Tahoma, "Noto Kufi Arabic", sans-serif;
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 body { background: var(--green-900); color: var(--text); }
+/* إحساس تطبيق لا موقع: بلا ارتداد الصفحة عند أطرافها، ولا تحديد النصوص وقائمة النسخ بالضغط المطوّل،
+   ولا الوميض الرمادي عند اللمس، ولا تكبير الخط تلقائياً */
+html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img { -webkit-user-drag: none; }
 button {
   font: inherit; color: var(--green-900); background: var(--gold);
   border: 0; border-radius: var(--radius); padding: 14px 20px; font-weight: 700; cursor: pointer;
@@ -26,7 +32,7 @@ input {
   border: 1px solid var(--green-700); background: var(--green-800); color: var(--text);
 }
 h1, h2, h3 { color: var(--gold); margin: 0 0 12px; }
-.screen { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.screen { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 14px; }
 .center { align-items: center; justify-content: center; text-align: center; }
 .topbar { display: flex; justify-content: space-between; align-items: center; }
 .coins { color: var(--gold); font-weight: 700; }

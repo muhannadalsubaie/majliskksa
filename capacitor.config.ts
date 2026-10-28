@@ -18,7 +18,10 @@ const config: CapacitorConfig = {
   },
   ios: {
     backgroundColor: '#0d2b20',
-    contentInset: 'always',
+    // الهوامش الآمنة (النوتش وشريط الرجوع) يتولاها CSS عبر env(safe-area-inset-*)
+    contentInset: 'never',
+    // بلا معاينة الروابط عند الضغط المطوّل (سلوك متصفح)
+    allowsLinkPreview: false,
     ...(hasGoogleServiceInfo ? {} : {
       includePlugins: ['@capacitor-community/admob', '@capacitor-community/text-to-speech', '@capacitor/app', '@capacitor/screen-reader', '@capgo/native-purchases'],
     }),
