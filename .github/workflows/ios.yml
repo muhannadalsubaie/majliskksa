@@ -1,4 +1,4 @@
-# بناء نسخة الآيفون على ماك سحابي (مجاني للمستودعات العامة) — بلا حاجة لجهاز ماك أو Codemagic.
+# بناء نسخة الآيفون على ماك سحابي — بلا حاجة لجهاز ماك أو Codemagic.
 # بدون أسرار Apple: يبني للمحاكي فقط ليتأكد أن المشروع سليم.
 # مع الأسرار التالية يبني نسخة موقّعة ويرفعها مباشرة إلى TestFlight:
 #   APPLE_TEAM_ID   — معرّف الفريق (10 أحرف) من حساب المطوّر
@@ -26,6 +26,9 @@ concurrency: ios-build
 
 jobs:
   build:
+    # جهاز الماك في GitHub يُحسب بعشرة أضعاف الدقائق (المستودع خاص)، فلا نبني الآيفون مع كل تعديل:
+    # فقط عند تشغيله يدوياً، أو إذا كانت رسالة التعديل فيها [ios]
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ios]')
     runs-on: macos-15
     env:
       HAS_KEYS: ${{ secrets.ASC_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
