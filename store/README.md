@@ -122,3 +122,23 @@
    - الخارجيون: برابط عام. أول نسخة تمر بمراجعة سريعة.
 
 **قبل النشر العام في الآيفون:** أنشئ تطبيق الآيفون في AdMob وضع معرّفه ووحدة الإعلان. الأندرويد جاهز بمعرّفاته الحقيقية، أما الآيفون فيعرض حالياً إعلانات Google التجريبية.
+
+## تفعيل الدخول بحساب Apple (بعد قبول حساب مطوّر Apple)
+
+زر "الدخول بحساب Apple" موجود في الآيفون والأندرويد والمتصفح. يعمل بعد هذه الإعدادات، وقبلها يظهر للمستخدم: "طريقة الدخول هذه غير مفعّلة بعد".
+
+1. **Apple Developer ← Certificates, Identifiers & Profiles:**
+   1. **Identifiers ← App ID** `com.majlisk.app`: فعّل **Sign In with Apple**. (البناء التلقائي يفعّله غالباً، تأكد منه فقط.)
+   2. **Identifiers ← Services IDs ← جديد** (للمتصفح والأندرويد):
+      - المعرّف مثلاً `com.majlisk.signin`.
+      - فعّل Sign In with Apple، واضغط Configure، واختر App ID السابق.
+      - Domains: `majlisk-87eef.firebaseapp.com`
+      - Return URLs: `https://majlisk-87eef.firebaseapp.com/__/auth/handler`
+   3. **Keys ← جديد:** فعّل Sign In with Apple، واختر App ID السابق، ثم نزّل ملف `.p8` واحفظ Key ID.
+2. **Firebase Console ← Authentication ← Sign-in method ← Apple:** فعّله، وضع:
+   - Services ID: `com.majlisk.signin`
+   - Apple Team ID
+   - Key ID
+   - محتوى ملف `.p8`
+
+   للآيفون وحده يكفي التفعيل. البقية مطلوبة للمتصفح والأندرويد.

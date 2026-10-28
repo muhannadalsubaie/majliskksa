@@ -1,4 +1,4 @@
-// اختبار آلي للدخول بـ Google في محرك Safari (WebKit) — كآيفون وكماك — على الموقع الحقيقي:
+// اختبار آلي للدخول بـ Google (و Apple) في محرك Safari (WebKit) — كآيفون وكماك — على الموقع الحقيقي:
 // الضغط على "الدخول بحساب Google" يجب أن يفتح نافذة Google فوراً (بلا منع للنافذة ولا خطأ في الإعداد).
 // لا يُكمل الدخول نفسه (يحتاج حساب Google حقيقي)، لكنه يتحقق من كل ما قبل ذلك.
 import { devices, webkit } from 'playwright';
@@ -34,7 +34,21 @@ for (const [label, opts] of [['iPhone (Safari)', devices['iPhone 15']], ['Mac (S
     // لا رسالة خطأ في الصفحة (نطاق غير مصرح، نافذة ممنوعة...)
     await page.waitForTimeout(1500);
     const alert = await page.locator('[role="alert"]').textContent().catch(() => null);
-    check(!alert || /إغلاق نافذة Google/.test(alert), `${label}: no sign-in error shown (${alert ?? 'none'})`);
+    check(!alert || /إغلاق نافذة الدخول/.test(alert), `${label}: no sign-in error shown (${alert ?? 'none'})`);
+    // الدخول بـ Apple: النافذة يجب أن تُفتح لحظة الضغط. الوصول لصفحة Apple يحتاج تفعيل Apple في Firebase
+    // (يحتاج حساب مطوّر Apple)، فنسجّل النتيجة فقط ولا نُفشل الاختبار بسببها
+    const apple = page.getByRole('button', { name: 'الدخول بحساب Apple' });
+    const applePopupPromise = context.waitForEvent('page', { timeout: 15000 }).catch(() => null);
+    await apple.click();
+    const applePopup = await applePopupPromise;
+    check(Boolean(applePopup), `${label}: Apple window opened on tap`);
+    if (applePopup) {
+      await applePopup.waitForURL(/appleid\.apple\.com/, { timeout: 20000 }).catch(() => {});
+      log(label, 'apple popup url:', applePopup.url().slice(0, 140), /appleid\.apple\.com/.test(applePopup.url()) ? '(Apple sign-in page reached)' : '(Apple not configured yet)');
+      await applePopup.close().catch(() => {});
+    }
+    await page.waitForTimeout(1500);
+    log(label, 'after Apple:', await page.locator('[role="alert"]').textContent().catch(() => null) ?? 'no message');
   } catch (e) {
     log(label, 'ERROR', e?.message ?? e);
     failed = true;

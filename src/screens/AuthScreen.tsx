@@ -19,11 +19,14 @@ const ERRORS: Record<string, string> = {
   'auth/weak-password': 'كلمة المرور قصيرة — 6 أحرف على الأقل',
   'auth/missing-password': 'أدخل كلمة المرور',
   'auth/too-many-requests': 'محاولات كثيرة، حاول بعد قليل',
-  'auth/popup-closed-by-user': 'تم إغلاق نافذة Google',
-  'auth/popup-blocked': 'المتصفح منع نافذة Google. اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى',
-  'auth/cancelled-popup-request': 'تم إغلاق نافذة Google',
+  'auth/popup-closed-by-user': 'تم إغلاق نافذة الدخول',
+  'auth/popup-blocked': 'المتصفح منع نافذة الدخول. اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى',
+  'auth/cancelled-popup-request': 'تم إغلاق نافذة الدخول',
+  'auth/operation-not-allowed': 'طريقة الدخول هذه غير مفعّلة بعد',
+  'auth/account-exists-with-different-credential': 'بريد هذا الحساب مسجّل بطريقة دخول أخرى، ادخل بها',
   'auth/unauthorized-domain': 'الدخول بـ Google غير مفعّل لهذا الرابط بعد',
   'google-native': 'الدخول بحساب Google داخل التطبيق قيد التفعيل. ادخل بالبريد وكلمة المرور مؤقتاً.',
+  'apple-native': 'الدخول بحساب Apple داخل التطبيق قيد التفعيل. ادخل بالبريد وكلمة المرور مؤقتاً.',
   'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت',
   ...USERNAME_ERRORS,
   timeout: 'تعذّر الاتصال، تحقق من الإنترنت وحاول مرة أخرى',
@@ -111,10 +114,38 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
     navigate('menu');
   });
 
-  // تسجيل الدخول بـ Apple (في الآيفون فقط — شرط من Apple عند وجود الدخول بـ Google)
-  const apple = () => run(async () => {
+  // تسجيل الدخول بـ Apple: في المتصفح نافذة Apple (تُفتح لحظة الضغط مثل Google)،
+  // وفي الآيفون والأندرويد عبر الإضافة الأصلية ثم ندخل بنفس الحساب في Firebase
+  const appleProvider = () => {
+    const p = new OAuthProvider('apple.com');
+    p.addScope('email');
+    p.addScope('name');
+    p.setCustomParameters({ locale: 'ar' });
+    return p;
+  };
+  const apple = () => {
+    const ready = Capacitor.isNativePlatform() ? null : firebaseNow();
+    if (ready) {
+      const popup = signInWithPopup(ready.auth, appleProvider());
+      void run(async () => {
+        await popup;
+        announce('تم تسجيل الدخول');
+        navigate('menu');
+      });
+      return;
+    }
+    void appleSlow();
+  };
+
+  const appleSlow = () => run(async () => {
     const { auth } = await connectFirebase();
-    if (!Capacitor.isPluginAvailable('FirebaseAuthentication')) throw { code: 'google-native' };
+    if (!Capacitor.isNativePlatform()) {
+      await signInWithPopup(auth, appleProvider());
+      announce('تم تسجيل الدخول');
+      navigate('menu');
+      return;
+    }
+    if (!Capacitor.isPluginAvailable('FirebaseAuthentication')) throw { code: 'apple-native' };
     const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
     const r = await FirebaseAuthentication.signInWithApple().catch(() => { throw { code: 'auth/popup-closed-by-user' }; });
     const idToken = r.credential?.idToken;
@@ -164,9 +195,7 @@ export function AuthScreen({ navigate }: { navigate: Navigate }) {
       </p>
 
       <button className="secondary" onClick={google} disabled={busy}>الدخول بحساب Google</button>
-      {Capacitor.getPlatform() === 'ios' && (
-        <button className="secondary" onClick={apple} disabled={busy}>الدخول بحساب Apple</button>
-      )}
+      <button className="secondary" onClick={apple} disabled={busy}>الدخول بحساب Apple</button>
 
       <button className="secondary" onClick={() => { setMode(isSignup ? 'login' : 'signup'); setError(''); }} disabled={busy}>
         {isSignup ? 'عندي حساب — تسجيل الدخول' : 'ما عندي حساب — حساب جديد'}
