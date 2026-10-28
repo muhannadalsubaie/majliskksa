@@ -76,6 +76,8 @@ jobs:
           KEY=$RUNNER_TEMP/AuthKey_$KEY_ID.p8
           printf '%s' "$KEY_P8" > "$KEY"
           AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $KEY_ID -authenticationKeyIssuerID $ISSUER"
+          # التوقيع التلقائي يحتاج جهازاً مسجلاً واحداً على الأقل (حساب جديد بلا أجهزة يفشل)
+          KEY="$KEY" node .github/scripts/asc-ensure-device.mjs
           BUILD=$((100 + ${{ github.run_number }}))
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath $RUNNER_TEMP/App.xcarchive \
