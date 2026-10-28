@@ -1,0 +1,34 @@
+# منح عملات لمستخدمين بأسمائهم: Actions ← Grant coins ← Run workflow
+name: Grant coins
+
+on:
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: أسماء المستخدمين مفصولة بفواصل
+        required: true
+      amount:
+        description: عدد العملات لكل مستخدم (بالسالب للخصم)
+        required: true
+        default: '500'
+
+permissions:
+  contents: read
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install worker deps (jose)
+        run: npm ci --prefix worker
+      - name: Grant
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          USERNAMES: ${{ inputs.usernames }}
+          AMOUNT: ${{ inputs.amount }}
+        run: npx -y tsx@4.19.2 scripts/grant-coins.ts "$AMOUNT" "$USERNAMES" | tee -a $GITHUB_STEP_SUMMARY
