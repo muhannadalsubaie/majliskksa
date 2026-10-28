@@ -1,0 +1,13 @@
+/* لودو — ألوان مجلسك */
+.ludo-board-btn { padding: 6px; background: #0b241b; border: 1px solid #d4af3733; border-radius: 16px; display: block; width: min(100%, 420px); align-self: center; }
+.ludo-players { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ludo-players li { padding: 6px 10px; border-radius: 10px; background: var(--green-800); border: 1px solid var(--green-700); border-inline-start-width: 5px; font-size: 14px; }
+.ludo-players li { display: flex; justify-content: space-between; gap: 6px; }
+.ludo-home { color: var(--gold-soft); font-weight: 700; }
+.ludo-players li.turn { border-color: var(--gold); }
+.ludo-controls { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.ludo-roll { min-width: 160px; }
+.ludo-dice { width: 56px; height: 56px; border-radius: 12px; background: #f8f3e3; border: 3px solid var(--gold); display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 6px; box-shadow: 0 3px 8px #0008; }
+.ludo-dice i { width: 9px; height: 9px; border-radius: 50%; place-self: center; }
+.ludo-dice i.on { background: #0d2b20; }
+.ludo-option { text-align: start; }
