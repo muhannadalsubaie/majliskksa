@@ -7,9 +7,9 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "preview_urls": false,
-  // واجهة التطبيق (نسخة الويب) تُقدَّم من نفس العنوان؛ الخادم يستقبل /api فقط
+  // نسخة الويب مقفلة: العنوان يقدّم صفحة تعريف وسياسة الخصوصية وحذف الحساب فقط؛ الخادم يستقبل /api
   "assets": {
-    "directory": "../dist",
+    "directory": "./site",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
