@@ -55,6 +55,13 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([55, 0]);
     expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([1, 25]);
   });
+  it('kaboot does not take the opponents\' projects (hokm and sun)', () => {
+    const h = scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], projectAbnat: [0, 50] }));
+    expect(h.points).toEqual([25, 0]);
+    expect(h.projectPoints).toEqual([0, 0]);
+    const s = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [0, 130], tricksWon: [0, 8], projectAbnat: [100, 0] });
+    expect(s.points).toEqual([0, 44]);
+  });
   it('gahwa: hand winner wins the match', () => {
     expect(scoreHand(hokm({ multiplier: 4, gahwa: true, doublerTeam: 1 })).gahwaWinner).toBe(0);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], multiplier: 4, gahwa: true, doublerTeam: 1 })).gahwaWinner).toBe(1);
