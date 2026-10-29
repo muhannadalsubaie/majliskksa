@@ -3,10 +3,9 @@ import type { HandRecord } from '../../shared/table';
 
 const LEVELS: Record<number, string> = { 2: 'دبل', 3: 'ثري', 4: 'فور' };
 
-/** سطر صكة واحدة: نوعها، والمشتري، والأبناط (الصن من 130) ثم المشاريع ثم النقاط كلٌّ في سطر، والخاسر */
+/** سطر صكة واحدة: نوعها، والمشتري، والأبناط (الصن من 130) ثم المشاريع ثم النقاط كلٌّ في سطر */
 function handLines(r: HandRecord, n: number): { title: string; rows: string[] } {
   const level = r.gahwa ? 'قهوة' : LEVELS[r.level] ?? '';
-  const winner = r.kaboot ?? (r.buyerFailed ? 1 - r.buyerTeam : r.buyerTeam);
   return {
     title: `الصكة ${n}: ${r.contract}${level ? ` ${level}` : ''}${r.kaboot !== null ? '، كبوت' : ''}`,
     rows: [
@@ -14,7 +13,6 @@ function handLines(r: HandRecord, n: number): { title: string; rows: string[] } 
       `الأبناط: ${r.teams[0]} ${r.abnat[0]}، ${r.teams[1]} ${r.abnat[1]}`,
       `المشاريع: ${r.projects && (r.projects[0] || r.projects[1]) ? `${r.teams[0]} ${r.projects[0]}، ${r.teams[1]} ${r.projects[1]}` : 'لا توجد'}`,
       `النقاط: ${r.teams[0]} ${r.points[0]}، ${r.teams[1]} ${r.points[1]}`,
-      `الخاسر: ${r.teams[1 - winner]}${r.buyerFailed && r.kaboot === null ? ' (خسر المشتري)' : ''}`,
     ],
   };
 }
