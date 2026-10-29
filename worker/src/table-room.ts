@@ -279,7 +279,10 @@ export class TableRoom extends DurableObject<Env> {
         if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
         const sessionId = await rt.newSession();
         await this.save({ ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } });
-        this.broadcast([`${name} انضم للمحادثة الصوتية`], uid);
+        // إعادة اتصال صامتة (كان في المحادثة): لا نعلن "انضم" مرة أخرى
+        this.broadcast(mine ? [] : [`${name} انضم للمحادثة الصوتية`], uid);
+        const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
+        if (gone[uid] !== undefined) { delete gone[uid]; await this.ctx.storage.put('voiceGone', gone); }
         return { sessionId };
       }
       case 'publish': {

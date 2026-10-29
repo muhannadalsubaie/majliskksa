@@ -546,7 +546,8 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   for (const seat of order) {
     if (!t.seats[seat]?.isBot) continue;
     const action = botAction(g, seat);
-    if (action) return { kind: 'bot', seat, action, delayMs: think() };
+    // تمرير الدبل من الروبوت سريع، حتى لا يتأخر توزيع بقية الورق
+    if (action) return { kind: 'bot', seat, action, delayMs: action.type === 'doublePass' ? 300 : think() };
   }
   return null;
 }
