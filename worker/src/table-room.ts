@@ -199,6 +199,7 @@ export class TableRoom extends DurableObject<Env> {
   async checkAlive(): Promise<boolean> {
     const t = await this.load();
     if (!t) return false;
+    if (this.onlyBots(t)) { await this.closeTable(); return false; }
     if (this.connectedCount() === 0 && !(await this.ctx.storage.get<number>('emptySince'))) {
       await this.ctx.storage.put('emptySince', Date.now());
       await this.ctx.storage.setAlarm(Date.now() + this.grace());
@@ -567,11 +568,23 @@ export class TableRoom extends DurableObject<Env> {
         await this.schedule();
       }
     }
+    // خرج آخر إنسان وبقيت الروبوتات وحدها: تُحذف الطاولة فوراً
+    if (this.table && this.onlyBots(this.table, ws)) { await this.closeTable(); return; }
     // آخر متصل خرج: نبدأ مهلة الإغلاق
     if (this.connectedCount(ws) === 0) {
       await this.ctx.storage.put('emptySince', Date.now());
       await this.ctx.storage.setAlarm(Date.now() + this.grace());
     }
+  }
+
+  /**
+   * لم يبق في الطاولة إنسان: المقاعد كلها روبوتات (أو فارغة وفيها روبوت) ولا أحد متصل يشاهد.
+   * تُحذف فوراً حتى لو كانت الروبوتات في منتصف مباراة.
+   */
+  private onlyBots(t: TableData, except?: WebSocket) {
+    if (!hasHumans(t)) return true;
+    const botsOnly = t.seats.some((s) => s?.isBot) && t.seats.every((s) => !s || s.isBot);
+    return botsOnly && this.connectedCount(except) === 0;
   }
 
   private connectedCount(except?: WebSocket) {
@@ -645,6 +658,8 @@ export class TableRoom extends DurableObject<Env> {
       }
       await this.publish(cur);
     }
+    // حلّت الروبوتات مكان آخر لاعب حقيقي ولا أحد متصل: تُحذف الطاولة
+    if (this.onlyBots(cur)) { await this.closeTable(); return; }
     // خارج اللعب: انتهت مهلة منقطع فيخرج من الطاولة
     for (const uid of lobbyExpired(cur, Date.now())) {
       const name = memberName(cur, uid) ?? 'أحد الحاضرين';
