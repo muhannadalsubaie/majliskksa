@@ -4,6 +4,7 @@ import { BALOOT_ABNAT } from './projects';
 /**
  * قواعد قابلة للتعديل.
  * - المشاريع لا تتضاعف أبداً: لا بمضاعفة الصن ولا بالدبل/ثري/فور.
+ * - دبل الحكم (دبل/ثري/فور) لا ينقسم: نقاط الصكة كاملة مضاعفة للفريق الفائز.
  * - البلوت ثابت لصاحبه دائماً.
  */
 export const RULES = {
@@ -98,7 +99,12 @@ export function scoreHand(input: HandScoreInput): HandScore {
       success = true;
     }
 
-    if (success) {
+    if (success && mode === 'hokm' && multiplier > 1) {
+      // دبل الحكم لا ينقسم: الفائز يأخذ نقاط الصكة كاملة مضاعفة، والمشاريع كلها معها بلا مضاعفة
+      points[buyerTeam] = cardPoints(raw[0] + raw[1]) * multiplier + allProjectPoints;
+      credited[buyerTeam] = allProjectPoints;
+      handWinner = buyerTeam;
+    } else if (success) {
       points[0] = cardPoints(raw[0]) * multiplier + projectPoints[0];
       points[1] = cardPoints(raw[1]) * multiplier + projectPoints[1];
       credited[0] = projectPoints[0];

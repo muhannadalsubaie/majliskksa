@@ -28,8 +28,9 @@ describe('scoreHand — hokm', () => {
     expect(r.buyerFailed).toBe(true);
     expect(r.points).toEqual([0, 21]);
   });
-  it('double multiplies', () => {
-    expect(scoreHand(hokm({ multiplier: 2, doublerTeam: 1 })).points).toEqual([20, 12]);
+  it('hokm double is not split: the winning team takes the whole hand multiplied', () => {
+    expect(scoreHand(hokm({ multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 0]);
+    expect(scoreHand(hokm({ multiplier: 3, doublerTeam: 1 })).points).toEqual([48, 0]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], multiplier: 3, doublerTeam: 1 })).points).toEqual([0, 48]);
   });
   it('exactly 81 fails normally, but succeeds when opponents doubled', () => {
@@ -37,11 +38,16 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 1 })).buyerFailed).toBe(false);
   });
   it('baloot: +1 to its owner, never multiplied, kept even on failure', () => {
-    expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([21, 12]);
+    expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([33, 0]);
+    expect(scoreHand(hokm({ balootTeam: 1, multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 1]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([1, 16]);
   });
   it('projects are never multiplied by the double', () => {
-    expect(scoreHand(hokm({ projectAbnat: [20, 0], multiplier: 2, doublerTeam: 1 })).points).toEqual([22, 12]);
+    expect(scoreHand(hokm({ projectAbnat: [20, 0], multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
+    // دبل الحكم: مشاريع الخاسر تذهب للفائز أيضاً، بلا مضاعفة
+    const r = scoreHand(hokm({ projectAbnat: [0, 20], multiplier: 2, doublerTeam: 1 }));
+    expect(r.points).toEqual([34, 0]);
+    expect(r.projectPoints).toEqual([2, 0]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], projectAbnat: [0, 50], multiplier: 3, doublerTeam: 1 })).points).toEqual([0, 53]);
   });
   it('kaboot = 25 (× double), projects added on top', () => {
