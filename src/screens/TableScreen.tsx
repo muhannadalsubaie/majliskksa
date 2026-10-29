@@ -460,7 +460,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
                   {g.actions.double.label}
                 </button>
               )}
-              {g.actions.canPassDouble && <button className="secondary" onClick={() => act({ type: 'doublePass' })}>بس</button>}
+              {g.actions.canPassDouble && <button className="secondary" onClick={() => act({ type: 'doublePass' })}>تمرير</button>}
             </div>
           )}
           {g.actions.chooseLock && (
@@ -498,6 +498,7 @@ export function TableScreen({ tableId, uid, navigate }: { tableId: string; uid: 
               </div>
             </section>
           )}
+          {mySeat === null && <p className="note">أنت تشاهد هذه الطاولة.</p>}
         </>
       )}
 
