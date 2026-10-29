@@ -111,6 +111,9 @@ const ERRORS: Record<string, string> = {
   'not-a-member': 'هذا الشخص لم يعد في الطاولة',
 };
 
+/** انقطاع قصير (تبديل شبكة، اتصال يُعاد) لا يُخرج الشخص من المحادثة الصوتية إلا إن لم يعد خلال هذه المدة */
+const VOICE_DROP_GRACE_MS = 60_000;
+
 /** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
 const EMPTY_GRACE_MS = 60_000;
 
@@ -366,6 +369,12 @@ export class TableRoom extends DurableObject<Env> {
       const next = sweepLobbyGhosts(markLobbyBack(cur, uid), connected, Date.now());
       if (next !== cur) await this.save(next);
     }
+    // عاد قبل انتهاء مهلة المحادثة الصوتية: يبقى فيها
+    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
+    if (gone[uid] !== undefined) {
+      delete gone[uid];
+      await this.ctx.storage.put('voiceGone', gone);
+    }
     await this.ctx.storage.delete('emptySince');
     await this.schedule();
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -544,10 +553,12 @@ export class TableRoom extends DurableObject<Env> {
     const { uid } = ws.deserializeAttachment() as { uid: string };
     const stillHere = this.ctx.getWebSockets().some((w) => w !== ws && w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
     const t = await this.load();
+    // لا نخرجه فوراً: انقطاع قصير لا يُخرجه من المحادثة، ويخرج إن لم يعد خلال المهلة
     if (t?.voice?.[uid] && !stillHere) {
-      const who = memberName(t, uid);
-      await this.save(withoutVoice(await this.accountVoice(t), uid));
-      this.broadcast(who ? [`${who} غادر المحادثة الصوتية`] : [], uid);
+      const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
+      gone[uid] = Date.now();
+      await this.ctx.storage.put('voiceGone', gone);
+      await this.schedule();
     }
     // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
     const current = this.table;
@@ -610,6 +621,35 @@ export class TableRoom extends DurableObject<Env> {
     }
   }
 
+  /** أقرب موعد لإخراج منقطع من المحادثة الصوتية */
+  private async nextVoiceDrop(): Promise<number | null> {
+    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
+    const times = Object.values(gone);
+    return times.length ? Math.min(...times) + VOICE_DROP_GRACE_MS : null;
+  }
+
+  /** من انقطع ولم يعد خلال المهلة يخرج من المحادثة الصوتية */
+  private async dropExpiredVoice(): Promise<void> {
+    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
+    const now = Date.now();
+    const connected = new Set(this.ctx.getWebSockets().filter((w) => w.readyState === WebSocket.OPEN)
+      .map((w) => (w.deserializeAttachment() as { uid: string }).uid));
+    let changed = false;
+    for (const [uid, at] of Object.entries(gone)) {
+      if (connected.has(uid)) { delete gone[uid]; changed = true; continue; }
+      if (now - at < VOICE_DROP_GRACE_MS) continue;
+      delete gone[uid];
+      changed = true;
+      const t = this.table ?? (await this.load());
+      if (t?.voice?.[uid]) {
+        const who = memberName(t, uid);
+        await this.save(withoutVoice(await this.accountVoice(t), uid));
+        this.broadcast(who ? [`${who} غادر المحادثة الصوتية`] : [], uid);
+      }
+    }
+    if (changed) await this.ctx.storage.put('voiceGone', gone);
+  }
+
   // ───── الروبوتات والتوزيع التلقائي ─────
 
   private async schedule() {
@@ -627,7 +667,8 @@ export class TableRoom extends DurableObject<Env> {
     else await this.ctx.storage.delete('botAt');
     const awayAt = t ? nextAwayDeadline(t) : null;
     const lobbyAt = t ? nextLobbyDeadline(t) : null;
-    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity);
+    const voiceAt = await this.nextVoiceDrop();
+    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -645,8 +686,9 @@ export class TableRoom extends DurableObject<Env> {
       await this.schedule();
       return;
     }
+    await this.dropExpiredVoice();
     // انتهت مهلة لاعب منقطع: روبوت مكانه (عملة من المالك إن توفرت — اللعب لا يتوقف لأجلها)
-    let cur = t;
+    let cur = this.table ?? t;
     for (const uid of awayExpired(cur, Date.now())) {
       const seat = seatOf(cur, uid);
       const name = memberName(cur, uid) ?? 'لاعب';
@@ -680,7 +722,7 @@ export class TableRoom extends DurableObject<Env> {
       if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
-    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity));
+    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity));
   }
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */
