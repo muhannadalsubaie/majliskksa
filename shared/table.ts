@@ -388,15 +388,16 @@ export function startAny(t: TableData, rng: Rng): { table: TableData; events: st
 const nameOf = (t: TableData, seat: Seat) => t.seats[seat]?.username ?? `المقعد ${seat + 1}`;
 export const teamName = (t: TableData, team: Team) => `فريق ${nameOf(t, team as Seat)} و${nameOf(t, (team + 2) as Seat)}`;
 
+/** نص المزايدة بعد اسم صاحبها: "خالد اشترى صن"، "خالد بس" */
 function bidText(b: Bid): string {
   switch (b.type) {
     case 'pass': return 'بس';
-    case 'sun': return 'صن';
-    case 'ashkal': return 'أشكل';
-    case 'secondHokm': return 'حكم ثاني';
-    case 'qablak': return 'قبلك';
-    case 'confirmHokm': return 'تأكيد الحكم';
-    case 'hokm': return `حكم ${SUIT_NAMES[b.suit]}`;
+    case 'sun': return 'اشترى صن';
+    case 'ashkal': return 'اشترى أشكل';
+    case 'secondHokm': return 'اشترى حكم ثاني';
+    case 'qablak': return 'قال قبلك';
+    case 'confirmHokm': return 'أكد الحكم';
+    case 'hokm': return `اشترى حكم ${SUIT_NAMES[b.suit]}`;
   }
 }
 
@@ -405,14 +406,6 @@ export function dealAnnouncement(t: TableData): string {
   const g = t.game;
   if (!g?.qaba) return '';
   return `${nameOf(t, g.dealer)} الموزع. ورقة الأرض: ${cardLabel(g.qaba)}`;
-}
-
-/** بعد اكتمال الدبل: من عليه القرار، أو بدأ اللعب */
-function afterDoubling(t: TableData, after: GameState): string[] {
-  // بعد الدبل: المزايدة بين المدبّل والمشتري فقط
-  if (after.phase === 'doubling' && after.doubling.awaitingSeat != null) return [`القرار عند ${nameOf(t, after.doubling.awaitingSeat)}`];
-  if (after.phase === 'playing') return ['وُزّعت بقية الورق، بدأ اللعب'];
-  return [];
 }
 
 export function contractText(g: GameState): string {
@@ -431,21 +424,18 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
 
   switch (action.type) {
     case 'bid': {
-      // اختيار لون "الثاني" يُعلن مباشرة كشراء
-      const choosingSecond = before.secondHokm?.remaining === 0 && before.secondHokm.confirmed === true;
-      if (!choosingSecond) events.push(`${who}: ${bidText(action.bid)}`);
-      if (!before.contract && after.contract) {
-        const c = after.contract;
-        events.push(`${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
+      // إعلانات قصيرة بما حدث فقط (اشترى، أكد، بس) — بلا "بانتظار" ولا "من عليه القرار"
+      const bought = !before.contract && after.contract;
+      if (bought) {
+        const c = after.contract!;
+        events.push(action.bid.type === 'confirmHokm'
+          ? `${nameOf(t, c.buyer)} أكد الحكم، ${contractText(after)}`
+          : `${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
         if (c.qabaTo !== c.buyer) events.push(`القبلة لـ${nameOf(t, c.qabaTo)}`);
-        if (after.phase === 'doubling') events.push(`الدبل لـ${teamName(t, after.doubling.awaitingTeam!)} قبل توزيع بقية الورق`);
-        else events.push('وُزّعت بقية الورق، بدأ اللعب');
-      }
-      if (after.hokmConfirm && !before.hokmConfirm) {
-        events.push(`الكل قال بس — ${nameOf(t, after.hokmBid!.seat)} يؤكد الحكم أو يحوّل صن`);
-      }
-      if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
-        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يؤكد الحكم أو يحوّل صن`);
+      } else if (action.bid.type === 'confirmHokm') {
+        events.push(`${who} أكد الحكم`);
+      } else {
+        events.push(`${who} ${bidText(action.bid)}`);
       }
       if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
       break;
@@ -453,20 +443,15 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     case 'double': {
       const d = after.doubling;
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
-      // يُعلن الشراء فوراً، ثم مقفل أو مفتوح (مع الحركة نفسها أو بعد أن يختار صاحبه)
       events.push(`${who} اشترى ${label}`);
-      if (d.lockPending != null) { events.push(`${who} يختار مقفل أو مفتوح`); break; }
-      if (after.contract!.mode === 'hokm' && !d.gahwa) events.push(d.locked ? 'مقفل' : 'مفتوح');
-      events.push(...afterDoubling(t, after));
+      if (d.lockPending == null && after.contract!.mode === 'hokm' && !d.gahwa) events.push(d.locked ? 'مقفل' : 'مفتوح');
       break;
     }
     case 'doubleLock': {
       events.push(after.doubling.locked ? `${who}: مقفل` : `${who}: مفتوح`);
-      events.push(...afterDoubling(t, after));
       break;
     }
     case 'doublePass':
-      if (after.phase === 'playing') events.push('وُزّعت بقية الورق، بدأ اللعب');
       break;
     case 'declareProject': {
       const mine = after.declared.find((d) => d.seat === action.seat)!;
