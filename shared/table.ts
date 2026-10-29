@@ -57,6 +57,8 @@ export interface TableData {
 export interface HandRecord {
   /** رقم المباراة على هذه الطاولة (السجل يحفظ كل المباريات، كل واحدة لحالها) */
   match?: number;
+  /** نقاط المشاريع (والبلوت) لكل فريق — تُعرض في السجل منفصلة عن الأبناط */
+  projects?: [number, number];
   /** أسماء الفريقين وقت الصكة */
   teams: [string, string];
   contract: string;
@@ -443,7 +445,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         events.push(`الكل قال بس — ${nameOf(t, after.hokmBid!.seat)} يؤكد الحكم أو يحوّل صن`);
       }
       if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
-        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار الحكم`);
+        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار لون الحكم أو يحوّل صن`);
       }
       if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
       break;
@@ -500,12 +502,13 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         const r = after.lastHand;
         const c = after.contract!;
         const buyerTeam = teamOf(c.buyer);
-        const abnat = r.abnat ?? [0, 0];
+        // أبناط الأوراق مع الأرض كما هي (الصن من 130)، والمشاريع منفصلة
+        const abnat = r.cardAbnat ?? r.abnat ?? [0, 0];
         const level = after.doubling.level;
         const record: HandRecord = {
           match: t.matchNo ?? 1,
           teams: [teamName(t, 0), teamName(t, 1)], contract: contractText(after), level, gahwa: after.doubling.gahwa,
-          buyer: nameOf(t, c.buyer), buyerTeam, abnat, points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
+          buyer: nameOf(t, c.buyer), buyerTeam, abnat, projects: r.projectPoints ?? [0, 0], points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
         };
         history = [...(t.history ?? []), record];
         // يُنطق نقاط كل فريق فقط — الفائز والأبناط وباقي التفاصيل في السجل

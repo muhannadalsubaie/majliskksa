@@ -19,6 +19,12 @@ export const RULES = {
 /** القسمة على 10 مع جبر الكسر من 5 فما فوق. */
 export const abnatToPoints = (abnat: number) => Math.floor((abnat + 5) / 10);
 
+/**
+ * الصن: أبناط الأوراق مع الأرض مجموعها 130، وكل 5 أبناط بنقطة (القسمة على 5 مع جبر الكسر لأقرب نقطة).
+ * المجموع دائماً 26 نقطة، والكسور لا تتساوى أبداً لأن الأبناط أعداد صحيحة.
+ */
+export const sunAbnatToPoints = (abnat: number) => Math.floor((abnat * 2 + 5) / 10);
+
 export interface HandScoreInput {
   mode: GameMode;
   buyerTeam: Team;
@@ -38,6 +44,10 @@ export interface HandScoreInput {
 
 export interface HandScore {
   points: [number, number];
+  /** أبناط الأوراق مع الأرض لكل فريق كما هي (الصن من 130، الحكم من 162) — للسجل */
+  cardAbnat?: [number, number];
+  /** نقاط المشاريع (والبلوت) التي ذهبت فعلاً لكل فريق في هذه الصكة — للسجل */
+  projectPoints?: [number, number];
   /** أبناط كل فريق في الصكة (أوراق + أرض + مشاريع؛ أوراق الصن مضاعفة) — قد تغيب في صكات قديمة */
   abnat?: [number, number];
   buyerFailed: boolean;
@@ -50,7 +60,12 @@ export function scoreHand(input: HandScoreInput): HandScore {
   const { mode, buyerTeam, tricksWon, projectAbnat, multiplier, gahwa, doublerTeam } = input;
   const opp = otherTeam(buyerTeam);
   const factor = mode === 'sun' ? SUN_ABNAT_MULTIPLIER : 1;
+  // للمقارنة فقط (نجاح المشتري): أوراق الصن مضاعفة لتكون بمقياس أبناط المشاريع
   const cards: [number, number] = [input.cardAbnat[0] * factor, input.cardAbnat[1] * factor];
+  const raw = input.cardAbnat;
+  // نقاط الأوراق: الصن كل 5 أبناط بنقطة، والحكم كل 10
+  const cardPoints = (abnat: number) => (mode === 'sun' ? sunAbnatToPoints(abnat) : abnatToPoints(abnat));
+  const credited: [number, number] = [0, 0];
   // تُستخدم لتحديد نجاح المشتري فقط (أوراقه + مشاريعه)
   const total: [number, number] = [cards[0] + projectAbnat[0], cards[1] + projectAbnat[1]];
   // نقاط المشاريع ثابتة لا تتضاعف
@@ -66,6 +81,7 @@ export function scoreHand(input: HandScoreInput): HandScore {
     kaboot = kabootTeam;
     const base = mode === 'sun' ? RULES.sunKabootPoints : RULES.hokmKabootPoints;
     points[kabootTeam] = base * multiplier + allProjectPoints;
+    credited[kabootTeam] = allProjectPoints;
     buyerFailed = kabootTeam !== buyerTeam;
     handWinner = kabootTeam;
   } else {
@@ -83,20 +99,29 @@ export function scoreHand(input: HandScoreInput): HandScore {
     }
 
     if (success) {
-      points[0] = abnatToPoints(cards[0]) * multiplier + projectPoints[0];
-      points[1] = abnatToPoints(cards[1]) * multiplier + projectPoints[1];
+      points[0] = cardPoints(raw[0]) * multiplier + projectPoints[0];
+      points[1] = cardPoints(raw[1]) * multiplier + projectPoints[1];
+      credited[0] = projectPoints[0];
+      credited[1] = projectPoints[1];
       handWinner = buyerTeam;
     } else {
       buyerFailed = true;
-      points[opp] = abnatToPoints(cards[0] + cards[1]) * multiplier + allProjectPoints;
+      points[opp] = cardPoints(raw[0] + raw[1]) * multiplier + allProjectPoints;
+      credited[opp] = allProjectPoints;
       handWinner = opp;
     }
   }
 
   // البلوت: نقطة ثابتة لصاحبها، لا تُضاعف ولا تُسحب
-  if (mode === 'hokm' && input.balootTeam !== null) points[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
+  if (mode === 'hokm' && input.balootTeam !== null) {
+    points[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
+    credited[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
+  }
 
-  return { points, abnat: total, buyerFailed, kaboot, gahwaWinner: gahwa ? handWinner : null };
+  return {
+    points, abnat: total, cardAbnat: [raw[0], raw[1]], projectPoints: credited,
+    buyerFailed, kaboot, gahwaWinner: gahwa ? handWinner : null,
+  };
 }
 
 export type MatchOutcome = { status: 'ongoing' } | { status: 'won'; winner: Team } | { status: 'tiebreak' };

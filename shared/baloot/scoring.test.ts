@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnatToPoints, matchOutcome, scoreHand, type HandScoreInput } from './scoring';
+import { abnatToPoints, matchOutcome, scoreHand, sunAbnatToPoints, type HandScoreInput } from './scoring';
 
 const hokm = (o: Partial<HandScoreInput>): HandScoreInput => ({
   mode: 'hokm', buyerTeam: 0, cardAbnat: [100, 62], tricksWon: [5, 3], projectAbnat: [0, 0],
@@ -97,5 +97,19 @@ describe('matchOutcome', () => {
     expect(matchOutcome([155, 160])).toEqual({ status: 'won', winner: 1 });
     expect(matchOutcome([160, 160])).toEqual({ status: 'tiebreak' });
     expect(matchOutcome([10, 20], 0)).toEqual({ status: 'won', winner: 0 });
+  });
+
+  it('sun: each 5 abnat (cards + ground, out of 130) is one point; log keeps abnat and projects apart', () => {
+    for (let a = 0; a <= 130; a++) expect(sunAbnatToPoints(a) + sunAbnatToPoints(130 - a)).toBe(26);
+    expect(sunAbnatToPoints(64)).toBe(13); // 12.8
+    expect(sunAbnatToPoints(62)).toBe(12); // 12.4
+    expect(sunAbnatToPoints(65)).toBe(13);
+    const r = scoreHand({
+      mode: 'sun', buyerTeam: 0, cardAbnat: [72, 58], tricksWon: [5, 3], projectAbnat: [40, 0],
+      balootTeam: null, multiplier: 1, gahwa: false, doublerTeam: null,
+    });
+    expect(r.cardAbnat).toEqual([72, 58]);
+    expect(r.projectPoints).toEqual([4, 0]);
+    expect(r.points).toEqual([14 + 4, 12]); // 72/5=14.4 → 14 ، 58/5=11.6 → 12
   });
 });

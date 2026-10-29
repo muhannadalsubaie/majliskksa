@@ -143,8 +143,8 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   // رجع الدور للمشتري بعد أن قال الجميع بس: تأكيد الحكم أو صن
   if (s.hokmConfirm) return seat === s.hokmBid?.seat ? [{ type: 'confirmHokm' }, { type: 'sun' }] : [];
   const otherSuits = (['S', 'H', 'C', 'D'] as Suit[]).filter((suit) => suit !== s.qaba!.suit);
-  // صاحب "حكم ثاني" بعد أن قال الجميع بس: يختار لوناً غير لون القبلة
-  if (s.secondHokm?.remaining === 0) return otherSuits.map((suit) => ({ type: 'hokm', suit }));
+  // صاحب "حكم ثاني" بعد أن قال الجميع بس: يؤكد الحكم بلون غير لون القبلة، أو يحوّل صن
+  if (s.secondHokm?.remaining === 0) return [...otherSuits.map((suit): Bid => ({ type: 'hokm', suit })), { type: 'sun' }];
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
   if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
   if (s.bidRound === 1) {

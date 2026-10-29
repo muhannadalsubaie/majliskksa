@@ -110,18 +110,22 @@ describe('game flow', () => {
     expect(availableBids(s, 1).map((b) => b.type)).toEqual(['pass', 'sun', 'secondHokm']);
   });
 
-  it('حكم ثاني: others may only pass or sun, then the caller picks a non-qaba suit', () => {
+  it('حكم ثاني: others may only pass or sun, then the caller picks a non-qaba suit (or switches to sun)', () => {
     let s = allPassRound1(11);
     const qabaSuit = s.qaba!.suit;
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
     expect(s.turn).toBe(2);
     expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun']);
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
-    // back to the caller: only hokm in the other three suits
+    // back to the caller: confirm hokm in one of the other three suits, or switch to sun
     expect(s.turn).toBe(1);
-    const choices = availableBids(s, 1);
+    const all = availableBids(s, 1);
+    expect(all).toHaveLength(4);
+    expect(all).toContainEqual({ type: 'sun' });
+    const choices = all.filter((b) => b.type === 'hokm');
     expect(choices).toHaveLength(3);
     expect(choices.every((b) => b.type === 'hokm' && b.suit !== qabaSuit)).toBe(true);
+    expect(availableBids(s, 1).some((b) => b.type === 'pass')).toBe(false);
     const suit = (choices[0] as { suit: string }).suit;
     expect(() => applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: qabaSuit } })).toThrow(IllegalAction);
     s = applyAction(s, { type: 'bid', seat: 1, bid: choices[0] });
@@ -134,6 +138,14 @@ describe('game flow', () => {
     expect(s.phase).toBe('playing');
     expect(s.hands.map((h) => h.length)).toEqual([8, 8, 8, 8]);
     expect(s.hands[1]).toContainEqual(expect.objectContaining({ suit: qabaSuit }));
+  });
+
+  it('حكم ثاني: after everyone passes, the caller may switch to sun', () => {
+    let s = allPassRound1(11);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
+    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'sun' } });
+    expect(s.contract).toMatchObject({ mode: 'sun', trump: null, buyer: 1, qabaTo: 1 });
   });
 
   it('حكم ثاني: anyone may take sun instead', () => {

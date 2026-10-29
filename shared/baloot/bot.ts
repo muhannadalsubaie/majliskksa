@@ -99,12 +99,13 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
   const qaba = s.qaba!;
   const withQaba = [...hand, qaba]; // المشتري يأخذ القبلة
 
-  // اختيار لون "الثاني"
-  if (bids.every((b) => b.type === 'hokm')) {
-    return bids.reduce((a, b) => (hokmStrength(withQaba, (b as { suit: Suit }).suit) > hokmStrength(withQaba, (a as { suit: Suit }).suit) ? b : a));
-  }
-
   const sun = sunStrength(withQaba);
+  // صاحب "الثاني" بعد أن قال الجميع بس: أقوى لون، أو صن إن كانت اليد أقوى صناً بوضوح
+  if (s.secondHokm?.remaining === 0) {
+    const suits = bids.filter((b): b is Extract<Bid, { type: 'hokm' }> => b.type === 'hokm');
+    const best = suits.reduce((a, b) => (hokmStrength(withQaba, b.suit) > hokmStrength(withQaba, a.suit) ? b : a));
+    return sun >= p.sun + 1 && sun > hokmStrength(withQaba, best.suit) ? { type: 'sun' } : best;
+  }
   // تأكيد الحكم بعد أن قال الجميع بس: نحوّل صن فقط إن كانت اليد أقوى صناً بوضوح
   if (bids.some((b) => b.type === 'confirmHokm')) {
     const trump = s.hokmBid!.suit;
