@@ -432,7 +432,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
   switch (action.type) {
     case 'bid': {
       // اختيار لون "الثاني" يُعلن مباشرة كشراء
-      const choosingSecond = before.secondHokm?.remaining === 0;
+      const choosingSecond = before.secondHokm?.remaining === 0 && before.secondHokm.confirmed === true;
       if (!choosingSecond) events.push(`${who}: ${bidText(action.bid)}`);
       if (!before.contract && after.contract) {
         const c = after.contract;
@@ -445,7 +445,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
         events.push(`الكل قال بس — ${nameOf(t, after.hokmBid!.seat)} يؤكد الحكم أو يحوّل صن`);
       }
       if (after.secondHokm?.remaining === 0 && before.secondHokm?.remaining !== 0) {
-        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يختار لون الحكم أو يحوّل صن`);
+        events.push(`الكل قال بس — ${nameOf(t, after.secondHokm.seat)} يؤكد الحكم أو يحوّل صن`);
       }
       if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
       break;

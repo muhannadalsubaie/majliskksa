@@ -117,12 +117,12 @@ describe('game flow', () => {
     expect(s.turn).toBe(2);
     expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun']);
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
-    // back to the caller: confirm hokm in one of the other three suits, or switch to sun
+    // back to the caller: confirm hokm or switch to sun; after confirming, pick one of the other three suits
     expect(s.turn).toBe(1);
-    const all = availableBids(s, 1);
-    expect(all).toHaveLength(4);
-    expect(all).toContainEqual({ type: 'sun' });
-    const choices = all.filter((b) => b.type === 'hokm');
+    expect(availableBids(s, 1)).toEqual([{ type: 'confirmHokm' }, { type: 'sun' }]);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
+    expect(s.turn).toBe(1);
+    const choices = availableBids(s, 1);
     expect(choices).toHaveLength(3);
     expect(choices.every((b) => b.type === 'hokm' && b.suit !== qabaSuit)).toBe(true);
     expect(availableBids(s, 1).some((b) => b.type === 'pass')).toBe(false);

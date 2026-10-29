@@ -65,7 +65,8 @@ export interface GameState {
    * فإن قالوا كلهم بس يعود لصاحبه ليختار حكماً بغير لون القبلة.
    * remaining = عدد من بقي عليهم الدور، 0 = صاحب الثاني يختار اللون الآن.
    */
-  secondHokm: { seat: Seat; remaining: number } | null;
+  /** confirmed: أكّد صاحب الثاني الحكم (بعد أن قال الجميع بس) ويختار اللون الآن */
+  secondHokm: { seat: Seat; remaining: number; confirmed?: boolean } | null;
   /**
    * "قبلك": عندما يقول لاعب صن، يُعطى اللاعب الذي قبله مباشرة (وقد تكلّم في نفس اللفة)
    * فرصة أخذ الصن والقبلة بدلاً منه، فيصبح هو المشتري.
@@ -143,8 +144,10 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   // رجع الدور للمشتري بعد أن قال الجميع بس: تأكيد الحكم أو صن
   if (s.hokmConfirm) return seat === s.hokmBid?.seat ? [{ type: 'confirmHokm' }, { type: 'sun' }] : [];
   const otherSuits = (['S', 'H', 'C', 'D'] as Suit[]).filter((suit) => suit !== s.qaba!.suit);
-  // صاحب "حكم ثاني" بعد أن قال الجميع بس: يؤكد الحكم بلون غير لون القبلة، أو يحوّل صن
-  if (s.secondHokm?.remaining === 0) return [...otherSuits.map((suit): Bid => ({ type: 'hokm', suit })), { type: 'sun' }];
+  // صاحب "حكم ثاني" بعد أن قال الجميع بس: تأكيد الحكم أو صن، وبعد التأكيد يختار لوناً غير لون القبلة
+  if (s.secondHokm?.remaining === 0) {
+    return s.secondHokm.confirmed ? otherSuits.map((suit): Bid => ({ type: 'hokm', suit })) : [{ type: 'confirmHokm' }, { type: 'sun' }];
+  }
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
   if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
   if (s.bidRound === 1) {
@@ -223,6 +226,7 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   if (bid.type === 'secondHokm') return { ...s, secondHokm: { seat, remaining: 3 }, turn: nextSeat(seat) };
   if (s.secondHokm) {
     const owner = s.secondHokm.seat;
+    if (s.secondHokm.remaining === 0 && bid.type === 'confirmHokm') return { ...s, secondHokm: { ...s.secondHokm, confirmed: true } };
     if (s.secondHokm.remaining === 0 && bid.type === 'hokm') {
       return finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner });
     }
