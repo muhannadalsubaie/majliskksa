@@ -50,8 +50,8 @@ export function legalCards({ mode, trump, trick, hand, seat, lockedSeat }: Legal
 
   const follow = hand.filter((c) => c.suit === led);
   if (follow.length) {
-    // افتتاح بالحكم: يلزم تغطية الحكم الأعلى إن أمكن
-    if (mode === 'hokm' && led === trump) {
+    // افتتاح بالحكم: يلزم الطلوع بحكم أعلى إن أمكن — فقط إن كان المتصدر خصماً، أما الشريك فلا إجبار
+    if (mode === 'hokm' && led === trump && teamOf(trickWinner(trick, mode, trump)) !== teamOf(seat)) {
       const higher = above(follow);
       return higher.length ? higher : follow;
     }

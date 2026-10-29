@@ -1,11 +1,10 @@
 import { type GameMode, type Team, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTeam } from './cards';
-import { BALOOT_ABNAT } from './projects';
 
 /**
  * قواعد قابلة للتعديل.
  * - المشاريع لا تتضاعف أبداً: لا بمضاعفة الصن ولا بالدبل/ثري/فور.
- * - دبل الحكم (دبل/ثري/فور) لا ينقسم: نقاط الصكة كاملة مضاعفة للفريق الفائز.
- * - البلوت ثابت لصاحبه دائماً.
+ * - الدبل (دبل/ثري/فور) في الحكم والصن لا ينقسم: نقاط الصكة كاملة مضاعفة للفريق الفائز.
+ * - البلوت نقطتان ثابتتان لصاحبه دائماً.
  */
 export const RULES = {
   /** الحكم: ينجح المشتري إذا تجاوزت أبناطه (مع مشاريعه) هذا الحد */
@@ -17,14 +16,26 @@ export const RULES = {
   hokmKabootPoints: 25,
 };
 
-/** القسمة على 10 مع جبر الكسر من 5 فما فوق. */
+/** القسمة على 10 مع جبر الكسر من 5 فما فوق (للمشاريع). */
 export const abnatToPoints = (abnat: number) => Math.floor((abnat + 5) / 10);
 
+/** البلوت: نقطتان ثابتتان */
+export const BALOOT_POINTS = 2;
+
 /**
- * الصن: أبناط الأوراق مع الأرض مجموعها 130، وكل 5 أبناط بنقطة (القسمة على 5 مع جبر الكسر لأقرب نقطة).
- * المجموع دائماً 26 نقطة، والكسور لا تتساوى أبداً لأن الأبناط أعداد صحيحة.
+ * الحكم: نقاط المشتري = أبناطه ÷ 10، الكسر من 6 فما فوق يُجبر للأعلى، و5 فما دون يرجع للنقطة قبلها.
+ * والخصم يأخذ الباقي من 16 (126 و36 ← 13 و3، 125 و37 ← 12 و4).
  */
-export const sunAbnatToPoints = (abnat: number) => Math.floor((abnat * 2 + 5) / 10);
+export const hokmBuyerPoints = (abnat: number) => Math.floor((abnat + 4) / 10);
+
+/**
+ * الصن: أبناط الأوراق مع الأرض مجموعها 130، وكل 10 أبناط بنقطتين. الآحاد: من 1 إلى 4 لا تُحسب،
+ * و5 بنقطة، ومن 6 إلى 9 تُجبر للعشرة التالية (64 ← 12، 65 ← 13، 66 ← 14). المجموع دائماً 26.
+ */
+export const sunAbnatToPoints = (abnat: number) => {
+  const d = abnat % 10;
+  return Math.floor(abnat / 10) * 2 + (d === 0 || d < 5 ? 0 : d === 5 ? 1 : 2);
+};
 
 export interface HandScoreInput {
   mode: GameMode;
@@ -65,7 +76,7 @@ export function scoreHand(input: HandScoreInput): HandScore {
   const cards: [number, number] = [input.cardAbnat[0] * factor, input.cardAbnat[1] * factor];
   const raw = input.cardAbnat;
   // نقاط الأوراق: الصن كل 5 أبناط بنقطة، والحكم كل 10
-  const cardPoints = (abnat: number) => (mode === 'sun' ? sunAbnatToPoints(abnat) : abnatToPoints(abnat));
+  const cardPoints = (abnat: number) => (mode === 'sun' ? sunAbnatToPoints(abnat) : hokmBuyerPoints(abnat));
   const credited: [number, number] = [0, 0];
   // تُستخدم لتحديد نجاح المشتري فقط (أوراقه + مشاريعه)
   const total: [number, number] = [cards[0] + projectAbnat[0], cards[1] + projectAbnat[1]];
@@ -100,14 +111,18 @@ export function scoreHand(input: HandScoreInput): HandScore {
       success = true;
     }
 
-    if (success && mode === 'hokm' && multiplier > 1) {
-      // دبل الحكم لا ينقسم: الفائز يأخذ نقاط الصكة كاملة مضاعفة، والمشاريع كلها معها بلا مضاعفة
+    if (success && multiplier > 1) {
+      // الدبل (حكم أو صن) لا ينقسم: الفائز يأخذ نقاط الصكة كاملة مضاعفة، والمشاريع كلها معها بلا مضاعفة
       points[buyerTeam] = cardPoints(raw[0] + raw[1]) * multiplier + allProjectPoints;
       credited[buyerTeam] = allProjectPoints;
       handWinner = buyerTeam;
     } else if (success) {
-      points[0] = cardPoints(raw[0]) * multiplier + projectPoints[0];
-      points[1] = cardPoints(raw[1]) * multiplier + projectPoints[1];
+      // الحكم: المشتري بقاعدة جبره، والخصم الباقي من مجموع الصكة؛ الصن: كل فريق بأبناطه
+      const buyerCard = cardPoints(raw[buyerTeam]);
+      const oppCard = mode === 'hokm' ? cardPoints(raw[0] + raw[1]) - buyerCard : cardPoints(raw[opp]);
+      const cardPts: [number, number] = buyerTeam === 0 ? [buyerCard, oppCard] : [oppCard, buyerCard];
+      points[0] = cardPts[0] * multiplier + projectPoints[0];
+      points[1] = cardPts[1] * multiplier + projectPoints[1];
       credited[0] = projectPoints[0];
       credited[1] = projectPoints[1];
       handWinner = buyerTeam;
@@ -119,10 +134,10 @@ export function scoreHand(input: HandScoreInput): HandScore {
     }
   }
 
-  // البلوت: نقطة ثابتة لصاحبها، لا تُضاعف ولا تُسحب
+  // البلوت: نقطتان ثابتتان لصاحبها، لا تُضاعف ولا تُسحب
   if (mode === 'hokm' && input.balootTeam !== null) {
-    points[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
-    credited[input.balootTeam] += abnatToPoints(BALOOT_ABNAT);
+    points[input.balootTeam] += BALOOT_POINTS;
+    credited[input.balootTeam] += BALOOT_POINTS;
   }
 
   return {

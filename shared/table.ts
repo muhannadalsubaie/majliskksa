@@ -5,7 +5,7 @@ import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
-import { PROJECT_NAMES } from './baloot/projects';
+import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
@@ -414,6 +414,12 @@ export function contractText(g: GameState): string {
   return c.mode === 'sun' ? 'صن' : `حكم ${SUIT_NAMES[c.trump!]}`;
 }
 
+/** مشروع أُعلن بعد مشروع بنفس قوته من لاعب سبقه: لا يُعلن (يُعلن مشروع الأسبق فقط) */
+function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolean {
+  const best = (x: DeclaredProjects) => x.projects.reduce((a, b) => (compareProjects(b, a) > 0 ? b : a));
+  return earlier.some((e) => e.seat !== d.seat && e.projects.length > 0 && d.projects.length > 0 && compareProjects(best(d), best(e)) === 0);
+}
+
 /** يطبق حركة ويرجع نصوص الإعلانات المناسبة لكل اللاعبين. */
 export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table: TableData; events: string[] } {
   const before = t.game!;
@@ -455,7 +461,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       break;
     case 'declareProject': {
       const mine = after.declared.find((d) => d.seat === action.seat)!;
-      events.push(`${who}: مشروع ${mine.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
+      if (!equalsEarlier(mine, before.declared)) events.push(`${who}: مشروع ${mine.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       break;
     }
     case 'declareBaloot':
@@ -464,14 +470,15 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     case 'play': {
       // إعلان المشروع التلقائي قبل الورقة
       const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
-      if (newly) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
+      if (newly && !equalsEarlier(newly, before.declared)) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       events.push(`${who}: ${cardLabel(action.card)}`);
       // البلوت تلقائي مع الورقة الثانية منه (الشايب أو البنت)
       if (after.balootSeat !== null && before.balootSeat === null) events.push(`${who}: بلوت`);
       // كشف المشروع في اللفة الثانية: بعد أن يلعب صاحبه ورقته تُنطق أوراق مشروعه
       // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)
       const mineDeclared = before.trickNo === 1 ? after.declared.find((d) => d.seat === action.seat) : undefined;
-      if (mineDeclared && after.projects) {
+      const hidden = mineDeclared ? equalsEarlier(mineDeclared, after.declared.slice(0, after.declared.indexOf(mineDeclared))) : false;
+      if (mineDeclared && after.projects && !hidden) {
         if (after.projects.winningTeam === teamOf(action.seat)) {
           for (const p of mineDeclared.projects) {
             events.push(`مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`);
@@ -634,7 +641,8 @@ export function viewFor(t: TableData, uid: string): TableView {
       balootSeat: g.balootSeat,
       projects: g.trickNo > 0 ? g.projects : null,
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
-      declared: g.declared.map((d) => {
+      // مشروع بنفس قوة مشروع أُعلن قبله لا يظهر (يُعلن مشروع الأسبق فقط)
+      declared: g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
         const shown = g.trickNo > 1 || (g.trickNo === 1 && g.trick.some((p) => p.seat === d.seat));
         const won = g.projects?.winningTeam === teamOf(d.seat);
         return {

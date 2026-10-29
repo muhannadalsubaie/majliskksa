@@ -169,10 +169,37 @@ describe('game flow', () => {
     expect(s.contract).toBeNull();
     expect(s.turn).toBe(2);
     expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'qablak']);
-    expect(availableBids(s, 1)).toEqual([]); // فقط الذي قبله مباشرة
+    expect(availableBids(s, 1)).toEqual([]); // شريك صاحب الصن لا يُسأل
     s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'qablak' } });
+    // أخذها الخصم بـ"قبلك": الآن يحق لشريك الأول (المقعد 1) أن يقول قبلك
+    expect(s.contract).toBeNull();
+    expect(s.turn).toBe(1);
+    expect(availableBids(s, 1).map((b) => b.type)).toEqual(['pass', 'qablak']);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
     expect(s.contract).toMatchObject({ mode: 'sun', buyer: 2, qabaTo: 2 });
     expect(s.hands[2]).toContainEqual(qaba);
+  });
+
+  it('قبلك chain: opponent takes it, then the first buyer\'s partner takes it back', () => {
+    let s = newMatch(seededRng(13), 0);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'sun' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'qablak' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'qablak' } });
+    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 1, qabaTo: 1 });
+  });
+
+  it('the dealer never gets قبلك, and the caller\'s partner is skipped', () => {
+    let s = newMatch(seededRng(16), 0);
+    for (const seat of [1, 2, 3] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'sun' } });
+    // الموزع اشترى صن: يُسأل 3 ثم 1 (خصماه)، ولا يُسأل شريكه 2
+    expect(s.turn).toBe(3);
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
+    expect(s.turn).toBe(1);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
+    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 0 });
   });
 
   it('قبلك declined: the sun stays with the caller', () => {

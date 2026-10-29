@@ -159,6 +159,19 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   return bids;
 }
 
+/**
+ * من يُسأل "قبلك" بعد from: اللاعبون الذين يسبقونه في ترتيب الكلام (بدءاً من الذي بعد الموزع)، بعكس سريان الدور.
+ * لا يُسأل الموزع أبداً، ولا شريك صاحب الصن الحالي (فإن أخذها خصمٌ بـ"قبلك" صار شريك الأول يحق له).
+ */
+function nextQablak(s: GameState, from: Seat, holder: Seat): Seat | null {
+  const pos = (x: Seat) => (x - s.dealer + 4) % 4 || 4; // الذي بعد الموزع = 1، والموزع = 4
+  for (let p = pos(from) - 1; p >= 1; p--) {
+    const seat = nextSeat(s.dealer, p);
+    if (seat !== s.dealer && teamOf(seat) !== teamOf(holder)) return seat;
+  }
+  return null;
+}
+
 const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' || a.suit === (b as typeof a).suit);
 
 /**
@@ -195,8 +208,11 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   // ───── قبلك ─────
   if (s.sunClaim) {
     const { caller, challenger } = s.sunClaim;
-    const buyer = bid.type === 'qablak' ? challenger : caller;
-    return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer, qabaTo: buyer });
+    const holder = bid.type === 'qablak' ? challenger : caller;
+    // يستمر "قبلك" بعكس سريان الدور على من تكلّم قبله، حتى لا يبقى أحد يحق له
+    const next = nextQablak(s, challenger, holder);
+    if (next !== null) return { ...s, sunClaim: { caller: holder, challenger: next }, turn: next };
+    return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer: holder, qabaTo: holder });
   }
 
   // ───── تأكيد الحكم ─────
@@ -209,10 +225,10 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   }
 
   if (bid.type === 'sun') {
-    // إن تكلّم أحد قبله في هذه اللفة، يُعطى اللاعب الذي قبله مباشرة فرصة "قبلك"
+    // إن تكلّم أحد قبله في هذه اللفة: يُعطى من قبله (بعكس سريان الدور) فرصة "قبلك"
     if (!s.secondHokm && s.bidsInRound > 0) {
-      const challenger = nextSeat(seat, 3);
-      return { ...s, sunClaim: { caller: seat, challenger }, turn: challenger };
+      const challenger = nextQablak(s, seat, seat);
+      if (challenger !== null) return { ...s, sunClaim: { caller: seat, challenger }, turn: challenger };
     }
     return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: seat });
   }

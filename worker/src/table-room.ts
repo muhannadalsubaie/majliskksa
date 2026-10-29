@@ -35,7 +35,8 @@ type ClientMessage =
   | { type: 'kick'; uid: string }
   | { type: 'ban'; uid: string }
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
-  | { type: 'setPrivate'; isPrivate: boolean };
+  | { type: 'setPrivate'; isPrivate: boolean }
+  | { type: 'setOwner'; uid: string };
 
 /**
  * عشوائية آمنة لخلط الورق والتوزيع: من مولّد التشفير في النظام (crypto.getRandomValues)،
@@ -151,7 +152,7 @@ export class TableRoom extends DurableObject<Env> {
   private async publish(t: TableData) {
     try {
       await this.db().set('tables', t.id, {
-        ownerName: t.seats.find((m) => m && !m.isBot)?.username ?? '',
+        ownerName: memberName(t, t.ownerUid) ?? t.seats.find((m) => m && !m.isBot)?.username ?? '',
         isPrivate: t.isPrivate,
         players: t.seats.filter(Boolean).length,
         people: peopleCount(t),
@@ -490,6 +491,18 @@ export class TableRoom extends DurableObject<Env> {
           ...(r.botReplaced && seat !== null ? [`حلّ ${r.table.seats[seat]!.username} مكانه`] : []),
         ]);
         await this.publish(r.table);
+        break;
+      }
+      case 'setOwner': {
+        // المالك يعيّن شخصاً حقيقياً حاضراً مالكاً للطاولة
+        if (!isOwner) throw new Error('not-owner');
+        if (typeof msg.uid !== 'string' || msg.uid === t.ownerUid || msg.uid.startsWith('bot-')) throw new Error('bad-request');
+        const name = memberName(t, msg.uid);
+        if (!name) throw new Error('not-a-member');
+        const next = { ...t, ownerUid: msg.uid };
+        await this.save(next);
+        this.broadcast([`أصبح ${name} مالك الطاولة`]);
+        await this.publish(next);
         break;
       }
       case 'setPrivate': {

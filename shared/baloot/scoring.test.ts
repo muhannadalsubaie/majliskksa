@@ -37,10 +37,10 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ cardAbnat: [81, 81] })).buyerFailed).toBe(true);
     expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 1 })).buyerFailed).toBe(false);
   });
-  it('baloot: +1 to its owner, never multiplied, kept even on failure', () => {
-    expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([33, 0]);
-    expect(scoreHand(hokm({ balootTeam: 1, multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 1]);
-    expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([1, 16]);
+  it('baloot: +2 to its owner, never multiplied, kept even on failure', () => {
+    expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
+    expect(scoreHand(hokm({ balootTeam: 1, multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 2]);
+    expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([2, 16]);
   });
   it('projects are never multiplied by the double', () => {
     expect(scoreHand(hokm({ projectAbnat: [20, 0], multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
@@ -53,7 +53,7 @@ describe('scoreHand — hokm', () => {
   it('kaboot = 25 (× double), projects added on top', () => {
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0] })).points).toEqual([25, 0]);
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([55, 0]);
-    expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([1, 25]);
+    expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([2, 25]);
   });
   it('kaboot does not take the opponents\' projects (hokm and sun)', () => {
     const h = scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], projectAbnat: [0, 50] }));
@@ -71,7 +71,7 @@ describe('scoreHand — hokm', () => {
 describe('scoreHand — sun', () => {
   it('card abnat doubled, divided by 10, both teams score', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [0, 0] });
-    expect(r.points).toEqual([13, 13]);
+    expect(r.points).toEqual([14, 12]);
   });
   it('buyer under half loses everything to the opponents', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [60, 70] });
@@ -95,7 +95,7 @@ describe('scoreHand — sun', () => {
   });
   it('projects are not doubled in sun', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [20, 0] });
-    expect(r.points).toEqual([15, 13]);
+    expect(r.points).toEqual([16, 12]);
   });
   it('sun kaboot with double and a project', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [130, 0], tricksWon: [8, 0], projectAbnat: [100, 0], multiplier: 2, doublerTeam: 1 });
@@ -114,15 +114,29 @@ describe('matchOutcome', () => {
 
   it('sun: each 5 abnat (cards + ground, out of 130) is one point; log keeps abnat and projects apart', () => {
     for (let a = 0; a <= 130; a++) expect(sunAbnatToPoints(a) + sunAbnatToPoints(130 - a)).toBe(26);
-    expect(sunAbnatToPoints(64)).toBe(13); // 12.8
-    expect(sunAbnatToPoints(62)).toBe(12); // 12.4
+    // الآحاد: 1–4 لا تُحسب، 5 بنقطة، 6–9 تُجبر للعشرة التالية
+    expect(sunAbnatToPoints(64)).toBe(12);
+    expect(sunAbnatToPoints(62)).toBe(12);
     expect(sunAbnatToPoints(65)).toBe(13);
+    expect(sunAbnatToPoints(66)).toBe(14);
+    expect(sunAbnatToPoints(70)).toBe(14);
     const r = scoreHand({
       mode: 'sun', buyerTeam: 0, cardAbnat: [72, 58], tricksWon: [5, 3], projectAbnat: [40, 0],
       balootTeam: null, multiplier: 1, gahwa: false, doublerTeam: null,
     });
     expect(r.cardAbnat).toEqual([72, 58]);
     expect(r.projectPoints).toEqual([4, 0]);
-    expect(r.points).toEqual([14 + 4, 12]); // 72/5=14.4 → 14 ، 58/5=11.6 → 12
+    expect(r.points).toEqual([14 + 4, 12]); // 72 ← 14 ، 58 ← 12
+  });
+
+  it('hokm: buyer rounds up from 6, down at 5 and below; opponents get the rest of 16', () => {
+    expect(scoreHand(hokm({ cardAbnat: [126, 36] })).points).toEqual([13, 3]);
+    expect(scoreHand(hokm({ cardAbnat: [125, 37] })).points).toEqual([12, 4]);
+    expect(scoreHand(hokm({ cardAbnat: [36, 126], buyerTeam: 1 })).points).toEqual([3, 13]);
+  });
+
+  it('sun double is not split: the winner takes the whole hand', () => {
+    const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [80, 50], multiplier: 2, doublerTeam: 1 });
+    expect(r.points).toEqual([52, 0]);
   });
 });

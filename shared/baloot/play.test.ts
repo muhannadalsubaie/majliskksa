@@ -39,6 +39,9 @@ describe('legalCards', () => {
     expect(ids(legalCards({ ...base, trick: trick('10H', 0), hand: cards('7H AH KS'), seat: 1 }))).toEqual(['AH']);
     expect(ids(legalCards({ ...base, trick: trick('JH', 0), hand: cards('7H AH KS'), seat: 1 }))).toEqual(['7H', 'AH']);
   });
+  it('trump led by the partner → not forced to go higher', () => {
+    expect(ids(legalCards({ ...base, trick: trick('10H', 0), hand: cards('7H AH KS'), seat: 2 }))).toEqual(['7H', 'AH']);
+  });
   it('sun: void → anything', () => {
     expect(ids(legalCards({ mode: 'sun', trump: null, lockedSeat: null, trick: trick('AS', 0), hand: cards('KD 9H'), seat: 1 }))).toEqual(['9H', 'KD']);
   });
