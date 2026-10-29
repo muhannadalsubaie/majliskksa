@@ -149,15 +149,13 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
     return s.secondHokm.confirmed ? otherSuits.map((suit): Bid => ({ type: 'hokm', suit })) : [{ type: 'confirmHokm' }, { type: 'sun' }];
   }
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
+  // أشكل: للموزع وللاعب الذي قبله فقط، في اللفتين
+  const ashkal = seat === s.dealer || seat === nextSeat(s.dealer, 3);
   if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
-  if (s.bidRound === 1) {
-    bids.push({ type: 'hokm', suit: s.qaba.suit });
-    // أشكل: للاعب الذي بعد الموزع ولشريك الموزع
-    if (seat === nextSeat(s.dealer, 1) || seat === nextSeat(s.dealer, 2)) bids.push({ type: 'ashkal' });
-  } else {
-    // اللفة الثانية (بعد أن قال الجميع بس): حكم ثاني
-    bids.push({ type: 'secondHokm' });
-  }
+  if (s.bidRound === 1) bids.push({ type: 'hokm', suit: s.qaba.suit });
+  // اللفة الثانية (بعد أن قال الجميع بس): حكم ثاني
+  else bids.push({ type: 'secondHokm' });
+  if (ashkal) bids.push({ type: 'ashkal' });
   return bids;
 }
 
