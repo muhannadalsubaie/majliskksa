@@ -1,13 +1,8 @@
-# إيميلات Firebase Auth (تشغيل يدوي): فحص الإعداد (قراءة فقط)، أو ضبط المرسل والعنوان بالعربي مع setup=true
+# فحص إعداد إيميلات Firebase Auth (قراءة فقط، تشغيل يدوي)
 name: Auth email check
 
 on:
   workflow_dispatch:
-    inputs:
-      setup:
-        description: اضبط المرسل والعنوان بالعربي
-        type: boolean
-        default: false
 
 jobs:
   check:
@@ -22,7 +17,3 @@ jobs:
       - env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: npx -y tsx@4.19.2 scripts/auth-email-check.ts
-      - if: inputs.setup
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: npx -y tsx@4.19.2 scripts/auth-email-setup.ts
