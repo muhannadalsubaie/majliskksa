@@ -228,10 +228,10 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** طاولة صديق: هل ما زال فيها، وهل هي مقفلة */
-  async friendTable(uid: string): Promise<{ isPrivate: boolean } | null> {
+  async friendTable(uid: string): Promise<{ isPrivate: boolean; kind: GameKind; variant: GameVariant } | null> {
     const t = await this.load();
     if (!t || !(seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid))) return null;
-    return { isPrivate: t.isPrivate };
+    return { isPrivate: t.isPrivate, kind: kindOf(t), variant: t.variant ?? 'classic' };
   }
 
   async isMember(uid: string): Promise<boolean> {

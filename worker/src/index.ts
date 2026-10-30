@@ -248,7 +248,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
         const online = await hub(f.uid).isOnline();
         const tableId = online ? await hub(f.uid).currentTable() : null;
         const t = tableId ? await env.TABLES.get(env.TABLES.idFromString(tableId)).friendTable(f.uid).catch(() => null) : null;
-        return { ...f, online, ...(t ? { tableId, tablePrivate: t.isPrivate } : {}) };
+        return { ...f, online, ...(t ? { tableId, tablePrivate: t.isPrivate, tableKind: t.kind, tableVariant: t.variant } : {}) };
       }));
       return json({ ...state, friends });
     }
