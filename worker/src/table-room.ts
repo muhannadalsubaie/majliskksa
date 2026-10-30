@@ -120,11 +120,11 @@ const EMPTY_GRACE_MS = 60_000;
 /** آخر إنسان طلع (أو قفل التطبيق) وبقيت الروبوتات: مهلة الرجوع قبل إغلاق الطاولة */
 const BOTS_ALONE_GRACE_MS = 60_000;
 /**
- * التطبيق ينبض كل 10 ثوانٍ ("ping"): من انقطعت نبضته أكثر من هذا نعتبره انقطع (انقطع نته بلا إغلاق للاتصال)
+ * التطبيق ينبض كل 3 ثوانٍ ("ping"): من انقطعت نبضته أكثر من هذا نعتبره انقطع (انقطع نته بلا إغلاق للاتصال)
  * فيُعلن انقطاعه فوراً بدل انتظار النظام دقائق ليكتشف ذلك. النسخ القديمة اللي ما تنبض ما تتأثر.
  */
-const STALE_AFTER_MS = 30_000;
-const STALE_CHECK_MS = 10_000;
+const STALE_AFTER_MS = 8_000;
+const STALE_CHECK_MS = 3_000;
 
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
