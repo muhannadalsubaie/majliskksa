@@ -85,6 +85,10 @@ describe('game flow', () => {
     for (const seat of [1, 2] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     const qaba = s.qaba!;
     s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'ashkal' } });
+    // 2 تكلّم قبله وهو خصم: يُسأل "قبلك"، ويقول بس
+    expect(s.turn).toBe(2);
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'qablak']);
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
     expect(s.contract).toMatchObject({ mode: 'sun', buyer: 3, qabaTo: 1 });
     expect(s.hands[1]).toContainEqual(qaba);
     expect(s.hands.map((h) => h.length)).toEqual([8, 8, 8, 8]);
@@ -99,7 +103,21 @@ describe('game flow', () => {
     expect(availableBids(s, 3).map((b) => b.type)).toEqual(['pass', 'sun', 'secondHokm', 'ashkal']);
     s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'ashkal' } });
+    // "قبلك" على الخصوم اللي تكلموا قبله (3 ثم 1)، وكلهم بس: يبقى أشكل والقبلة لشريكه
+    for (const seat of [3, 1] as Seat[]) { expect(s.turn).toBe(seat); s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } }); }
     expect(s.contract).toMatchObject({ mode: 'sun', buyer: 0, qabaTo: 2 });
+  });
+
+  it('ashkal can be taken with qablak: it becomes sun for the taker, who gets the ground card', () => {
+    let s = newMatch(seededRng(2), 0);
+    for (const seat of [1, 2] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    const qaba = s.qaba!;
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'ashkal' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'qablak' } });
+    // صار صن لـ2 والقبلة له (1 شريك صاحب الأشكل: يُسأل الآن لأن الخصم أخذه)
+    if (s.contract === null) { expect(s.turn).toBe(1); s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } }); }
+    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 2, qabaTo: 2 });
+    expect(s.hands[2]).toContainEqual(qaba);
   });
 
   const allPassRound1 = (seed: number) => {

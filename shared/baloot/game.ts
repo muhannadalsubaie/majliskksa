@@ -74,7 +74,8 @@ export interface GameState {
    * "قبلك": عندما يقول لاعب صن، يُعطى اللاعب الذي قبله مباشرة (وقد تكلّم في نفس اللفة)
    * فرصة أخذ الصن والقبلة بدلاً منه، فيصبح هو المشتري.
    */
-  sunClaim: { caller: Seat; challenger: Seat } | null;
+  /** ashkal: صاحب الشراء الحالي (caller) اشترى أشكل — إن لم يأخذه أحد بـ"قبلك" تروح القبلة لشريكه */
+  sunClaim: { caller: Seat; challenger: Seat; ashkal?: boolean } | null;
   contract: Contract | null;
   doubling: DoublingState;
   initialHands: Card[][];
@@ -222,10 +223,12 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   if (s.sunClaim) {
     const { caller, challenger } = s.sunClaim;
     const holder = bid.type === 'qablak' ? challenger : caller;
+    // أشكل يبقى أشكل ما دام صاحبه محتفظاً به؛ من يأخذه بـ"قبلك" يصير صناً له وتروح له ورقة الأرض
+    const ashkal = !!s.sunClaim.ashkal && holder === caller;
     // يستمر "قبلك" بعكس سريان الدور على من تكلّم قبله، حتى لا يبقى أحد يحق له
     const next = nextQablak(s, challenger, holder);
-    if (next !== null) return { ...s, sunClaim: { caller: holder, challenger: next }, turn: next };
-    return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer: holder, qabaTo: holder });
+    if (next !== null) return { ...s, sunClaim: { caller: holder, challenger: next, ashkal }, turn: next };
+    return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer: holder, qabaTo: ashkal ? nextSeat(holder, 2) : holder });
   }
 
   // ───── دبل على الحكم قبل تأكيده: الحكم لصاحبه، والدبل من هذا الخصم ─────
@@ -255,6 +258,11 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: seat });
   }
   if (bid.type === 'ashkal') {
+    // نفس قاعدة "قبلك" في الصن: من تكلّم قبله (بعكس سريان الدور) يقدر يأخذه صناً له
+    if (!s.secondHokm && s.bidsInRound > 0) {
+      const challenger = nextQablak(s, seat, seat);
+      if (challenger !== null) return { ...s, sunClaim: { caller: seat, challenger, ashkal: true }, turn: challenger };
+    }
     return finalizeContract(s, { mode: 'sun', trump: null, buyer: seat, qabaTo: nextSeat(seat, 2) });
   }
 
