@@ -45,9 +45,10 @@ describe('legalCards', () => {
   it('sun: void → anything', () => {
     expect(ids(legalCards({ mode: 'sun', trump: null, lockedSeat: null, trick: trick('AS', 0), hand: cards('KD 9H'), seat: 1 }))).toEqual(['9H', 'KD']);
   });
-  it('locked double: buyer cannot lead trump unless only trumps remain', () => {
+  it('locked double: nobody may lead trump unless only trumps remain', () => {
     expect(ids(legalCards({ ...base, lockedSeat: 0, trick: [], hand: cards('JH 7S'), seat: 0 }))).toEqual(['7S']);
     expect(ids(legalCards({ ...base, lockedSeat: 0, trick: [], hand: cards('JH 9H'), seat: 0 }))).toEqual(['9H', 'JH']);
-    expect(ids(legalCards({ ...base, lockedSeat: 0, trick: [], hand: cards('JH 7S'), seat: 2 }))).toEqual(['7S', 'JH']);
+    expect(ids(legalCards({ ...base, lockedSeat: 0, trick: [], hand: cards('JH 7S'), seat: 1 }))).toEqual(['7S']);
+    expect(ids(legalCards({ ...base, lockedSeat: 0, trick: [], hand: cards('JH 7S'), seat: 2 }))).toEqual(['7S']);
   });
 });

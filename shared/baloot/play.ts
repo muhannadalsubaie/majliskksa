@@ -24,7 +24,7 @@ export interface LegalContext {
   trick: PlayedCard[];
   hand: Card[];
   seat: Seat;
-  /** في الدبل المقفل: مقعد المشتري الممنوع من افتتاح أكلة بالحكم */
+  /** في الدبل المقفل (غير null): ما أحد يفتتح أكلة بالحكم — يسري على جميع اللاعبين */
   lockedSeat: Seat | null;
 }
 
@@ -33,7 +33,8 @@ export function legalCards({ mode, trump, trick, hand, seat, lockedSeat }: Legal
   const isTrump = (c: Card) => mode === 'hokm' && c.suit === trump;
 
   if (trick.length === 0) {
-    if (mode === 'hokm' && lockedSeat === seat) {
+    // مقفل: يسري على جميع اللاعبين، إلا من لم يبق معه غير الحكم
+    if (mode === 'hokm' && lockedSeat !== null) {
       const nonTrump = hand.filter((c) => !isTrump(c));
       return nonTrump.length ? nonTrump : hand;
     }
