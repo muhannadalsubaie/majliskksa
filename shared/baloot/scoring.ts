@@ -92,8 +92,8 @@ export function scoreHand(input: HandScoreInput): HandScore {
   if (kabootTeam !== null) {
     kaboot = kabootTeam;
     const base = mode === 'sun' ? RULES.sunKabootPoints : RULES.hokmKabootPoints;
-    // الكبوت: نقاطه ومشاريعه هو فقط — لا يأخذ مشاريع الخصم
-    points[kabootTeam] = base * multiplier + projectPoints[kabootTeam];
+    // الكبوت: نقاطه ومشاريعه هو فقط — لا يأخذ مشاريع الخصم، ولا يتضاعف بالدبل (ولا ثري ولا فور)
+    points[kabootTeam] = base + projectPoints[kabootTeam];
     credited[kabootTeam] = projectPoints[kabootTeam];
     buyerFailed = kabootTeam !== buyerTeam;
     handWinner = kabootTeam;

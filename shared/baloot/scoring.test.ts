@@ -50,9 +50,9 @@ describe('scoreHand — hokm', () => {
     expect(r.projectPoints).toEqual([2, 0]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], projectAbnat: [0, 50], multiplier: 3, doublerTeam: 1 })).points).toEqual([0, 53]);
   });
-  it('kaboot = 25 (× double), projects added on top', () => {
+  it('kaboot = 25 (not doubled), projects added on top', () => {
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0] })).points).toEqual([25, 0]);
-    expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([55, 0]);
+    expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([30, 0]);
     expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([2, 25]);
   });
   it('kaboot does not take the opponents\' projects (hokm and sun)', () => {
@@ -97,9 +97,9 @@ describe('scoreHand — sun', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [66, 64], projectAbnat: [20, 0] });
     expect(r.points).toEqual([16, 12]);
   });
-  it('sun kaboot with double and a project', () => {
+  it('sun kaboot ignores the double; its project is added', () => {
     const r = scoreHand({ ...hokm({}), mode: 'sun', cardAbnat: [130, 0], tricksWon: [8, 0], projectAbnat: [100, 0], multiplier: 2, doublerTeam: 1 });
-    expect(r.points).toEqual([98, 0]);
+    expect(r.points).toEqual([54, 0]);
   });
 });
 
