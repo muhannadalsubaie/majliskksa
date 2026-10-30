@@ -1,5 +1,5 @@
 import {
-  type Card, type Rank, type Seat, type Suit, SUITS, cardPoints, cardStrength, createDeck, sameCard, teamOf,
+  type Card, type Rank, type Seat, type Suit, SUITS, cardPoints, cardStrength, createDeck, nextSeat, sameCard, teamOf,
 } from './cards';
 import {
   type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn, legalCardsFor,
@@ -22,11 +22,17 @@ export interface BotParams {
   /** عتبات الدبل والرفع */
   double: number;
   raise: number;
+  /** لعب متقدم: يتذكّر من خلص عنده لون (علناً)، ويختار الافتتاح والرمي كما يلعب الخبير */
+  smart?: boolean;
 }
 
-// مضبوطة بمباريات تجريبية (bot.tuning.test.ts) مع ميل للتحفظ أمام اللاعبين البشر:
-// حكم ≈ ولد+تسعة، أو ولد مع حكم طويل وأكة جانبية. صن ≈ ثلاث أكات، أو أكتان مع عشرة وشايب.
-export const DEFAULT_BOT: BotParams = { hokm: 3.8, sun: 3.8, overPartner: 4, double: 6.5, raise: 9 };
+// مضبوطة بمباريات تجريبية (bot.tuning.test.ts و bot.compare.test.ts) مع ميل للتحفظ أمام اللاعبين البشر:
+// حكم ≈ ولد مع تسعة أو أكة، أو ولد مع حكم طويل. صن ≈ ثلاث أكات، أو أكتان مع عشرة وشايب.
+// مع اللعب المتقدم وعتبة الحكم 3.4 يفوز على النسخة السابقة (3.8 بلا لعب متقدم) في ≈59% من المباريات.
+export const DEFAULT_BOT: BotParams = { hokm: 3.4, sun: 3.8, overPartner: 4, double: 6.5, raise: 9, smart: true };
+
+/** النسخة السابقة (للمقارنة فقط) */
+export const PREVIOUS_BOT: BotParams = { hokm: 3.8, sun: 3.8, overPartner: 4, double: 6.5, raise: 9 };
 
 // ───── تقييم اليد ─────
 
@@ -229,6 +235,105 @@ function choosePlay(s: GameState, seat: Seat): Card {
   return nonTrumpCheapest;
 }
 
+/**
+ * اللعب المتقدم: نفس أصول choosePlay، مع ما يعرفه اللاعب الخبير من اللعب العلني:
+ * من خلص عنده لون (فلا نفتح لوناً يقطعه الخصم، ونفتح لوناً يقطعه الشريك)، ومتى تكون أكلة الشريك مضمونة،
+ * والرمي من اللون القصير مع الاحتفاظ بالأوراق السيدة والعشرة المحمية.
+ */
+function choosePlaySmart(s: GameState, seat: Seat): Card {
+  const legal = legalCardsFor(s, seat);
+  if (legal.length === 1) return legal[0];
+  const { mode, trump } = s.contract!;
+  const hand = s.hands[seat];
+  const gone = playedCards(s);
+  const isTrump = (c: Card) => mode === 'hokm' && c.suit === trump;
+  const pts = (c: Card) => cardPoints(c, mode, trump);
+  const str = (c: Card) => cardStrength(c, mode, trump);
+  const partner = nextSeat(seat, 2);
+  const opps = [nextSeat(seat, 1), nextSeat(seat, 3)];
+  const isVoid = (p: Seat, suit: Suit) => s.voids?.[p]?.includes(suit) ?? false;
+  // أوراق لون ما زالت خارج يدي ولم تُلعب
+  const outside = (suit: Suit) => createDeck().filter((c) => c.suit === suit && !gone.some((g) => sameCard(g, c)) && !hand.some((h) => sameCard(h, c)) && !s.trick.some((p) => sameCard(p.card, c)));
+  const oppsHaveTrump = mode === 'hokm' && outside(trump!).length > 0 && opps.some((o) => !isVoid(o, trump!));
+  // الخصم يقدر يقطع هذا اللون: خلص عنده وما خلص حكمه
+  const oppCuts = (suit: Suit, who = opps) => mode === 'hokm' && suit !== trump && oppsHaveTrump && who.some((o) => isVoid(o, suit) && !isVoid(o, trump!));
+  const master = (c: Card) => isMaster(c, s, hand, gone);
+  const suitLen = (suit: Suit) => hand.filter((h) => h.suit === suit).length;
+  // العشرة المحمية في الصن: ما نرميها والأكة لسا برا
+  const guarded10 = (c: Card) => c.rank === '10' && !isTrump(c) && !has(hand, c.suit, 'A') && outside(c.suit).some((x) => x.rank === 'A');
+  const cheapest = (cards: Card[]) => [...cards].sort((a, b) => pts(a) - pts(b) || str(a) - str(b))[0];
+  /** الرمي: أقل نقاط، بلا أوراق سيدة ولا عشرة محمية إن أمكن، ومن أقصر لون (يفتح باب القطع في الحكم) */
+  const discard = () => {
+    const pool = legal.filter((c) => !isTrump(c));
+    const base = pool.length ? pool : legal;
+    const keep = base.filter((c) => !master(c) && !guarded10(c));
+    const from = keep.length ? keep : base;
+    return [...from].sort((a, b) => pts(a) - pts(b) || suitLen(a.suit) - suitLen(b.suit) || str(a) - str(b))[0];
+  };
+  const buyerTeam = teamOf(s.contract!.buyer) === teamOf(seat);
+
+  // ── الافتتاح ──
+  if (s.trick.length === 0) {
+    // سحب الحكم: فريق المشتري يبدأ بالحكم الأعلى إن كان عند الخصوم حكم
+    if (mode === 'hokm' && buyerTeam && oppsHaveTrump) {
+      const masterTrump = legal.find((c) => isTrump(c) && master(c));
+      if (masterTrump) return masterTrump;
+      // حكمنا أكثر من حكم الخصوم: نسحبه بأصغر حكم
+      const myTrumps = legal.filter(isTrump);
+      if (myTrumps.length > outside(trump!).length && myTrumps.length >= 3) return cheapest(myTrumps);
+    }
+    // ورقة سيدة من لون ما يقطعه الخصم
+    const masters = legal.filter((c) => !isTrump(c) && master(c) && !oppCuts(c.suit));
+    if (masters.length) return [...masters].sort((a, b) => pts(b) - pts(a))[0];
+    // لون خلص عند الشريك وعنده حكم، وما يقطعه الخصم: نفتحه بأصغر ورقة فيقطع الشريك
+    if (mode === 'hokm' && !isVoid(partner, trump!)) {
+      const forPartner = legal.filter((c) => !isTrump(c) && isVoid(partner, c.suit) && !oppCuts(c.suit) && !guarded10(c));
+      if (forPartner.length) return cheapest(forPartner);
+    }
+    // أصغر ورقة من أطول لون آمن (ما يقطعه الخصم، وبلا عشرة محمية)
+    const small = legal.filter((c) => !isTrump(c) && pts(c) === 0 && !oppCuts(c.suit));
+    if (small.length) return [...small].sort((a, b) => suitLen(b.suit) - suitLen(a.suit) || str(a) - str(b))[0];
+    return discard();
+  }
+
+  // ── المتابعة ──
+  const winner = trickWinner(s.trick, mode, trump);
+  const partnerWinning = teamOf(winner) === teamOf(seat);
+  const last = s.trick.length === 3;
+  const led = s.trick[0].card.suit;
+  const trickPoints = s.trick.reduce((sum, p) => sum + pts(p.card), 0);
+  const winners = legal.filter((c) => trickWinner([...s.trick, { seat, card: c }], mode, trump) === seat);
+  // الخصم اللي يلعب بعدي في هذه الأكلة (إن بقي أحد)
+  const nextOpp = s.trick.length < 3 ? [nextSeat(seat)] : [];
+
+  if (partnerWinning) {
+    const partnerCard = s.trick.find((p) => p.seat === winner)!.card;
+    // أكلة الشريك مضمونة: آخر واحد، أو ورقته سيدة (وما يقطعها الخصم اللي بعدي)، أو الخصم اللي بعدي ما يقدر يغلبها
+    const nextCanCut = isTrump(partnerCard) ? false : oppCuts(led, nextOpp);
+    const nextIsOut = nextOpp.every((o) => isVoid(o, led) && (mode === 'sun' || isTrump(partnerCard) || isVoid(o, trump!)));
+    const partnerSafe = last || (master(partnerCard) && !nextCanCut) || nextIsOut;
+    if (partnerSafe) {
+      // نعطيه نقاطاً بدون التفريط بالحكم، ونقدّم غير السيدة
+      const feed = legal.filter((c) => !isTrump(c)).sort((a, b) => Number(master(a)) - Number(master(b)) || pts(b) - pts(a));
+      if (feed.length) return feed[0];
+    }
+    // غير مضمونة والأكلة ثمينة: نضمنها بورقة سيدة ما تنقطع
+    const secure = winners.filter((c) => master(c) && (isTrump(c) || !oppCuts(led, nextOpp)));
+    if (!partnerSafe && secure.length) return cheapest(secure);
+    return discard();
+  }
+
+  if (winners.length) {
+    const cheapWin = cheapest(winners);
+    if (last) return cheapWin;
+    // نفوز بورقة سيدة ما يقطعها الخصم اللي بعدي
+    const safeMaster = winners.filter((c) => master(c) && (isTrump(c) || !oppCuts(led, nextOpp)));
+    if (safeMaster.length) return cheapest(safeMaster);
+    if (trickPoints >= 10 || s.trickNo === 7) return cheapWin;
+  }
+  return discard();
+}
+
 /** الحركة التالية للروبوت في هذا المقعد (أو null إن لم يكن دوره). */
 export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_BOT): Action | null {
   if (s.phase === 'bidding' && s.turn === seat && s.qaba) return { type: 'bid', seat, bid: chooseBid(s, seat, params) };
@@ -239,7 +344,7 @@ export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_
   if (isLockChoiceTurn(s, seat)) return { type: 'doubleLock', seat, locked: wantsLock(s, seat) };
   if (s.phase === 'playing') {
     if (s.turn !== seat || s.trickNo >= 8) return null;
-    return { type: 'play', seat, card: choosePlay(s, seat) };
+    return { type: 'play', seat, card: params.smart ? choosePlaySmart(s, seat) : choosePlay(s, seat) };
   }
   return null;
 }

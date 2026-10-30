@@ -82,6 +82,11 @@ export interface GameState {
   /** آخر أكلة مكتملة ومن أكلها */
   lastTrick: { cards: PlayedCard[]; winner: Seat } | null;
   trickNo: number;
+  /**
+   * ما ظهر علناً أثناء اللعب: الألوان اللي خلصت عند كل لاعب (ما تبع اللون المطلوب،
+   * أو في الحكم ما قطع والقطع إجباري عليه). يستخدمها الروبوت ليلعب كما يلعب الناس.
+   */
+  voids?: Suit[][];
   tricksWon: [number, number];
   cardAbnat: [number, number];
   lastHand: HandScore | null;
@@ -394,7 +399,7 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   const balootSeat = s.balootSeat === null && isKQ && hasBaloot(s.initialHands[seat], c.trump)
     && !hands[seat].some((x) => x.suit === c.trump && (x.rank === 'K' || x.rank === 'Q'))
     ? seat : s.balootSeat;
-  let next: GameState = { ...s, hands, trick, declared, balootSeat, turn: nextSeat(seat) };
+  let next: GameState = { ...s, hands, trick, declared, balootSeat, turn: nextSeat(seat), voids: noteVoids(s, seat, card) };
   if (trick.length < 4) return next;
 
   const winner = trickWinner(trick, c.mode, c.trump);
@@ -409,6 +414,21 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   if (s.trickNo === 0) next.projects = resolveProjects(next.declared, nextSeat(s.dealer), c.mode);
   if (next.trickNo < 8) return next;
   return finishHand(next);
+}
+
+/** ما تكشفه الورقة الملعوبة علناً: لم يتبع اللون (خلص عنده)، أو في الحكم لم يقطع والقطع إجباري (خلص حكمه) */
+function noteVoids(s: GameState, seat: Seat, card: Card): Suit[][] | undefined {
+  if (!s.trick.length) return s.voids;
+  const led = s.trick[0].card.suit;
+  if (card.suit === led) return s.voids;
+  const c = s.contract!;
+  const add: Suit[] = [led];
+  const opponentWinning = teamOf(trickWinner(s.trick, c.mode, c.trump)) !== teamOf(seat);
+  const tableHasTrump = s.trick.some((p) => c.mode === 'hokm' && p.card.suit === c.trump);
+  if (c.mode === 'hokm' && card.suit !== c.trump && opponentWinning && !tableHasTrump) add.push(c.trump!);
+  const voids = (s.voids ?? [[], [], [], []]).map((v) => [...v]);
+  for (const suit of add) if (!voids[seat].includes(suit)) voids[seat].push(suit);
+  return voids;
 }
 
 function finishHand(s: GameState): GameState {
