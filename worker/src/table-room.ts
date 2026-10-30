@@ -119,9 +119,39 @@ const VOICE_DROP_GRACE_MS = 60_000;
 const EMPTY_GRACE_MS = 60_000;
 /** آخر إنسان طلع (أو قفل التطبيق) وبقيت الروبوتات: مهلة الرجوع قبل إغلاق الطاولة */
 const BOTS_ALONE_GRACE_MS = 60_000;
+/**
+ * التطبيق ينبض كل 10 ثوانٍ ("ping"): من انقطعت نبضته أكثر من هذا نعتبره انقطع (انقطع نته بلا إغلاق للاتصال)
+ * فيُعلن انقطاعه فوراً بدل انتظار النظام دقائق ليكتشف ذلك. النسخ القديمة اللي ما تنبض ما تتأثر.
+ */
+const STALE_AFTER_MS = 30_000;
+const STALE_CHECK_MS = 10_000;
 
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // النبضة يرد عليها النظام دون إيقاظ الطاولة، ونقرأ وقتها لنعرف أن الاتصال حي
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
+  /** اتصالات تنبض (نسخ التطبيق الجديدة) وانقطعت نبضتها */
+  private staleSockets(): WebSocket[] {
+    const now = Date.now();
+    return this.ctx.getWebSockets().filter((w) => {
+      if (w.readyState !== WebSocket.OPEN) return false;
+      const beat = this.ctx.getWebSocketAutoResponseTimestamp(w)?.getTime();
+      return beat !== undefined && now - beat > STALE_AFTER_MS;
+    });
+  }
+
+  /** نغلق الاتصالات الميتة ونعاملها كانقطاع (إعلان "انقطع اتصال فلان" ونغمته، وحجز المقعد...) */
+  private async dropStale() {
+    for (const ws of this.staleSockets()) {
+      try { ws.close(4000, 'stale'); } catch { /* already closed */ }
+      await this.webSocketClose(ws);
+    }
+  }
 
   /** مهلة الإغلاق (قصيرة في التطوير المحلي للاختبار) */
   private grace() {
@@ -402,6 +432,10 @@ export class TableRoom extends DurableObject<Env> {
     }
     await this.ctx.storage.delete('emptySince');
     await this.schedule();
+    // أول فحص للنبضات (الاتصال الجديد ما نبض بعد، فقد لا يكون في المنبه فحص)
+    const next = await this.ctx.storage.getAlarm();
+    const firstCheck = Date.now() + STALE_AFTER_MS + STALE_CHECK_MS;
+    if (next === null || next > firstCheck) await this.ctx.storage.setAlarm(firstCheck);
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -714,7 +748,10 @@ export class TableRoom extends DurableObject<Env> {
     const awayAt = t ? nextAwayDeadline(t) : null;
     const lobbyAt = t ? nextLobbyDeadline(t) : null;
     const voiceAt = await this.nextVoiceDrop();
-    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity);
+    // فحص النبضات ما دام فيه اتصالات تنبض
+    const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
+    const staleAt = beating ? Date.now() + STALE_CHECK_MS : null;
+    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -722,6 +759,8 @@ export class TableRoom extends DurableObject<Env> {
   async alarm() {
     const t = await this.load();
     if (!t) return;
+    await this.dropStale();
+    if (!this.table) return;
     const emptySince = await this.ctx.storage.get<number>('emptySince');
     if (emptySince) {
       if (this.connectedCount() === 0 && Date.now() - emptySince >= this.grace() - 500) {
@@ -768,7 +807,11 @@ export class TableRoom extends DurableObject<Env> {
       if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
-    else await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity));
+    else {
+      const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
+      await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity,
+        beating ? Date.now() + STALE_CHECK_MS : Infinity));
+    }
   }
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */
