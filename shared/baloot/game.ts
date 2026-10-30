@@ -156,7 +156,8 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
   // أشكل: للموزع وللاعب الذي قبله فقط، في اللفتين
   const ashkal = seat === s.dealer || seat === nextSeat(s.dealer, 3);
-  if (s.hokmBid || s.secondHokm) return bids; // بعد الحكم أو الثاني: يحق فقط بس أو صن
+  // بعد الحكم أو الثاني: بس أو صن، وأشكل لمن يحق له
+  if (s.hokmBid || s.secondHokm) return ashkal ? [...bids, { type: 'ashkal' }] : bids;
   if (s.bidRound === 1) bids.push({ type: 'hokm', suit: s.qaba.suit });
   // اللفة الثانية (بعد أن قال الجميع بس): حكم ثاني
   else bids.push({ type: 'secondHokm' });

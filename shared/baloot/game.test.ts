@@ -279,10 +279,10 @@ describe('game flow', () => {
     // الموزع 0: الدور يبدأ من 1
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'hokm', suit: s.qaba!.suit } });
-    // يلف على 3 ثم 0 ثم 1 (الذي قال بس قبل الحكم) — كلهم بس أو صن
+    // يلف على 3 ثم 0 ثم 1 (الذي قال بس قبل الحكم) — بس أو صن، وأشكل للموزع (0) واللي قبله (3)
     for (const seat of [3, 0, 1] as Seat[]) {
       expect(s.turn).toBe(seat);
-      expect(availableBids(s, seat).map((b) => b.type)).toEqual(['pass', 'sun']);
+      expect(availableBids(s, seat).map((b) => b.type)).toEqual(seat === 1 ? ['pass', 'sun'] : ['pass', 'sun', 'ashkal']);
       s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     }
     // ثم يرجع للمشتري: تأكيد الحكم أو صن
