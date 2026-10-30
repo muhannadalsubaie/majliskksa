@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Seat } from './cards';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER, teamOf } from './cards';
 import {
-  type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn,
+  type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, dealHand, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './game';
 import { seededRng } from './testing';
@@ -16,12 +16,14 @@ function playHand(s: GameState, rng: () => number): GameState {
     if (++guard > 500) throw new Error('stuck');
     if (needsRedeal(s)) { s = redeal(s, rng); continue; }
     const seat = s.phase === 'doubling'
-      ? ([0, 1, 2, 3] as Seat[]).find((x) => isDoublingTurn(s, x))!
+      ? ([0, 1, 2, 3] as Seat[]).find((x) => isDoublingTurn(s, x) || isLockChoiceTurn(s, x))!
       : s.turn;
     if (s.phase === 'bidding') {
       const bids = availableBids(s, seat);
       // نميل للمرور حتى تُختبر الجولة الثانية والصنكة أيضاً
       s = applyAction(s, { type: 'bid', seat, bid: rng() < 0.7 ? bids[0] : pick(bids, rng) });
+    } else if (s.phase === 'doubling' && isLockChoiceTurn(s, seat)) {
+      s = applyAction(s, { type: 'doubleLock', seat, locked: rng() < 0.5 });
     } else if (s.phase === 'doubling') {
       const d = availableDouble(s, seat);
       s = d && rng() < 0.4
@@ -219,7 +221,8 @@ describe('game flow', () => {
   it('after hokm, later players may only take sun', () => {
     let s = newMatch(seededRng(3), 0);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
-    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun']);
+    // 2 خصم صاحب الحكم: بس أو صن أو دبل
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun', 'double']);
     s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
     s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'pass' } });
@@ -282,12 +285,29 @@ describe('game flow', () => {
     // يلف على 3 ثم 0 ثم 1 (الذي قال بس قبل الحكم) — بس أو صن، وأشكل للموزع (0) واللي قبله (3)
     for (const seat of [3, 0, 1] as Seat[]) {
       expect(s.turn).toBe(seat);
-      expect(availableBids(s, seat).map((b) => b.type)).toEqual(seat === 1 ? ['pass', 'sun'] : ['pass', 'sun', 'ashkal']);
+      // خصم صاحب الحكم (2) له دبل أيضاً: هنا صاحب الحكم 2 فالخصمان 3 و1
+      const extra = [...(seat === 1 ? [] : ['ashkal']), ...(seat % 2 !== 0 ? ['double'] : [])];
+      expect(availableBids(s, seat).map((b) => b.type)).toEqual(['pass', 'sun', ...extra]);
       s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     }
     // ثم يرجع للمشتري: تأكيد الحكم أو صن
     expect(s.turn).toBe(2);
     expect(availableBids(s, 2).map((b) => b.type)).toEqual(['confirmHokm', 'sun']);
+  });
+
+  it('an opponent of the hokm bidder may double before the hokm is confirmed', () => {
+    let s = newMatch(seededRng(11), 0);
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
+    // 2 خصم صاحب الحكم: بس وصن ودبل؛ 3 شريكه (وله أشكل): بلا دبل
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun', 'double']);
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
+    expect(availableBids(s, 3).map((b) => b.type)).toEqual(['pass', 'sun', 'ashkal']);
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'double' } });
+    // الحكم لصاحبه (1) مدبّلاً، والمدبّل يختار مقفل أو مفتوح
+    expect(s.contract).toMatchObject({ mode: 'hokm', buyer: 1 });
+    expect(s.doubling.level).toBe(2);
+    expect(s.doubling.lockPending).toBe(0);
   });
 
   it('three stays open even after a locked double', () => {

@@ -2,7 +2,7 @@
 import type { Seat } from './cards';
 import { teamOf } from './cards';
 import { type BotParams, botAction } from './bot';
-import { type GameState, type Rng, applyAction, availableBids, handOver, isDoublingTurn, legalCardsFor, needsRedeal, newMatch, nextHand, redeal } from './game';
+import { type GameState, type Rng, applyAction, availableBids, handOver, isDoublingTurn, isLockChoiceTurn, legalCardsFor, needsRedeal, newMatch, nextHand, redeal } from './game';
 import { seededRng } from './testing';
 
 export type Player = BotParams | 'random';
@@ -22,6 +22,7 @@ export function playMatch(a: Player, b: Player, rng: Rng, maxHands = 60): 0 | 1 
       if (who === 'random') {
         if (s.phase === 'bidding' && s.turn === seat) action = { type: 'bid' as const, seat, bid: pick(availableBids(s, seat)) };
         else if (isDoublingTurn(s, seat)) action = { type: 'doublePass' as const, seat };
+        else if (isLockChoiceTurn(s, seat)) action = { type: 'doubleLock' as const, seat, locked: false };
         else if (s.phase === 'playing' && s.turn === seat) action = { type: 'play' as const, seat, card: pick(legalCardsFor(s, seat)) };
       } else {
         action = botAction(s, seat, who) ?? undefined;

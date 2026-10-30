@@ -73,7 +73,7 @@ const isCard = (c: unknown): c is Card =>
 type SimpleBid = Exclude<Bid['type'], 'hokm'>;
 // كل المزايدات بلا لون (Record يجبرنا على إضافة أي نوع جديد هنا، وإلا لا يُبنى الخادم)
 const SIMPLE_BIDS = Object.keys({
-  pass: 1, sun: 1, ashkal: 1, secondHokm: 1, qablak: 1, confirmHokm: 1,
+  pass: 1, sun: 1, ashkal: 1, secondHokm: 1, qablak: 1, confirmHokm: 1, double: 1,
 } satisfies Record<SimpleBid, 1>) as SimpleBid[];
 
 /** يبني حركة من رسالة العميل. المقعد يُحدد من هوية المتصل، لا مما يرسله. */

@@ -20,7 +20,9 @@ export type Bid =
   | { type: 'secondHokm' }
   | { type: 'qablak' }
   /** بعد أن قال الجميع بس على حكمه: المشتري يؤكد الحكم (أو يحوّل صن) */
-  | { type: 'confirmHokm' };
+  | { type: 'confirmHokm' }
+  /** خصم صاحب الحكم يدبّل قبل تأكيد الشراء: يصير الحكم لصاحبه مدبّلاً، ثم يختار المدبّل مقفل أو مفتوح */
+  | { type: 'double' };
 
 export interface Contract {
   mode: GameMode;
@@ -156,8 +158,11 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
   // أشكل: للموزع وللاعب الذي قبله فقط، في اللفتين
   const ashkal = seat === s.dealer || seat === nextSeat(s.dealer, 3);
-  // بعد الحكم أو الثاني: بس أو صن، وأشكل لمن يحق له
-  if (s.hokmBid || s.secondHokm) return ashkal ? [...bids, { type: 'ashkal' }] : bids;
+  // بعد الحكم أو الثاني: بس أو صن، وأشكل لمن يحق له، ودبل لخصم صاحب الحكم (الحكم الأول، لونه معروف)
+  if (s.hokmBid || s.secondHokm) {
+    const canDouble = !!s.hokmBid && teamOf(seat) !== teamOf(s.hokmBid.seat);
+    return [...bids, ...(ashkal ? [{ type: 'ashkal' } as Bid] : []), ...(canDouble ? [{ type: 'double' } as Bid] : [])];
+  }
   if (s.bidRound === 1) bids.push({ type: 'hokm', suit: s.qaba.suit });
   // اللفة الثانية (بعد أن قال الجميع بس): حكم ثاني
   else bids.push({ type: 'secondHokm' });
@@ -219,6 +224,13 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     const next = nextQablak(s, challenger, holder);
     if (next !== null) return { ...s, sunClaim: { caller: holder, challenger: next }, turn: next };
     return finalizeContract({ ...s, sunClaim: null }, { mode: 'sun', trump: null, buyer: holder, qabaTo: holder });
+  }
+
+  // ───── دبل على الحكم قبل تأكيده: الحكم لصاحبه، والدبل من هذا الخصم ─────
+  if (bid.type === 'double') {
+    const { seat: buyer, suit } = s.hokmBid!;
+    const bought = finalizeContract(s, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
+    return applyDouble(bought, seat);
   }
 
   // ───── تأكيد الحكم ─────

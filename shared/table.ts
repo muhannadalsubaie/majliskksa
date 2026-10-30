@@ -397,6 +397,7 @@ function bidText(b: Bid): string {
     case 'secondHokm': return 'اشترى حكم ثاني';
     case 'qablak': return 'قال قبلك';
     case 'confirmHokm': return 'أكد الحكم';
+    case 'double': return 'دبّل';
     case 'hokm': return `اشترى حكم ${SUIT_NAMES[b.suit]}`;
   }
 }
@@ -438,6 +439,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
           ? `${nameOf(t, c.buyer)} أكد الحكم، ${contractText(after)}`
           : `${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
         if (c.qabaTo !== c.buyer) events.push(`القبلة لـ${nameOf(t, c.qabaTo)}`);
+        // دبل قبل تأكيد الحكم: الحكم لصاحبه، ثم إعلان الدبل
+        if (action.bid.type === 'double') events.push(`${who} اشترى دبل`);
       } else if (action.bid.type === 'confirmHokm') {
         events.push(`${who} أكد الحكم`);
       } else {
