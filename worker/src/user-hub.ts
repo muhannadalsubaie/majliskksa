@@ -18,8 +18,16 @@ export interface HubState {
 
 /** الدعوة صالحة لعشر دقائق */
 const INVITE_TTL_MS = 10 * 60_000;
+/** التطبيق ينبض كل 15 ثانية: من انقطعت نبضته أكثر من هذا يُعتبر غير متصل (انقطع نته بلا إغلاق للاتصال) */
+const ONLINE_STALE_MS = 45_000;
 
 export class UserHub extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // النبضة يرد عليها النظام مباشرة دون إيقاظ المركز، ونقرأ وقتها لنعرف أن الاتصال حي
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
   private async map(key: string): Promise<Record<string, string>> {
     return (await this.ctx.storage.get<Record<string, string>>(key)) ?? {};
   }
@@ -60,7 +68,33 @@ export class UserHub extends DurableObject<Env> {
   }
 
   async isOnline(): Promise<boolean> {
-    return this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN);
+    return this.liveSockets().length > 0;
+  }
+
+  /** اتصالات حية: مفتوحة ووصلت منها نبضة (أو فُتحت) خلال المهلة */
+  private liveSockets(except?: WebSocket): WebSocket[] {
+    const now = Date.now();
+    return this.ctx.getWebSockets().filter((w) => {
+      if (w === except || w.readyState !== WebSocket.OPEN) return false;
+      const opened = (w.deserializeAttachment() as { at?: number } | null)?.at ?? 0;
+      const beat = this.ctx.getWebSocketAutoResponseTimestamp(w)?.getTime() ?? 0;
+      return now - Math.max(opened, beat) < ONLINE_STALE_MS;
+    });
+  }
+
+  /** تغيّرت حالة صديق (اتصل أو خرج): نبلغ تطبيق هذا اللاعب ليحدّث قائمة أصدقائه فوراً */
+  async presence(): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      try { ws.send(JSON.stringify({ type: 'presence' })); } catch { /* closed */ }
+    }
+  }
+
+  /** نبلغ كل الأصدقاء أن حالتي تغيّرت */
+  private notifyFriends() {
+    this.ctx.waitUntil((async () => {
+      const friends = Object.keys(await this.map('friends'));
+      await Promise.all(friends.map((f) => this.env.HUBS.get(this.env.HUBS.idFromName(f)).presence().catch(() => {})));
+    })());
   }
 
   async isFriend(uid: string): Promise<boolean> {
@@ -191,9 +225,13 @@ export class UserHub extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
+    const wasOnline = this.liveSockets().length > 0;
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
+    pair[1].serializeAttachment({ at: Date.now() });
     pair[1].send(JSON.stringify({ type: 'state', ...(await this.getState()) }));
+    // صار متصلاً: أصدقاؤه يشوفونه متصل فوراً
+    if (!wasOnline) this.notifyFriends();
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -204,5 +242,11 @@ export class UserHub extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closed */ }
+    // خرج من التطبيق (آخر اتصال له): أصدقاؤه يشوفونه غير متصل فوراً
+    if (this.liveSockets(ws).length === 0) this.notifyFriends();
+  }
+
+  async webSocketError(ws: WebSocket) {
+    await this.webSocketClose(ws);
   }
 }
