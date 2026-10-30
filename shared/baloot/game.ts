@@ -68,7 +68,8 @@ export interface GameState {
    * remaining = عدد من بقي عليهم الدور، 0 = صاحب الثاني يختار اللون الآن.
    */
   /** confirmed: أكّد صاحب الثاني الحكم (بعد أن قال الجميع بس) ويختار اللون الآن */
-  secondHokm: { seat: Seat; remaining: number; confirmed?: boolean } | null;
+  /** doubledBy: خصمٌ دبّل قبل أن يختار صاحب الثاني اللون؛ يُطبَّق الدبل لحظة اختياره */
+  secondHokm: { seat: Seat; remaining: number; confirmed?: boolean; doubledBy?: Seat } | null;
   /**
    * "قبلك": عندما يقول لاعب صن، يُعطى اللاعب الذي قبله مباشرة (وقد تكلّم في نفس اللفة)
    * فرصة أخذ الصن والقبلة بدلاً منه، فيصبح هو المشتري.
@@ -158,9 +159,10 @@ export function availableBids(s: GameState, seat: Seat): Bid[] {
   const bids: Bid[] = [{ type: 'pass' }, { type: 'sun' }];
   // أشكل: للموزع وللاعب الذي قبله فقط، في اللفتين
   const ashkal = seat === s.dealer || seat === nextSeat(s.dealer, 3);
-  // بعد الحكم أو الثاني: بس أو صن، وأشكل لمن يحق له، ودبل لخصم صاحب الحكم (الحكم الأول، لونه معروف)
+  // بعد الحكم أو الثاني: بس أو صن، وأشكل لمن يحق له، ودبل لخصم صاحبه (وفي الثاني قبل أن يختار اللون)
   if (s.hokmBid || s.secondHokm) {
-    const canDouble = !!s.hokmBid && teamOf(seat) !== teamOf(s.hokmBid.seat);
+    const bidder = s.hokmBid?.seat ?? s.secondHokm!.seat;
+    const canDouble = teamOf(seat) !== teamOf(bidder);
     return [...bids, ...(ashkal ? [{ type: 'ashkal' } as Bid] : []), ...(canDouble ? [{ type: 'double' } as Bid] : [])];
   }
   if (s.bidRound === 1) bids.push({ type: 'hokm', suit: s.qaba.suit });
@@ -228,6 +230,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
 
   // ───── دبل على الحكم قبل تأكيده: الحكم لصاحبه، والدبل من هذا الخصم ─────
   if (bid.type === 'double') {
+    // الحكم الثاني: اللون ما اختير بعد — ينتهي الدور على صاحبه ليختار اللون، ويُطبَّق الدبل بعده
+    if (s.secondHokm) return { ...s, secondHokm: { seat: s.secondHokm.seat, remaining: 0, confirmed: true, doubledBy: seat }, turn: s.secondHokm.seat };
     const { seat: buyer, suit } = s.hokmBid!;
     const bought = finalizeContract(s, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
     return applyDouble(bought, seat);
@@ -260,7 +264,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     const owner = s.secondHokm.seat;
     if (s.secondHokm.remaining === 0 && bid.type === 'confirmHokm') return { ...s, secondHokm: { ...s.secondHokm, confirmed: true } };
     if (s.secondHokm.remaining === 0 && bid.type === 'hokm') {
-      return finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner });
+      const bought = finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner });
+      return s.secondHokm.doubledBy != null ? applyDouble(bought, s.secondHokm.doubledBy) : bought;
     }
     // بس من أحد البقية
     const remaining = s.secondHokm.remaining - 1;

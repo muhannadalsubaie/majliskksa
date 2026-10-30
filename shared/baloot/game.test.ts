@@ -116,12 +116,13 @@ describe('game flow', () => {
     expect(availableBids(s, 1).map((b) => b.type)).toEqual(['pass', 'sun', 'secondHokm']);
   });
 
-  it('حكم ثاني: others may only pass or sun, then the caller picks a non-qaba suit (or switches to sun)', () => {
+  it('حكم ثاني: others may pass, sun (or double if opponents), then the caller picks a non-qaba suit (or switches to sun)', () => {
     let s = allPassRound1(11);
     const qabaSuit = s.qaba!.suit;
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
     expect(s.turn).toBe(2);
-    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun']);
+    // 2 خصم صاحب الثاني: له دبل أيضاً
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun', 'double']);
     for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
     // back to the caller: confirm hokm or switch to sun; after confirming, pick one of the other three suits
     expect(s.turn).toBe(1);
@@ -308,6 +309,22 @@ describe('game flow', () => {
     expect(s.contract).toMatchObject({ mode: 'hokm', buyer: 1 });
     expect(s.doubling.level).toBe(2);
     expect(s.doubling.lockPending).toBe(0);
+  });
+
+  it('second hokm: an opponent may double before the suit is chosen; the double applies once it is chosen', () => {
+    let s = newMatch(seededRng(11), 0);
+    for (const seat of [1, 2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
+    // 2 خصم صاحب الثاني: بس وصن ودبل
+    expect(availableBids(s, 2).map((b) => b.type)).toEqual(['pass', 'sun', 'double']);
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'double' } });
+    // الدور لصاحب الثاني يختار اللون مباشرة
+    expect(s.turn).toBe(1);
+    const suit = availableBids(s, 1).find((b) => b.type === 'hokm')!;
+    s = applyAction(s, { type: 'bid', seat: 1, bid: suit });
+    expect(s.contract).toMatchObject({ mode: 'hokm', buyer: 1 });
+    expect(s.doubling.level).toBe(2);
+    expect(s.doubling.lockPending).toBe(2);
   });
 
   it('three stays open even after a locked double', () => {
