@@ -1,0 +1,19 @@
+# فحص إعداد إيميلات Firebase Auth (قراءة فقط، تشغيل يدوي)
+name: Auth email check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix worker
+      - env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: npx -y tsx@4.19.2 scripts/auth-email-check.ts
