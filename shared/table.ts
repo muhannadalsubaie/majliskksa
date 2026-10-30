@@ -534,7 +534,8 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   const g = t.game;
   if (!g || g.phase === 'matchOver') return null;
   if (needsRedeal(g)) return { kind: 'redeal', delayMs: 2500 };
-  if (handOver(g)) return { kind: 'nextHand', delayMs: 5000 };
+  // بين نهاية الجولة والجولة اللي بعدها 3 ثوانٍ
+  if (handOver(g)) return { kind: 'nextHand', delayMs: 3000 };
   const think = () => BOT_THINK_MS.min + Math.floor(rng() * (BOT_THINK_MS.max - BOT_THINK_MS.min));
   // نعطي الأولوية لمن عليه الدور، ثم إعلان البلوت لأي روبوت
   const order: Seat[] = [];
