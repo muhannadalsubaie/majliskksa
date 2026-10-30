@@ -117,6 +117,8 @@ const VOICE_DROP_GRACE_MS = 60_000;
 
 /** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
 const EMPTY_GRACE_MS = 60_000;
+/** آخر إنسان طلع (أو قفل التطبيق) وبقيت الروبوتات: مهلة الرجوع قبل إغلاق الطاولة */
+const BOTS_ALONE_GRACE_MS = 60_000;
 
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
@@ -126,6 +128,8 @@ export class TableRoom extends DurableObject<Env> {
     if (this.env.DEV_AUTH === '1') return 3000;
     // أثناء المباراة ننتظر أطول من مهلة حجز المقعد، حتى لا تُغلق الطاولة على لاعب في مكالمة
     const t = this.table;
+    // فيها روبوتات ولا أحد متصل: آخر إنسان طلع، تُغلق بعد دقيقة (مهلة الرجوع التلقائي للطاولة)
+    if (t?.seats.some((s) => s?.isBot)) return BOTS_ALONE_GRACE_MS;
     const playing = !!t && (Boolean(t.game && t.game.phase !== 'matchOver') || otherActive(t));
     return playing ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
   }
@@ -204,7 +208,10 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (!t) return false;
     if (this.onlyBots(t)) { await this.closeTable(); return false; }
-    if (this.connectedCount() === 0 && !(await this.ctx.storage.get<number>('emptySince'))) {
+    const emptySince = await this.ctx.storage.get<number>('emptySince');
+    // تأخر المنبه أو تغيّرت المهلة: انتهت مهلة الطاولة الفارغة فتُغلق الآن
+    if (emptySince && this.connectedCount() === 0 && Date.now() - emptySince >= this.grace()) { await this.closeTable(); return false; }
+    if (this.connectedCount() === 0 && !emptySince) {
       await this.ctx.storage.put('emptySince', Date.now());
       await this.ctx.storage.setAlarm(Date.now() + this.grace());
     }
@@ -556,8 +563,11 @@ export class TableRoom extends DurableObject<Env> {
         const seat = seatOf(t, uid);
         const who = seat !== null ? t.seats[seat]!.username : t.spectators.find((m) => m.uid === uid)?.username ?? 'أحد الحاضرين';
         const r = leave(t.voice?.[uid] ? await this.accountVoice(t) : t, uid);
-        // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً
-        if (!hasHumans(r.table)) { await this.closeTable(); return; }
+        // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً.
+        // الحاضرون غير المتصلين (مشاهد قفل التطبيق) لا يُبقونها، ولا يُبقيها إلا لاعب جالس أو متصل آخر
+        const humanSeated = r.table.seats.some((s) => s && !s.isBot);
+        const othersConnected = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid !== uid);
+        if (!hasHumans(r.table) || (!humanSeated && !othersConnected)) { await this.closeTable(); return; }
         await this.save(r.table);
         this.broadcast([
           r.botReplaced && seat !== null ? `غادر ${who} وحلّ مكانه ${r.table.seats[seat]!.username}` : `غادر ${who}`,
