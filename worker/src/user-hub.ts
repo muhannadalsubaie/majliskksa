@@ -50,6 +50,15 @@ export class UserHub extends DurableObject<Env> {
     }
   }
 
+  /** آخر طاولة دخلها (للضغط المطوّل على اسمه في قائمة أصدقائه) */
+  async setTable(id: string): Promise<void> {
+    await this.ctx.storage.put('table', id);
+  }
+
+  async currentTable(): Promise<string | null> {
+    return (await this.ctx.storage.get<string>('table')) ?? null;
+  }
+
   async isOnline(): Promise<boolean> {
     return this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN);
   }

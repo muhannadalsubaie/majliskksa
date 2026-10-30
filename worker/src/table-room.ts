@@ -227,6 +227,13 @@ export class TableRoom extends DurableObject<Env> {
     return { code };
   }
 
+  /** طاولة صديق: هل ما زال فيها، وهل هي مقفلة */
+  async friendTable(uid: string): Promise<{ isPrivate: boolean } | null> {
+    const t = await this.load();
+    if (!t || !(seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid))) return null;
+    return { isPrivate: t.isPrivate };
+  }
+
   async isMember(uid: string): Promise<boolean> {
     const t = await this.load();
     return !!t && (seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid));

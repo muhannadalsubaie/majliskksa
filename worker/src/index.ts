@@ -150,6 +150,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
         if (!devAuth) await db.adjustCoins(user.uid, COINS.createTable).catch(() => {}); // استرجاع عند الفشل
         throw e;
       }
+      await hub(user.uid).setTable(id.toString());
       return json({ id: id.toString() });
     }
 
@@ -161,6 +162,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const body = (await request.json().catch(() => ({}))) as { invite?: unknown };
       const invite = typeof body.invite === 'string' ? body.invite.slice(0, 20) : undefined;
       const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username }, invite);
+      if (!('error' in r)) await hub(user.uid).setTable(joinMatch[1]);
       return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
     }
 
@@ -241,7 +243,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     if (pathname === '/friends/list' && request.method === 'POST') {
       const state = await hub(user.uid).getState();
-      const friends = await Promise.all(state.friends.map(async (f) => ({ ...f, online: await hub(f.uid).isOnline() })));
+      // الصديق المتصل وفي طاولة: نرسل الطاولة (يدخلها صاحبه بالضغط المطوّل على اسمه)
+      const friends = await Promise.all(state.friends.map(async (f) => {
+        const online = await hub(f.uid).isOnline();
+        const tableId = online ? await hub(f.uid).currentTable() : null;
+        const t = tableId ? await env.TABLES.get(env.TABLES.idFromString(tableId)).friendTable(f.uid).catch(() => null) : null;
+        return { ...f, online, ...(t ? { tableId, tablePrivate: t.isPrivate } : {}) };
+      }));
       return json({ ...state, friends });
     }
 
@@ -403,6 +411,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
       const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).joinTable({ uid: user.uid, username }, invite.code);
+      if (!('error' in r)) await hub(user.uid).setTable(tableId);
       return 'error' in r ? json(r, 400) : json({ ok: true, tableId });
     }
 
