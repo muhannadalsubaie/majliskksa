@@ -190,6 +190,9 @@ export class TableRoom extends DurableObject<Env> {
         return { error: 'banned-by-owner' };
       }
       const r = join(t, user, invite);
+      // دخول جديد للطاولة (لا رجوع اتصال): لا نعلن "عاد اتصال" عند فتح الطاولة
+      const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
+      if (offline[user.uid] !== undefined) { delete offline[user.uid]; await this.ctx.storage.put('offline', offline); }
       if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable);
       await this.save(r.table);
       this.broadcast([`انضم ${user.username}`]);
@@ -374,9 +377,13 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
     // عاد لاعب منقطع قبل انتهاء المهلة: يستعيد مقعده
-    if (t?.away?.[uid] !== undefined) {
-      await this.save(markBack(t, uid));
-      this.broadcast([`عاد ${memberName(t, uid) ?? 'لاعب'} إلى الطاولة`]);
+    if (t?.away?.[uid] !== undefined) await this.save(markBack(t, uid));
+    // كان منقطعاً (شبكة أو أُغلق التطبيق) ورجع: نعلن رجوعه للبقية
+    const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
+    if (offline[uid] !== undefined) {
+      delete offline[uid];
+      await this.ctx.storage.put('offline', offline);
+      if (t && inTable(this.table ?? t, uid)) this.broadcast([`عاد اتصال ${memberName(this.table ?? t, uid) ?? 'لاعب'}`], uid);
     }
     // خارج اللعب: عاد قبل مهلة الخروج، ومن ليس متصلاً من الحاضرين تبدأ مهلته
     const cur = this.table;
@@ -599,8 +606,14 @@ export class TableRoom extends DurableObject<Env> {
       const next = markAway(current, uid, Date.now());
       if (next !== current) {
         await this.save(next);
-        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}، مقعده محجوز ثلاث دقائق`]);
         await this.schedule();
+      }
+      // انقطع اتصاله (شبكة أو أُغلق التطبيق) وهو ما زال في الطاولة: نعلن ذلك للبقية، ونعلن رجوعه إن رجع
+      if (inTable(current, uid)) {
+        const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
+        offline[uid] = Date.now();
+        await this.ctx.storage.put('offline', offline);
+        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}${next !== current ? '، مقعده محجوز ثلاث دقائق' : ''}`]);
       }
     }
     // خارج اللعب: من لا يعود خلال المهلة يخرج من الطاولة (لا تبقى حسابات مغلقة أو محذوفة جالسة)
