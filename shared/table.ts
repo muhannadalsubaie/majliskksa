@@ -401,8 +401,8 @@ function bidText(b: Bid, round: 1 | 2 = 1): string {
     case 'qablak': return 'قال قبلك';
     case 'confirmHokm': return 'أكد الحكم';
     case 'double': return 'دبّل';
-    // أول ما يشتري أحد حكم: «فلان اشترى حكم»
-    case 'hokm': return round === 2 ? `اختار حكم ${SUIT_NAMES[b.suit]}` : 'اشترى حكم';
+    // «فلان اشترى حكم سبيت» — في الحكم الأول النوع لون ورقة الأرض
+    case 'hokm': return `اشترى حكم ${SUIT_NAMES[b.suit]}`;
   }
 }
 
