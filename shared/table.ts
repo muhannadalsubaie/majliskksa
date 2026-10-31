@@ -39,7 +39,7 @@ export interface TableData {
   matchNo?: number;
   /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
   lobbyAway?: Record<string, number>;
-  /** مهلة بين قرار لاعب في المزايدة/الدبل وانتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
+  /** مهلة بعد شراء حكم أو صن قبل انتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
   hold?: { until: number; seat: Seat };
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
   banned?: string[];
@@ -433,7 +433,8 @@ export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qab
 const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'hokm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
-/** المهلة بين قرار لاعب وانتقال الدور */
+/** المهلة بين شراء حكم أو صن وانتقال الدور */
+const HOLD_BIDS = new Set<Bid['type']>(['hokm', 'secondHokm', 'sun', 'ashkal', 'qablak', 'confirmHokm']);
 export const DECISION_GAP_MS = 1500;
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
 export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
@@ -541,8 +542,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     }
   }
   void rng;
-  // ثانية ونص بين كل قرار (مزايدة أو دبل) وانتقال الدور لمن بعده
-  const decision = action.type === 'bid' || action.type === 'double' || action.type === 'doubleLock' || action.type === 'doublePass';
+  // ثانية ونص بعد شراء حكم أو صن (أو أشكل/قبلك/تأكيد الحكم) قبل ما ينتقل الدور لمن بعده يختار — لا بعد «بس» ولا الدبل ولا لعب الورق
+  const decision = action.type === 'bid' && HOLD_BIDS.has(action.bid.type);
   const hold = decision && after.phase !== 'matchOver' && !needsRedeal(after) ? { until: now + DECISION_GAP_MS, seat: action.seat } : undefined;
   const { hold: _old, ...rest } = t;
   void _old;
