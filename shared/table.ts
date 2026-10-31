@@ -425,10 +425,10 @@ function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolea
 /** يطبق حركة ويرجع نصوص الإعلانات المناسبة لكل اللاعبين. */
 /**
  * الأصوات المنطوقة للمزايدة والدبل (يشغّلها التطبيق بالترتيب): مفاتيح ملفات صوتية بشرية
- * pass/wala/sun/hokm/hokm2/ashkal/double/three/four/gahwa/locked/open
+ * pass/wala/sun/hokm/hokm2/ashkal/qablak/double/three/four/gahwa/locked/open
  */
-export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open';
-const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', confirmHokm: 'hokm', double: 'double' };
+export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open';
+const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'hokm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
 export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
