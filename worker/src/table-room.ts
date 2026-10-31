@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
-import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
+import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, startAny, viewFor, withoutVoice,
@@ -818,6 +818,8 @@ export class TableRoom extends DurableObject<Env> {
       const seat = seatOf(cur, uid);
       const name = memberName(cur, uid) ?? 'لاعب';
       cur = replaceWithBot(cur, uid, rng);
+      // ما رجع خلال حجز المقعد: ما يبقى اسمه معلقاً بين الحاضرين، يخرج من الطاولة الآن (لو رجع يدخل من جديد)
+      cur = markLobbyAway(cur, uid, Date.now() - LOBBY_LEAVE_AFTER_MS);
       await this.save(cur);
       if (seat !== null) {
         await this.db().adjustCoins(cur.ownerUid, -COINS.addBot).catch(() => {});
@@ -827,7 +829,7 @@ export class TableRoom extends DurableObject<Env> {
     }
     // حلّت الروبوتات مكان آخر لاعب حقيقي ولا أحد متصل: تُحذف الطاولة
     if (this.onlyBots(cur)) { await this.closeTable(); return; }
-    // خارج اللعب: انتهت مهلة منقطع فيخرج من الطاولة
+    // انتهت مهلة منقطع (خارج اللعب، أو مشاهد أثناء المباراة): يخرج من الطاولة
     for (const uid of lobbyExpired(cur, Date.now())) {
       const name = memberName(cur, uid) ?? 'أحد الحاضرين';
       const r = leave(cur.voice?.[uid] ? await this.accountVoice(cur) : cur, uid);

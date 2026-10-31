@@ -23,3 +23,19 @@ describe('مهلة القرار', () => {
     expect(after.turn).toBe(r.table.game!.turn);
   });
 });
+
+describe('المنقطع ما يبقى معلق', () => {
+  it('مشاهد انقطع أثناء المباراة يخرج بعد المهلة', async () => {
+    const { join, lobbyExpired, markLobbyAway } = await import('./table');
+    const { LOBBY_LEAVE_AFTER_MS } = await import('./economy');
+    let t = newTable('t1', { uid: 'u1', username: 'مهند' }, false, 0);
+    t = addBot(t, 1); t = addBot(t, 2); t = addBot(t, 3);
+    t = start(t, seededRng(4));
+    t = join(t, { uid: 'u9', username: 'زائر' }).table;
+    const now = Date.now();
+    t = markLobbyAway(t, 'u9', now);
+    expect(lobbyExpired(t, now + LOBBY_LEAVE_AFTER_MS)).toEqual(['u9']);
+    // الجالس أثناء المباراة ما يخرج بهذي المهلة (له حجز المقعد)
+    expect(markLobbyAway(t, 'u1', now).lobbyAway?.u1).toBeUndefined();
+  });
+});

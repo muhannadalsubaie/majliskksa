@@ -91,7 +91,8 @@ const humanMembers = (t: TableData) => [...t.seats.filter((m): m is Member => m 
 
 /** انقطع اتصال حاضر والطاولة ليست في مباراة: نبدأ مهلة خروجه */
 export function markLobbyAway(t: TableData, uid: string, now: number): TableData {
-  if (gameActive(t) || t.lobbyAway?.[uid] !== undefined || !humanMembers(t).some((m) => m.uid === uid)) return t;
+  // أثناء المباراة: الجالس له حجز المقعد (away)، والمشاهد المنقطع تبدأ مهلة خروجه مثل خارج اللعب
+  if ((gameActive(t) && seatOf(t, uid) !== null) || t.lobbyAway?.[uid] !== undefined || !humanMembers(t).some((m) => m.uid === uid)) return t;
   return { ...t, lobbyAway: { ...(t.lobbyAway ?? {}), [uid]: now } };
 }
 
@@ -109,14 +110,15 @@ export function sweepLobbyGhosts(t: TableData, connected: Set<string>, now: numb
   return cur;
 }
 
+/** المنقطعون اللي تبدأ مهلة خروجهم: أثناء المباراة المشاهدون فقط (الجالس محجوز مقعده) */
+const lobbyWaiting = (t: TableData) => Object.entries(t.lobbyAway ?? {}).filter(([uid]) => !gameActive(t) || seatOf(t, uid) === null);
+
 export function lobbyExpired(t: TableData, now: number): string[] {
-  if (gameActive(t)) return [];
-  return Object.entries(t.lobbyAway ?? {}).filter(([, at]) => now - at >= LOBBY_LEAVE_AFTER_MS).map(([uid]) => uid);
+  return lobbyWaiting(t).filter(([, at]) => now - at >= LOBBY_LEAVE_AFTER_MS).map(([uid]) => uid);
 }
 
 export function nextLobbyDeadline(t: TableData): number | null {
-  if (gameActive(t)) return null;
-  const times = Object.values(t.lobbyAway ?? {});
+  const times = lobbyWaiting(t).map(([, at]) => at);
   return times.length ? Math.min(...times) + LOBBY_LEAVE_AFTER_MS : null;
 }
 
