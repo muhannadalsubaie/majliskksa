@@ -36,7 +36,14 @@ type ClientMessage =
   | { type: 'ban'; uid: string }
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
   | { type: 'setPrivate'; isPrivate: boolean }
-  | { type: 'setOwner'; uid: string };
+  | { type: 'setOwner'; uid: string }
+  /** الدردشة الكتابية: رسالة، أو اختيار هذا الاتصال (off = ما توصله الرسائل ولا يرسل) */
+  | { type: 'chat'; text: string }
+  | { type: 'chatPref'; off: boolean };
+
+/** الدردشة الكتابية: حد طول الرسالة، وأقل مدة بين رسالتين لنفس الشخص */
+const CHAT_MAX = 200;
+const CHAT_GAP_MS = 2000;
 
 /**
  * عشوائية آمنة لخلط الورق والتوزيع: من مولّد التشفير في النظام (crypto.getRandomValues)،
@@ -128,6 +135,8 @@ const STALE_CHECK_MS = 3_000;
 
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
+  /** آخر رسالة دردشة لكل شخص (لمنع الإغراق) */
+  private lastChat = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -445,6 +454,16 @@ export class TableRoom extends DurableObject<Env> {
     try { msg = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)); } catch { return; }
     const t = await this.load();
     if (!t) return;
+    // الدردشة الكتابية: الاختيار يُحفظ على الاتصال نفسه، فلا تُرسل له الرسائل إن أطفأها
+    if (msg.type === 'chatPref') {
+      ws.serializeAttachment({ ...(ws.deserializeAttachment() as object), chatOff: msg.off === true });
+      return;
+    }
+    if (msg.type === 'chat') {
+      const error = this.chat(ws, t, uid, msg.text);
+      if (error) ws.send(JSON.stringify({ type: 'error', message: error }));
+      return;
+    }
     try {
       await this.handle(t, uid, msg);
     } catch (e) {
@@ -452,6 +471,23 @@ export class TableRoom extends DurableObject<Env> {
       const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError || e instanceof LudoError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
       ws.send(JSON.stringify({ type: 'error', message: text }));
     }
+  }
+
+  /** رسالة دردشة: تصل لكل الموجودين إلا من أطفأ الدردشة عنده. يرجع نص الخطأ إن رُفضت */
+  private chat(ws: WebSocket, t: TableData, uid: string, raw: unknown): string | null {
+    if ((ws.deserializeAttachment() as { chatOff?: boolean }).chatOff) return 'الدردشة مطفأة عندك';
+    if (!inTable(t, uid)) return 'لست في هذه الطاولة';
+    const text = String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
+    if (!text) return null;
+    const now = Date.now();
+    if (now - (this.lastChat.get(uid) ?? 0) < CHAT_GAP_MS) return 'انتظر لحظة قبل الرسالة الجاية';
+    this.lastChat.set(uid, now);
+    const out = JSON.stringify({ type: 'chat', uid, name: memberName(t, uid) ?? 'لاعب', text });
+    for (const w of this.ctx.getWebSockets()) {
+      if (w.readyState !== WebSocket.OPEN || (w.deserializeAttachment() as { chatOff?: boolean }).chatOff) continue;
+      try { w.send(out); } catch { /* closed */ }
+    }
+    return null;
   }
 
   private async handle(t: TableData, uid: string, msg: ClientMessage) {
