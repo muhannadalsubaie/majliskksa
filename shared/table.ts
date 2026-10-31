@@ -10,7 +10,7 @@ import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherA
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
 import type { LudoState } from './ludo/engine';
-import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS } from './economy';
+import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS, SPECTATOR_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
 
@@ -113,13 +113,16 @@ export function sweepLobbyGhosts(t: TableData, connected: Set<string>, now: numb
 /** المنقطعون اللي تبدأ مهلة خروجهم: أثناء المباراة المشاهدون فقط (الجالس محجوز مقعده) */
 const lobbyWaiting = (t: TableData) => Object.entries(t.lobbyAway ?? {}).filter(([uid]) => !gameActive(t) || seatOf(t, uid) === null);
 
+/** مهلة خروج المنقطع: المشاهد دقيقتين، والجالس خارج اللعب ٥ دقائق */
+const leaveAfter = (t: TableData, uid: string) => (seatOf(t, uid) === null ? SPECTATOR_LEAVE_AFTER_MS : LOBBY_LEAVE_AFTER_MS);
+
 export function lobbyExpired(t: TableData, now: number): string[] {
-  return lobbyWaiting(t).filter(([, at]) => now - at >= LOBBY_LEAVE_AFTER_MS).map(([uid]) => uid);
+  return lobbyWaiting(t).filter(([uid, at]) => now - at >= leaveAfter(t, uid)).map(([uid]) => uid);
 }
 
 export function nextLobbyDeadline(t: TableData): number | null {
-  const times = lobbyWaiting(t).map(([, at]) => at);
-  return times.length ? Math.min(...times) + LOBBY_LEAVE_AFTER_MS : null;
+  const times = lobbyWaiting(t).map(([uid, at]) => at + leaveAfter(t, uid));
+  return times.length ? Math.min(...times) : null;
 }
 
 /** عاد اللاعب قبل انتهاء المهلة */
