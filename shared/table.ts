@@ -39,6 +39,8 @@ export interface TableData {
   matchNo?: number;
   /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
   lobbyAway?: Record<string, number>;
+  /** مهلة بين قرار لاعب في المزايدة/الدبل وانتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
+  hold?: { until: number; seat: Seat };
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
   banned?: string[];
   /** مطرودون: uid → متى يُسمح له بالعودة لهذه الطاولة */
@@ -431,7 +433,12 @@ export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qab
 const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'hokm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
-export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
+/** المهلة بين قرار لاعب وانتقال الدور */
+export const DECISION_GAP_MS = 1500;
+/** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
+export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
+
+export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Date.now()): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
   const after = applyAction(before, action);
   const events: string[] = [];
@@ -534,7 +541,12 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     }
   }
   void rng;
-  return { table: { ...t, game: after, ...(history ? { history } : {}) }, events, ...(voices.length ? { voices } : {}) };
+  // ثانية ونص بين كل قرار (مزايدة أو دبل) وانتقال الدور لمن بعده
+  const decision = action.type === 'bid' || action.type === 'double' || action.type === 'doubleLock' || action.type === 'doublePass';
+  const hold = decision && after.phase !== 'matchOver' && !needsRedeal(after) ? { until: now + DECISION_GAP_MS, seat: action.seat } : undefined;
+  const { hold: _old, ...rest } = t;
+  void _old;
+  return { table: { ...rest, game: after, ...(history ? { history } : {}), ...(hold ? { hold } : {}) }, events, ...(voices.length ? { voices } : {}) };
 }
 
 // ───── الخطوة التلقائية التالية (روبوت أو توزيع) ─────
@@ -654,13 +666,14 @@ export function viewFor(t: TableData, uid: string): TableView {
   const g = t.game;
   let game: GameView | null = null;
   if (g) {
-    const playing = mySeat !== null;
+    const held = holding(t);
+    const playing = mySeat !== null && !held;
     game = {
-      phase: g.phase, dealer: g.dealer, scores: g.scores, turn: g.turn, qaba: g.qaba, bidRound: g.bidRound,
+      phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, qaba: g.qaba, bidRound: g.bidRound,
       hokmBid: g.hokmBid, contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
       trickNo: g.trickNo, tricksWon: g.tricksWon, lastHand: g.lastHand, outcome: g.outcome,
       handCounts: g.hands.map((h) => h.length),
-      myHand: playing ? g.hands[mySeat] : [],
+      myHand: mySeat !== null ? g.hands[mySeat] : [],
       balootSeat: g.balootSeat,
       projects: g.trickNo > 0 ? g.projects : null,
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه

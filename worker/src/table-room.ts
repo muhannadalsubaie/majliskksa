@@ -5,7 +5,7 @@ import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, startAny, viewFor, withoutVoice,
+  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, startAny, viewFor, withoutVoice,
 } from '../../shared/table';
 import { type GameKind, type GameVariant, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
@@ -498,6 +498,8 @@ export class TableRoom extends DurableObject<Env> {
         if (seat === null || !t.game) throw new Error('not-a-player');
         const action = parseAction(msg.action, seat);
         if (!action) throw new Error('bad-action');
+        // خلال المهلة بين قرار اللاعب السابق وانتقال الدور لا يُقبل قرار جديد
+        if (holding(t)) break;
         const r = applyWithEvents(t, action, rng);
         await this.save(r.table);
         this.broadcast(r.events, undefined, r.voices);
@@ -778,7 +780,9 @@ export class TableRoom extends DurableObject<Env> {
     }
     const step = t ? nextAutoStep(t, rng) : null;
     // في التطوير المحلي نسرّع الروبوتات للاختبار
-    const botAt = step ? Date.now() + (this.env.DEV_AUTH === '1' ? 5 : step.delayMs) : null;
+    // الروبوت يفكّر بعد انتهاء مهلة القرار السابق (ينتقل له الدور أولاً)
+    const holdUntil = t && holding(t) ? t.hold!.until : 0;
+    const botAt = step ? Math.max(Date.now() + (this.env.DEV_AUTH === '1' ? 5 : step.delayMs), holdUntil ? holdUntil + 400 : 0) : null;
     if (botAt) await this.ctx.storage.put('botAt', botAt);
     else await this.ctx.storage.delete('botAt');
     const awayAt = t ? nextAwayDeadline(t) : null;
@@ -787,7 +791,7 @@ export class TableRoom extends DurableObject<Env> {
     // فحص النبضات ما دام فيه اتصالات تنبض
     const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
     const staleAt = beating ? Date.now() + STALE_CHECK_MS : null;
-    const at = Math.min(botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity);
+    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -833,6 +837,14 @@ export class TableRoom extends DurableObject<Env> {
       this.broadcast([`خرج ${name} من الطاولة لانقطاع اتصاله`, ...(r.newOwner ? [`أصبح ${r.newOwner} مالك الطاولة`] : [])]);
       await this.publish(cur);
     }
+    // انتهت مهلة القرار: ينتقل الدور لمن بعده
+    if (cur.hold && !holding(cur, Date.now() + 50)) {
+      const { hold: _h, ...rest } = cur;
+      void _h;
+      cur = rest;
+      await this.save(cur);
+      this.broadcast([]);
+    }
     // دور الروبوت (قد يوقظنا المنبه مبكراً لمهلة منقطع، فلا نسبق وقت تفكيره)
     const botAt = await this.ctx.storage.get<number>('botAt');
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
@@ -845,7 +857,7 @@ export class TableRoom extends DurableObject<Env> {
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else {
       const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
-      await this.ctx.storage.setAlarm(Math.min(botAt, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity,
+      await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity,
         beating ? Date.now() + STALE_CHECK_MS : Infinity));
     }
   }
