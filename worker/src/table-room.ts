@@ -464,7 +464,7 @@ export class TableRoom extends DurableObject<Env> {
         if (!action) throw new Error('bad-action');
         const r = applyWithEvents(t, action, rng);
         await this.save(r.table);
-        this.broadcast(r.events);
+        this.broadcast(r.events, undefined, r.voices);
         if (r.table.game?.phase === 'matchOver') await this.publish(r.table);
         break;
       }
@@ -803,7 +803,7 @@ export class TableRoom extends DurableObject<Env> {
     if (step) {
       const r = runAutoStep(cur, step, rng);
       await this.save(r.table);
-      this.broadcast(r.events);
+      this.broadcast(r.events, undefined, r.voices);
       if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
@@ -816,13 +816,14 @@ export class TableRoom extends DurableObject<Env> {
 
   /** يرسل لكل متصل حالته الخاصة + الإعلانات. */
   /** except: لا تُرسل الإعلانات لهذا اللاعب (يسمع إعلانه الخاص من تطبيقه)، لكن تصله الحالة */
-  private broadcast(events: string[], except?: string) {
+  /** voices: أصوات منطوقة للمزايدة والدبل يشغّلها التطبيق (تصل حتى بلا نص إعلان) */
+  private broadcast(events: string[], except?: string, voices?: string[]) {
     const t = this.table;
     if (!t) return;
     for (const ws of this.ctx.getWebSockets()) {
       const { uid } = ws.deserializeAttachment() as { uid: string };
       try {
-        if (events.length && uid !== except) ws.send(JSON.stringify({ type: 'events', events }));
+        if ((events.length || voices?.length) && uid !== except) ws.send(JSON.stringify({ type: 'events', events, ...(voices?.length ? { voices } : {}) }));
         ws.send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
       } catch { /* اتصال مغلق */ }
     }

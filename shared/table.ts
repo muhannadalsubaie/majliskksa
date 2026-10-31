@@ -389,9 +389,10 @@ const nameOf = (t: TableData, seat: Seat) => t.seats[seat]?.username ?? `الم�
 export const teamName = (t: TableData, team: Team) => `فريق ${nameOf(t, team as Seat)} و${nameOf(t, (team + 2) as Seat)}`;
 
 /** نص المزايدة بعد اسم صاحبها: "خالد اشترى صن"، "خالد بس" */
-function bidText(b: Bid): string {
+function bidText(b: Bid, round: 1 | 2 = 1): string {
   switch (b.type) {
-    case 'pass': return 'بس';
+    // اللفة الثانية: "ولا" بدل "بس"
+    case 'pass': return round === 2 ? 'ولا' : 'بس';
     case 'sun': return 'اشترى صن';
     case 'ashkal': return 'اشترى أشكل';
     case 'secondHokm': return 'اشترى حكم ثاني';
@@ -422,16 +423,27 @@ function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolea
 }
 
 /** يطبق حركة ويرجع نصوص الإعلانات المناسبة لكل اللاعبين. */
-export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table: TableData; events: string[] } {
+/**
+ * الأصوات المنطوقة للمزايدة والدبل (يشغّلها التطبيق بالترتيب): مفاتيح ملفات صوتية بشرية
+ * pass/wala/sun/hokm/hokm2/ashkal/double/three/four/gahwa/locked/open
+ */
+export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open';
+const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', confirmHokm: 'hokm', double: 'double' };
+const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
+
+export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
   const after = applyAction(before, action);
   const events: string[] = [];
+  const voices: Voice[] = [];
   let history: HandRecord[] | undefined;
   const who = 'seat' in action ? nameOf(t, action.seat) : '';
 
   switch (action.type) {
     case 'bid': {
       // إعلانات قصيرة بما حدث فقط (اشترى، أكد، بس) — بلا "بانتظار" ولا "من عليه القرار"
+      const v = action.bid.type === 'pass' ? (before.bidRound === 2 ? 'wala' : 'pass') : BID_VOICE[action.bid.type];
+      if (v) voices.push(v);
       const bought = !before.contract && after.contract;
       if (bought) {
         const c = after.contract!;
@@ -444,7 +456,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       } else if (action.bid.type === 'confirmHokm') {
         events.push(`${who} أكد الحكم`);
       } else {
-        events.push(`${who} ${bidText(action.bid)}`);
+        events.push(`${who} ${bidText(action.bid, before.bidRound)}`);
       }
       if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
       break;
@@ -453,14 +465,20 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
       const d = after.doubling;
       const label = d.gahwa ? 'قهوة' : ({ 2: 'دبل', 3: 'ثري', 4: 'فور' } as const)[d.level as 2 | 3 | 4];
       events.push(`${who} اشترى ${label}`);
-      if (d.lockPending == null && after.contract!.mode === 'hokm' && !d.gahwa) events.push(d.locked ? 'مقفل' : 'مفتوح');
+      voices.push(DOUBLE_VOICE[label]);
+      if (d.lockPending == null && after.contract!.mode === 'hokm' && !d.gahwa) {
+        events.push(d.locked ? 'مقفل' : 'مفتوح');
+        voices.push(d.locked ? 'locked' : 'open');
+      }
       break;
     }
     case 'doubleLock': {
       events.push(after.doubling.locked ? `${who}: مقفل` : `${who}: مفتوح`);
+      voices.push(after.doubling.locked ? 'locked' : 'open');
       break;
     }
     case 'doublePass':
+      voices.push('pass');
       break;
     case 'declareProject': {
       const mine = after.declared.find((d) => d.seat === action.seat)!;
@@ -516,7 +534,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng): { table
     }
   }
   void rng;
-  return { table: { ...t, game: after, ...(history ? { history } : {}) }, events };
+  return { table: { ...t, game: after, ...(history ? { history } : {}) }, events, ...(voices.length ? { voices } : {}) };
 }
 
 // ───── الخطوة التلقائية التالية (روبوت أو توزيع) ─────
@@ -556,7 +574,7 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   return null;
 }
 
-export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[] } {
+export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
   if (step.kind === 'other') return runOtherAuto(t, rng);
   if (step.kind === 'redeal') {
     const table = { ...t, game: redeal(t.game!, rng) };
