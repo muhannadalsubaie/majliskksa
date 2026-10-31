@@ -623,7 +623,7 @@ export interface GameView {
   balootSeat: Seat | null;
   projects: GameState['projects'];
   /** cards: أوراق كل مشروع (بعد الأكلة الأولى فقط) */
-  declared: { seat: Seat; kinds: string[]; cards?: string[]; cancelled?: boolean }[];
+  declared: { seat: Seat; kinds: string[]; cards?: string[]; faces?: Card[]; cancelled?: boolean }[];
   actions: {
     bids: Bid[];
     double: ReturnType<typeof availableDouble>;
@@ -686,6 +686,8 @@ export function viewFor(t: TableData, uid: string): TableView {
           seat: d.seat,
           kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
           cards: shown && won ? d.projects.map((p) => p.cards.map(cardLabel).join('، ')) : undefined,
+          // أوراق المشروع نفسها (للعرض قدام صاحبه في التطبيق)
+          faces: shown && won ? d.projects.flatMap((p) => p.cards) : undefined,
           cancelled: shown && !won ? true : undefined,
         };
       }),
