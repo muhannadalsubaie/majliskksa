@@ -26,10 +26,12 @@ export interface LegalContext {
   seat: Seat;
   /** في الدبل المقفل (غير null): ما أحد يفتتح أكلة بالحكم — يسري على جميع اللاعبين */
   lockedSeat: Seat | null;
+  /** أوراق ما نزلت للحين (اللي في أيدي باقي اللاعبين) */
+  outstanding?: Card[];
 }
 
 /** الأوراق المسموح لعبها — المرجع الوحيد لقانونية الحركة (يُستدعى في الخادم). */
-export function legalCards({ mode, trump, trick, hand, seat, lockedSeat }: LegalContext): Card[] {
+export function legalCards({ mode, trump, trick, hand, seat, lockedSeat, outstanding = [] }: LegalContext): Card[] {
   const isTrump = (c: Card) => mode === 'hokm' && c.suit === trump;
 
   if (trick.length === 0) {
@@ -63,7 +65,12 @@ export function legalCards({ mode, trump, trick, hand, seat, lockedSeat }: Legal
 
   // حكم ولا يملك اللون المطلوب
   const winner = trickWinner(trick, mode, trump);
-  if (teamOf(winner) === teamOf(seat)) return hand; // الشريك متصدر: حر
+  // الشريك متصدر: حر — بشرط تكون ورقته أقوى ورقة باقية من لونها (مثلاً شايب سبيت والإكة أو العشرة ما نزلت: لازم تقطع)
+  if (teamOf(winner) === teamOf(seat)) {
+    const top = trick.find((p) => p.seat === winner)!.card;
+    const beaten = !isTrump(top) && outstanding.some((c) => c.suit === top.suit && cardStrength(c, mode, trump) > cardStrength(top, mode, trump));
+    if (!beaten) return hand;
+  }
   const trumps = hand.filter(isTrump);
   if (!trumps.length) return hand;
   const tableHasTrump = trick.some((p) => isTrump(p.card));

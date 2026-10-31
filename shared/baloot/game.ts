@@ -407,7 +407,7 @@ export function lockedSeat(s: GameState): Seat | null {
 export function legalCardsFor(s: GameState, seat: Seat): Card[] {
   if (s.phase !== 'playing' || s.turn !== seat) return [];
   const c = s.contract!;
-  return legalCards({ mode: c.mode, trump: c.trump, trick: s.trick, hand: s.hands[seat], seat, lockedSeat: lockedSeat(s) });
+  return legalCards({ mode: c.mode, trump: c.trump, trick: s.trick, hand: s.hands[seat], seat, lockedSeat: lockedSeat(s), outstanding: s.hands.filter((_, i) => i !== seat).flat() });
 }
 
 function applyPlay(s: GameState, seat: Seat, card: Card): GameState {

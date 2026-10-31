@@ -26,6 +26,13 @@ describe('legalCards', () => {
   it('void and partner not winning → must trump', () => {
     expect(ids(legalCards({ ...base, trick: trick('AS', 0), hand: cards('KD 9H 7H'), seat: 1 }))).toEqual(['7H', '9H']);
   });
+  it('partner winning with K but A/10 not played yet → must trump (trump clubs)', () => {
+    const b = { mode: 'hokm' as const, trump: 'C' as const, lockedSeat: null };
+    // الشريك (0) لعب شايب سبيت، والخصم (1) لعب ٧ سبيت، وأنا (2) ما عندي سبيت والإكة والعشرة ما نزلت
+    expect(ids(legalCards({ ...b, trick: trick('KS 7S', 0), hand: cards('KD 9C'), seat: 2, outstanding: cards('AS 10S 8H') }))).toEqual(['9C']);
+    // الإكة والعشرة نزلت: الشايب أقوى ورقة باقية فأنا حر
+    expect(ids(legalCards({ ...b, trick: trick('KS 7S', 0), hand: cards('KD 9C'), seat: 2, outstanding: cards('8S 8H') }))).toEqual(['9C', 'KD']);
+  });
   it('void and partner winning → free', () => {
     expect(ids(legalCards({ ...base, trick: trick('AS 7S', 0), hand: cards('KD 9H'), seat: 2 }))).toEqual(['9H', 'KD']);
   });
