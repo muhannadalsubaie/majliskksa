@@ -672,7 +672,7 @@ export class TableRoom extends DurableObject<Env> {
       await this.ctx.storage.put('voiceGone', gone);
       await this.schedule();
     }
-    // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده دقيقتين
+    // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
     const current = this.table;
     if (current && !stillHere) {
       const next = markAway(current, uid, Date.now());
@@ -685,7 +685,7 @@ export class TableRoom extends DurableObject<Env> {
         const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
         offline[uid] = Date.now();
         await this.ctx.storage.put('offline', offline);
-        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}${next !== current ? '، مقعده محجوز دقيقتين' : ''}`]);
+        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}${next !== current ? '، مقعده محجوز ثلاث دقائق' : ''}`]);
       }
     }
     // خارج اللعب: من لا يعود خلال المهلة يخرج من الطاولة (لا تبقى حسابات مغلقة أو محذوفة جالسة)

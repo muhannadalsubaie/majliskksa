@@ -8,7 +8,7 @@ export const COINS = {
   watchAdReward: 2,
 } as const;
 
-export const BOT_REPLACE_AFTER_MS = 2 * 60 * 1000;
+export const BOT_REPLACE_AFTER_MS = 3 * 60 * 1000;
 // قبل بدء اللعب (أو بعد انتهائه): من انقطع اتصاله ولم يعد خلال هذه المدة يخرج من الطاولة،
 // حتى لا تبقى طاولات فيها حسابات أُغلقت أو حُذفت
 export const LOBBY_LEAVE_AFTER_MS = 2 * 60 * 1000;
