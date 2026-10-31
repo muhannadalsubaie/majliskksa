@@ -1,5 +1,5 @@
 // منطق الطاولة (المقاعد، الأعضاء، الروبوتات، نصوص الإعلانات) — دوال نقية يستخدمها الخادم.
-import { type Card, type Seat, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
+import { type Card, type Seat, type Suit, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
 import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn, isLockChoiceTurn,
@@ -401,7 +401,8 @@ function bidText(b: Bid, round: 1 | 2 = 1): string {
     case 'qablak': return 'قال قبلك';
     case 'confirmHokm': return 'أكد الحكم';
     case 'double': return 'دبّل';
-    case 'hokm': return `اشترى حكم ${SUIT_NAMES[b.suit]}`;
+    // أول ما يشتري أحد حكم: «فلان اشترى حكم»
+    case 'hokm': return round === 2 ? `اختار حكم ${SUIT_NAMES[b.suit]}` : 'اشترى حكم';
   }
 }
 
@@ -429,8 +430,8 @@ function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolea
  * الأصوات المنطوقة للمزايدة والدبل (يشغّلها التطبيق بالترتيب): مفاتيح ملفات صوتية بشرية
  * pass/wala/sun/hokm/hokm2/ashkal/qablak/double/three/four/gahwa/locked/open
  */
-export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open';
-const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'hokm', double: 'double' };
+export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open' | 'confirm' | `hokm2-${Suit}`;
+const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'confirm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
 /** المهلة بين شراء حكم أو صن وانتقال الدور */
@@ -450,7 +451,9 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
   switch (action.type) {
     case 'bid': {
       // إعلانات قصيرة بما حدث فقط (اشترى، أكد، بس) — بلا "بانتظار" ولا "من عليه القرار"
-      const v = action.bid.type === 'pass' ? (before.bidRound === 2 ? 'wala' : 'pass') : BID_VOICE[action.bid.type];
+      // اختيار نوع الحكم الثاني: «حكم ثاني هاص» وغيره
+      const v: Voice | undefined = action.bid.type === 'pass' ? (before.bidRound === 2 ? 'wala' : 'pass')
+        : action.bid.type === 'hokm' && before.secondHokm ? `hokm2-${action.bid.suit}` : BID_VOICE[action.bid.type];
       if (v) voices.push(v);
       const bought = !before.contract && after.contract;
       if (bought) {
@@ -458,7 +461,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
         events.push(action.bid.type === 'confirmHokm'
           ? `${nameOf(t, c.buyer)} أكد الحكم، ${contractText(after)}`
           : `${nameOf(t, c.buyer)} اشترى ${contractText(after)}`);
-        if (c.qabaTo !== c.buyer) events.push(`القبلة لـ${nameOf(t, c.qabaTo)}`);
+        if (c.qabaTo !== c.buyer) events.push(`ورقة الأرض لـ${nameOf(t, c.qabaTo)}`);
         // دبل قبل تأكيد الحكم: الحكم لصاحبه، ثم إعلان الدبل
         if (action.bid.type === 'double') events.push(`${who} اشترى دبل`);
       } else if (action.bid.type === 'confirmHokm') {
