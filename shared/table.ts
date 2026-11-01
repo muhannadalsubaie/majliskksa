@@ -57,6 +57,8 @@ export interface TableData {
   domino?: DominoState | null;
   jackaroo?: JackarooState | null;
   ludo?: LudoState | null;
+  /** سجل الدومينو: حركات كل جولة (صكة) بالترتيب ونتيجتها */
+  dominoLog?: { hand: number; lines: string[] }[];
 }
 
 /** سطر في السجل: نوع اللعب والمشتري وأبناط ونقاط كل فريق */
@@ -672,6 +674,8 @@ export interface TableView {
   ludo: LudoState | null;
   /** مساعدات العرض للدومينو والجاكارو واللودو (التطبيقات الأصلية) */
   ui: DominoUi | JackarooUi | LudoUi | null;
+  /** سجل الدومينو لكل جولة */
+  dominoLog: { hand: number; lines: string[] }[];
   /** سجل صكات المباراة الحالية */
   history: HandRecord[];
 }
@@ -735,6 +739,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
     ludo: t.ludo ?? null,
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
+    dominoLog: t.domino ? t.dominoLog ?? [] : [],
     ui: t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null,
   };
 }

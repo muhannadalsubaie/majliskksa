@@ -63,7 +63,7 @@ export function dominoUi(s: DominoState, mySeat: number | null, names: string[])
     myTurn, canDraw: draw, canPass: pass, hand, ends: e, endsText: endsLabel(s), lineText: lineLabel(s),
     scoreText: `النقاط: ${s.scores.map((n, side) => `${sideNames[side]} ${n}`).join('، ')}. الهدف ${s.rules.target}`,
     sideNames, mySide: mySeat === null ? -1 : s.rules.players === 4 ? mySeat % 2 : mySeat,
-    prompt: !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، دق. ${endsLabel(s)}`,
+    prompt: !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، جلا. ${endsLabel(s)}`,
   };
 }
 

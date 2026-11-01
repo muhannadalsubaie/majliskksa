@@ -47,7 +47,7 @@ export function startOther(t: TableData, rng: Rng): { table: TableData; events: 
   if (kindOf(t) === 'domino') {
     const domino = newDomino(rng, { ...TABLE_DOMINO_RULES });
     return {
-      table: { ...t, domino, jackaroo: null, ludo: null, game: null },
+      table: { ...t, domino, jackaroo: null, ludo: null, game: null, dominoLog: [{ hand: domino.handNo, lines: [] }] },
       events: ['بدأت مباراة الدومينو، الهدف 100 نقطة', `يبدأ ${names(t)[domino.turn]} بدوس الستة`],
     };
   }
@@ -127,7 +127,11 @@ export function applyOther(t: TableData, action: DominoAction | JackarooAction |
       const best = after.scores.indexOf(Math.max(...after.scores));
       events.push(`انتهت المباراة — فاز ${teamName(t, best)}`);
     }
-    return { table: { ...t, domino: after }, events };
+    // سجل الجولة: كل حركة ونتيجة الصكة
+    const log = [...(t.dominoLog ?? [{ hand: t.domino.handNo, lines: [] }])];
+    const cur = log[log.length - 1];
+    log[log.length - 1] = { ...cur, lines: [...cur.lines, ...events.filter(Boolean)] };
+    return { table: { ...t, domino: after, dominoLog: log }, events };
   }
   const before = t.jackaroo!;
   const after = applyJackaroo(before, action as JackarooAction, rng);
@@ -157,7 +161,7 @@ export function otherAutoDelay(t: TableData, rng: Rng): number | null {
 export function runOtherAuto(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if (t.domino?.phase === 'handOver') {
     const domino = nextDominoHand(t.domino, rng);
-    return { table: { ...t, domino }, events: [`صكة جديدة، يبدأ ${names(t)[domino.turn]}`] };
+    return { table: { ...t, domino, dominoLog: [...(t.dominoLog ?? []), { hand: domino.handNo, lines: [] }] }, events: [`صكة جديدة، يبدأ ${names(t)[domino.turn]}`] };
   }
   if (t.domino) {
     const a = dominoBotAction(t.domino, t.domino.turn);

@@ -34,13 +34,13 @@ export function sideName(s: DominoState, side: number, names: string[], me?: num
   return `فريق ${members.join(' و')}`;
 }
 
-/** إعلان آخر حركة: "سالم لعب ستة وثلاثة على اليمين" / "سالم سحب قطعة" / "سالم دق" */
+/** إعلان آخر حركة: "سالم لعب ستة وثلاثة على اليمين" / "سالم سحب قطعة" / "سالم جلا" */
 export function moveAnnouncement(s: DominoState, names: string[]): string {
   const m = s.lastMove;
   if (!m) return '';
   const who = names[m.seat];
   if (m.kind === 'draw') return `${who} سحب قطعة`;
-  if (m.kind === 'pass') return `${who} دق`;
+  if (m.kind === 'pass') return `${who} جلا`;
   const p = m.placed as PlacedTile;
   const where = p.side === 'first' ? '' : p.side === 'right' ? ' على اليمين' : ' على اليسار';
   return `${who} لعب ${tileLabel(p.tile)}${where}`;
