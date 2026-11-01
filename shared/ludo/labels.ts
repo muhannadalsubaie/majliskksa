@@ -13,14 +13,22 @@ export function tokenName(r: TokenRef, names: string[], me: number): string {
   return r.owner === me ? `حجرك ${r.index + 1}` : `حجر ${names[r.owner]} ${r.index + 1}`;
 }
 
-/** أين الحجر */
-export function placeText(owner: number, p: Progress): string {
+/** هل الحجر في أمان: خانة آمنة، أو في خطر (خصم خلفه قريب)، أو في أمان (ما فيه خصم يقدر يوصله) */
+export function safetyText(s: LudoState, owner: number, p: Progress): string {
+  if (p === -1 || p === FINISH) return '';
+  if (p > LAST_TRACK) return 'في أمان';
+  if (SAFE.has(absPos(owner, p))) return 'في خانة آمنة';
+  return danger(s, owner, p) ? 'في خطر، خصم خلفه قريب' : 'في أمان';
+}
+
+/** أين الحجر (ومع الحالة: هل هو في أمان) */
+export function placeText(owner: number, p: Progress, s?: LudoState): string {
   if (p === -1) return 'في البيت';
   if (p === FINISH) return 'وصل الوسط';
   if (p > LAST_TRACK) return `في الممر الأخير، باقي ${FINISH - p} للوسط`;
-  if (p === 0) return 'على خانة البداية';
-  const safe = SAFE.has(absPos(owner, p)) ? '، خانة آمنة' : '';
-  return `على المسار، باقي ${FINISH - p} للوسط${safe}`;
+  const safety = s ? safetyText(s, owner, p) : SAFE.has(absPos(owner, p)) ? 'خانة آمنة' : '';
+  if (p === 0) return `على خانة البداية${safety ? `، ${safety}` : ''}`;
+  return `على المسار، باقي ${FINISH - p} للوسط${safety ? `، ${safety}` : ''}`;
 }
 
 /** نص خيار تحريك حجر (زر لقارئ الشاشة): أين يصل وماذا يحدث */
@@ -62,6 +70,11 @@ export function moveAnnouncement(s: LudoState, names: string[], me: number, with
     ? [r.from === -1 ? `${who} رمى ستة، وطلّع ${t}` : `${who} رمى ${rollName(r.roll)}، ${t} ${step}`]
     : [r.from === -1 ? `${who} طلّع ${r.token.owner === r.seat && r.seat !== me ? `حجره ${r.token.index + 1}` : t}` : `${t} ${step}`];
   for (const c of r.captured) out.push(`أكل ${tokenName(c, names, me)}، ورجع للبيت`);
+  // بعد الحركة: هل الحجر في أمان؟
+  if (!r.finished && r.to !== null) {
+    const safety = safetyText(s, r.token.owner, r.to);
+    if (safety) out.push(`${t} ${safety}`);
+  }
   if (s.phase === 'over' && s.winner !== null) {
     if (s.rules.teams) out.push(teamOf(me) === s.winner ? 'فاز فريقك!' : `فاز فريق ${names[s.winner]} و${names[s.winner + 2]}`);
     else out.push(s.winner === me ? 'فزت!' : `فاز ${names[s.winner]}`);
@@ -73,6 +86,6 @@ export function moveAnnouncement(s: LudoState, names: string[], me: number, with
 export function boardSummary(s: LudoState, names: string[], me: number): string {
   return s.seats.map((o) => {
     const who = o === me ? 'أحجارك' : `أحجار ${names[o]}`;
-    return `${who}: ${s.tokens[o].map((p, i) => `${i + 1} ${placeText(o, p)}`).join('، ')}`;
+    return `${who}: ${s.tokens[o].map((p, i) => `${i + 1} ${placeText(o, p, s)}`).join('، ')}`;
   }).join('. ');
 }

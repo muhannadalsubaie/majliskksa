@@ -54,7 +54,7 @@ export function startOther(t: TableData, rng: Rng): { table: TableData; events: 
   if (kindOf(t) === 'ludo') {
     const ludo = newLudo(rng, t.variant === 'teams' ? LUDO_TEAMS : LUDO_SOLO);
     return {
-      table: { ...t, ludo, domino: null, jackaroo: null, game: null },
+      table: { ...t, ludo, domino: null, jackaroo: null, game: null, ludoLog: [] },
       events: [
         `بدأت لودو${t.variant === 'teams' ? ' فرق' : ''}. ${names(t).map((n, i) => `${n} ${COLOR_NAMES[i]}`).join('، ')}`,
         `يبدأ ${names(t)[ludo.turn]}`,
@@ -111,10 +111,13 @@ export function parseLudo(raw: unknown, seat: number): LudoAction | null {
 
 function applyLudoEvents(t: TableData, action: LudoAction, rng: Rng): { table: TableData; events: string[] } {
   const after = applyLudo(t.ludo!, action, rng);
-  const table = { ...t, ludo: after };
   // رمية تنتظر اختيار الحجر: نعلن الرمية وحدها (والحركة تُعلن بعدها بلا تكرار الرمية)
-  if (action.type === 'roll' && after.phase === 'move') return { table, events: [`${names(t)[action.seat]} رمى ${rollName(after.dice!)}`] };
-  return { table, events: ludoMoveText(after, names(t), -1, action.type === 'roll') };
+  const events = action.type === 'roll' && after.phase === 'move'
+    ? [`${names(t)[action.seat]} رمى ${rollName(after.dice!)}`]
+    : ludoMoveText(after, names(t), -1, action.type === 'roll');
+  // سجل اللودو: كل رمية وحركة بالترتيب (آخر 150)
+  const ludoLog = [...(t.ludoLog ?? []), ...events.filter(Boolean)].slice(-150);
+  return { table: { ...t, ludo: after, ludoLog }, events };
 }
 
 export function applyOther(t: TableData, action: DominoAction | JackarooAction | LudoAction, rng: Rng): { table: TableData; events: string[] } {

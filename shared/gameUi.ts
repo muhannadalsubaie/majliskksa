@@ -98,7 +98,7 @@ export function ludoUi(s: LudoState, mySeat: number | null, names: string[]): Lu
   let mineText = ludoBoard(s, names, me);
   if (mySeat !== null) {
     const owner = ludoOwner(s, mySeat);
-    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p)}`).join('، ')}`;
+    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p, s)}`).join('، ')}`;
   }
   return {
     myTurn,
