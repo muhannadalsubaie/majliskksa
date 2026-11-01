@@ -3,7 +3,7 @@ import {
   type LudoState, type Progress, type TokenRef, FINISH, LAST_TRACK, SAFE, STARTS, absPos, capturesAt, controlledOwner, isSafeSpot, onTrack, teamOf,
 } from './engine';
 
-export const COLOR_NAMES = ['الأحمر', 'الأخضر', 'الأصفر', 'الأزرق'];
+export const COLOR_NAMES = ['الأحمر', 'الأزرق', 'الأصفر', 'الأخضر'];
 
 const NUM = ['', 'واحد', 'اثنين', 'ثلاثة', 'أربعة', 'خمسة', 'ستة'];
 export const rollName = (n: number) => NUM[n] ?? String(n);
