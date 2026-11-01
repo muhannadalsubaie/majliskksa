@@ -1,0 +1,110 @@
+// مساعدات العرض للتطبيقات الأصلية (أندرويد وآيفون) في الدومينو والجاكارو واللودو:
+// الخادم يحسب لكل لاعب حركاته المسموحة ونصوصها بالعربي، وقراءات اللوحة، ونص بداية دوره،
+// فلا تحتاج التطبيقات تعيد كتابة قوانين الألعاب — ترسم اللوحة وتعرض الأزرار وترسل الحركة كما هي.
+import { type DominoState, type Tile, canDraw, canPass, ends, fits, playable, sameTile } from './domino/engine';
+import { endsLabel, handTileLabel, lineLabel, sideName as dominoSideName } from './domino/labels';
+import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn } from './jackaroo/engine';
+import { boardSummary as jkBoard, cardHint, cardName, marblePlace, moveText } from './jackaroo/labels';
+import { type LudoState, controlledOwner as ludoOwner, movableTokens } from './ludo/engine';
+import { boardSummary as ludoBoard, optionText, placeText, rollName } from './ludo/labels';
+
+export interface DominoUi {
+  myTurn: boolean;
+  canDraw: boolean;
+  canPass: boolean;
+  /** قطعك مرتبة (الأكبر أولاً): نصها لقارئ الشاشة، وهل تصلح، وعلى أي طرف */
+  hand: { tile: Tile; label: string; legal: boolean; sides: ('left' | 'right')[]; askSide: boolean }[];
+  ends: { left: number; right: number } | null;
+  endsText: string;
+  lineText: string;
+  scoreText: string;
+  /** اسم كل جانب (فريق أو لاعب) للنقاط */
+  sideNames: string[];
+  mySide: number;
+  /** نص بداية دورك */
+  prompt: string;
+}
+
+export interface JackarooUi {
+  myTurn: boolean;
+  burning: boolean;
+  hand: { label: string; usable: boolean; moves: { move: unknown; text: string }[] }[];
+  boardText: string;
+  mineText: string;
+  prompt: string;
+}
+
+export interface LudoUi {
+  myTurn: boolean;
+  options: { token: number; text: string }[];
+  /** الأحجار اللي تتحرك الآن (للتمييز على اللوحة) */
+  movableOwner: number;
+  boardText: string;
+  mineText: string;
+  prompt: string;
+}
+
+export function dominoUi(s: DominoState, mySeat: number | null, names: string[]): DominoUi {
+  const me = mySeat ?? undefined;
+  const myTurn = mySeat !== null && s.phase === 'playing' && s.turn === mySeat;
+  const legal = mySeat === null ? [] : playable(s, mySeat);
+  const e = ends(s);
+  const sideNames = s.scores.map((_, side) => dominoSideName(s, side, names, me));
+  const hand = mySeat === null ? [] : [...s.hands[mySeat]]
+    .sort((x, y) => Math.max(y.a, y.b) - Math.max(x.a, x.b) || Math.min(y.a, y.b) - Math.min(x.a, x.b))
+    .map((tile) => {
+      const ok = myTurn && legal.some((l) => sameTile(l, tile));
+      const sides = fits(s, tile);
+      return { tile, label: handTileLabel(s, tile, sides, ok), legal: ok, sides, askSide: ok && s.line.length > 0 && sides.length === 2 && !!e && e.left !== e.right };
+    });
+  const draw = mySeat !== null && canDraw(s, mySeat);
+  const pass = mySeat !== null && canPass(s, mySeat);
+  return {
+    myTurn, canDraw: draw, canPass: pass, hand, ends: e, endsText: endsLabel(s), lineText: lineLabel(s),
+    scoreText: `النقاط: ${s.scores.map((n, side) => `${sideNames[side]} ${n}`).join('، ')}. الهدف ${s.rules.target}`,
+    sideNames, mySide: mySeat === null ? -1 : s.rules.players === 4 ? mySeat % 2 : mySeat,
+    prompt: !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، دق. ${endsLabel(s)}`,
+  };
+}
+
+export function jackarooUi(s: JackarooState, mySeat: number | null, names: string[]): JackarooUi {
+  const me = mySeat ?? -1;
+  const myTurn = mySeat !== null && s.phase === 'playing' && s.turn === mySeat;
+  const burning = myTurn && mustBurn(s, me);
+  const hand = mySeat === null ? [] : s.hands[mySeat].map((c) => {
+    const moves = myTurn && !burning ? movesForCard(s, me, c) : [];
+    return {
+      label: `${cardName(c)}، ${burning ? 'حرق' : cardHint(c, s.rules.kingThirteen, s.rules.complex)}`,
+      usable: myTurn && (burning || moves.length > 0),
+      moves: moves.map((m) => ({ move: m, text: moveText(m, names, me) })),
+    };
+  });
+  let mineText = jkBoard(s, names, me);
+  if (mySeat !== null) {
+    const owner = jkOwner(s, mySeat);
+    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${
+      s.marbles[owner].map((_, index) => `${index + 1} ${marblePlace(s, { owner, index })}`).join('، ')}`;
+  }
+  return {
+    myTurn, burning, hand, boardText: jkBoard(s, names, me), mineText,
+    prompt: !myTurn ? '' : s.forcedBurn === me ? 'دورك: عليك أن تحرق ورقة' : burning ? 'دورك: لا لعب صالح، احرق ورقة' : 'دورك',
+  };
+}
+
+export function ludoUi(s: LudoState, mySeat: number | null, names: string[]): LudoUi {
+  const me = mySeat ?? -1;
+  const myTurn = mySeat !== null && s.phase !== 'over' && s.turn === mySeat;
+  const options = mySeat === null ? [] : movableTokens(s, mySeat);
+  let mineText = ludoBoard(s, names, me);
+  if (mySeat !== null) {
+    const owner = ludoOwner(s, mySeat);
+    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p)}`).join('، ')}`;
+  }
+  return {
+    myTurn,
+    options: options.map((token) => ({ token, text: optionText(s, me, token, names) })),
+    movableOwner: mySeat === null ? -1 : ludoOwner(s, mySeat),
+    boardText: ludoBoard(s, names, me), mineText,
+    prompt: !myTurn ? '' : s.phase === 'roll' ? 'دورك، ارمِ النرد' : options.length > 1 ? `رميت ${rollName(s.dice ?? 0)}: اختر الحجر` : '',
+  };
+}

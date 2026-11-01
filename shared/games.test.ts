@@ -114,3 +114,30 @@ describe('domino and jackaroo tables', () => {
   });
 });
 
+
+describe('native app helpers (ui)', () => {
+  it('each game view carries moves and texts for the viewer', () => {
+    for (const kind of ['domino', 'jackaroo', 'ludo'] as const) {
+      const rng = seededRng(5);
+      let t = startAny(table(kind), rng).table;
+      // نوصل لدور المالك
+      for (let i = 0; i < 400; i++) {
+        const v = viewFor(t, 'u1');
+        if ((v.ui as { myTurn: boolean }).myTurn) break;
+        const step = nextAutoStep(t, rng);
+        if (!step) break;
+        t = runAutoStep(t, step, rng).table;
+      }
+      const ui = viewFor(t, 'u1').ui as unknown as Record<string, unknown>;
+      expect(ui).toBeTruthy();
+      expect(typeof ui.prompt).toBe('string');
+      if (kind === 'jackaroo') {
+        const hand = ui.hand as { usable: boolean; moves: { text: string }[] }[];
+        expect(hand.length).toBeGreaterThan(0);
+        expect(hand.some((h) => h.usable)).toBe(true);
+      }
+      if (kind === 'domino') expect((ui.hand as unknown[]).length).toBeGreaterThan(0);
+      if (kind === 'ludo') expect(ui.boardText).toContain('أحجارك');
+    }
+  });
+});

@@ -10,6 +10,10 @@ import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherA
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
 import type { LudoState } from './ludo/engine';
+import { type DominoUi, type JackarooUi, type LudoUi, dominoUi, jackarooUi, ludoUi } from './gameUi';
+
+/** أسماء المقاعد (للنصوص) */
+const seatNames = (t: TableData) => t.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
 import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS, SPECTATOR_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
@@ -666,6 +670,8 @@ export interface TableView {
   jackaroo: JackarooState | null;
   /** لودو: لا شيء مخفي (النرد يرميه الخادم) */
   ludo: LudoState | null;
+  /** مساعدات العرض للدومينو والجاكارو واللودو (التطبيقات الأصلية) */
+  ui: DominoUi | JackarooUi | LudoUi | null;
   /** سجل صكات المباراة الحالية */
   history: HandRecord[];
 }
@@ -728,6 +734,8 @@ export function viewFor(t: TableData, uid: string): TableView {
     domino: t.domino ? dominoViewFor(t.domino, mySeat) : null,
     jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
     ludo: t.ludo ?? null,
+    // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
+    ui: t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null,
   };
 }
 
