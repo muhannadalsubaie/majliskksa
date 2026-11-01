@@ -193,9 +193,10 @@ export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
 }
 
 function winnerOf(s: LudoState): number | null {
+  // الفوز: أول من يوصّل أحجاره الأربعة (في الفرق يفوز فريقه)
   if (s.rules.teams) {
-    for (const team of [0, 1]) if (allHome(s, team) && allHome(s, team + 2)) return team;
-    return null;
+    const first = s.finishedOrder[0];
+    return first === undefined ? null : teamOf(first);
   }
   return s.finishedOrder[0] ?? null;
 }

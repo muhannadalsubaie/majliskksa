@@ -386,16 +386,46 @@ export function start(t: TableData, rng: Rng): TableData {
   return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} };
 }
 
+/** عدد اللاعبين المسموح لكل لعبة: البلوت والجاكارو 4، الدومينو 2 أو 4، اللودو 2 أو 3 أو 4 (الفرق 4) */
+export function allowedPlayers(t: TableData): number[] {
+  const kind = t.kind ?? 'baloot';
+  if (kind === 'domino') return [2, 4];
+  if (kind === 'ludo') return t.variant === 'teams' ? [4] : [2, 3, 4];
+  return [4];
+}
+export const seatedCount = (t: TableData) => t.seats.filter(Boolean).length;
+export const canStart = (t: TableData) => allowedPlayers(t).includes(seatedCount(t));
+
+/** نرتّب الجالسين على المقاعد اللي تلعبها اللعبة: الدومينو 0..n-1، واللودو مقعدين متقابلين أو ثلاثة متتالية */
+function compactSeats(t: TableData): TableData {
+  const n = seatedCount(t);
+  if (n === 4) return t;
+  const members = t.seats.filter((m): m is Member => m !== null);
+  const targets = (t.kind === 'ludo' ? (n === 2 ? [0, 2] : [0, 1, 2]) : [0, 1, 2, 3].slice(0, n));
+  const seats: (Member | null)[] = [null, null, null, null];
+  members.forEach((m, i) => { seats[targets[i]] = m; });
+  return { ...t, seats };
+}
+
 /** بدء مباراة بحسب نوع الطاولة، مع إعلانات البداية */
 export function startAny(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if ((t.kind ?? 'baloot') === 'baloot') {
     const table = start(t, rng);
     return { table, events: ['بدأت المباراة', dealAnnouncement(table)] };
   }
-  if (!isFull(t)) throw new TableError('not-full');
+  if (!canStart(t)) throw new TableError(t.kind === 'jackaroo' ? 'not-full' : 'bad-count');
   if (gameActive(t)) throw new TableError('game-started');
-  const r = startOther({ ...t, matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} }, rng);
+  const r = startOther(compactSeats({ ...t, matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} }), rng);
   return r;
+}
+
+/** المالك يغيّر لعبة الطاولة: تنتهي اللعبة الحالية، ويبقى الكل في أماكنهم للعبة الجديدة */
+export function changeGame(t: TableData, kind: GameKind, variant: GameVariant): TableData {
+  return {
+    ...t, kind, variant,
+    game: null, domino: null, jackaroo: null, ludo: null, history: [], matchNo: 0, away: {}, hold: undefined,
+    dominoLog: undefined, ludoLog: undefined,
+  };
 }
 
 // ───── أسماء ونصوص الإعلانات ─────
@@ -676,6 +706,8 @@ export interface TableView {
   ludo: LudoState | null;
   /** مساعدات العرض للدومينو والجاكارو واللودو (التطبيقات الأصلية) */
   ui: DominoUi | JackarooUi | LudoUi | null;
+  /** كم لاعب يقدر يبدأ اللعبة (البلوت والجاكارو 4، الدومينو 2 أو 4، اللودو 2 أو 3 أو 4) */
+  startCounts: number[];
   /** سجل الدومينو لكل جولة */
   dominoLog: { hand: number; lines: string[] }[];
   /** سجل اللودو */
@@ -743,6 +775,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
     ludo: t.ludo ?? null,
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
+    startCounts: allowedPlayers(t),
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     ludoLog: t.ludo ? t.ludoLog ?? [] : [],
     ui: t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null,

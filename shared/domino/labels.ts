@@ -1,14 +1,14 @@
 // أسماء القطع ونصوص الإعلانات بالعربي — لقارئ الشاشة (TalkBack / VoiceOver) وللنطق.
-import { type DominoState, type Pip, type PlacedTile, type Tile, ends, isDouble, pips, sideOf, sidesCount } from './engine';
+import { type DominoState, type Pip, type PlacedTile, type Tile, ends, sideOf, sidesCount } from './engine';
 
-const NUM: Record<Pip, string> = { 0: 'فاضي', 1: 'واحد', 2: 'اثنين', 3: 'ثلاثة', 4: 'أربعة', 5: 'خمسة', 6: 'ستة' };
+// الأرقام تُقرأ كما هي (والفاضي صفر)
+const NUM: Record<Pip, string> = { 0: '0', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6' };
 
-/** "دوس ستة"، "ستة وثلاثة"، "خمسة وفاضي" — الأكبر أولاً */
+/** "6 6"، "6 3"، "5 0" — الأكبر أولاً، أرقام كما هي */
 export function tileLabel(t: Tile): string {
-  if (isDouble(t)) return `دوس ${NUM[t.a]}`;
   const hi = Math.max(t.a, t.b) as Pip;
   const lo = Math.min(t.a, t.b) as Pip;
-  return `${NUM[hi]} و${NUM[lo]}`;
+  return `${NUM[hi]} ${NUM[lo]}`;
 }
 
 export const pipName = (p: Pip) => NUM[p];
@@ -64,7 +64,7 @@ export function handAnnouncement(s: DominoState, names: string[]): string[] {
 
 /** وصف قطعة في اليد لقارئ الشاشة، مع أين تصلح */
 export function handTileLabel(s: DominoState, t: Tile, sides: ('left' | 'right')[], legal: boolean): string {
-  const base = `${tileLabel(t)}، ${pips(t)} نقطة`;
+  const base = tileLabel(t);
   if (!legal) return `${base}، لا تصلح`;
   const e = ends(s);
   if (sides.length === 2 && e && e.left !== e.right) return `${base}، تصلح على الطرفين`;

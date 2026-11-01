@@ -129,15 +129,15 @@ describe('domino', () => {
   });
 
   it('speaks tiles and moves in Arabic', () => {
-    expect(tileLabel(t(6, 6))).toBe('دوس ستة');
-    expect(tileLabel(t(3, 6))).toBe('ستة وثلاثة');
-    expect(tileLabel(t(0, 5))).toBe('خمسة وفاضي');
+    expect(tileLabel(t(6, 6))).toBe('6 6');
+    expect(tileLabel(t(3, 6))).toBe('6 3');
+    expect(tileLabel(t(0, 5))).toBe('5 0');
     let s = newMatch(seededRng(3));
     const names = ['أنت', 'سالم', 'فهد', 'علي'];
     s = applyDomino(s, { type: 'play', seat: s.turn, tile: t(6, 6) });
-    expect(moveAnnouncement(s, names)).toMatch(/لعب دوس ستة$/);
-    expect(endsLabel(s)).toBe('الطرفان: يمين ستة، يسار ستة');
-    expect(lineLabel(s)).toBe('على الطاولة 1 قطع: دوس ستة');
+    expect(moveAnnouncement(s, names)).toMatch(/لعب 6 6$/);
+    expect(endsLabel(s)).toBe('الطرفان: يمين 6، يسار 6');
+    expect(lineLabel(s)).toBe('على الطاولة 1 قطع: 6 6');
     expect(pips(t(6, 5))).toBe(11);
     expect(handAnnouncement(s, names)).toEqual([]);
   });

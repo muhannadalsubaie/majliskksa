@@ -141,3 +141,30 @@ describe('native app helpers (ui)', () => {
     }
   });
 });
+
+describe('player counts and changing the game', () => {
+  it('domino with 2 players, ludo with 3, and the owner switching games', async () => {
+    const { changeGame, canStart } = await import('./table');
+    let d = newTable('t1', owner, false, 0, 'domino', 'classic');
+    d = addBot(d, 2);
+    expect(canStart(d)).toBe(true);
+    const ds = startAny(d, seededRng(1)).table;
+    expect(ds.domino!.rules.players).toBe(2);
+    expect(ds.seats[1]?.isBot).toBe(true);
+    expect(ds.seats[2]).toBeNull();
+    let l = newTable('t2', owner, false, 0, 'ludo', 'classic');
+    l = addBot(l, 1); l = addBot(l, 3);
+    const ls = startAny(l, seededRng(2)).table;
+    expect(ls.ludo!.seats).toEqual([0, 1, 2]);
+    expect(ls.seats[2]?.isBot).toBe(true);
+    let b = newTable('t3', owner, false, 0, 'domino', 'classic');
+    b = addBot(b, 1);
+    expect(canStart(b)).toBe(true);
+    b = addBot(b, 2);
+    expect(canStart(b)).toBe(false);
+    const c = changeGame(ds, 'jackaroo', 'complex');
+    expect(c.kind).toBe('jackaroo');
+    expect(c.domino).toBeNull();
+    expect(c.seats.filter(Boolean).length).toBe(2);
+  });
+});

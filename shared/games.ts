@@ -45,18 +45,21 @@ export function otherActive(t: TableData): boolean {
 
 export function startOther(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if (kindOf(t) === 'domino') {
-    const domino = newDomino(rng, { ...TABLE_DOMINO_RULES });
+    // لاعبين أو أربعة (الجالسون مرتّبون على المقاعد الأولى)
+    const players = (t.seats.filter(Boolean).length === 2 ? 2 : 4) as 2 | 4;
+    const domino = newDomino(rng, { players, target: players === 4 ? TABLE_DOMINO_RULES.target : 100 });
     return {
       table: { ...t, domino, jackaroo: null, ludo: null, game: null, dominoLog: [{ hand: domino.handNo, lines: [] }] },
-      events: ['بدأت مباراة الدومينو، الهدف 100 نقطة', `يبدأ ${names(t)[domino.turn]} بدوس الستة`],
+      events: [`بدأت مباراة الدومينو${players === 2 ? ' بين لاعبين' : ''}، الهدف ${domino.rules.target} نقطة`, `يبدأ ${names(t)[domino.turn]} بـ 6 6`],
     };
   }
   if (kindOf(t) === 'ludo') {
-    const ludo = newLudo(rng, t.variant === 'teams' ? LUDO_TEAMS : LUDO_SOLO);
+    const players = t.seats.filter(Boolean).length as 2 | 3 | 4;
+    const ludo = newLudo(rng, t.variant === 'teams' ? LUDO_TEAMS : { ...LUDO_SOLO, players });
     return {
       table: { ...t, ludo, domino: null, jackaroo: null, game: null, ludoLog: [] },
       events: [
-        `بدأت لودو${t.variant === 'teams' ? ' فرق' : ''}. ${names(t).map((n, i) => `${n} ${COLOR_NAMES[i]}`).join('، ')}`,
+        `بدأت لودو${t.variant === 'teams' ? ' فرق' : ''}. ${ludo.seats.map((i) => `${names(t)[i]} ${COLOR_NAMES[i]}`).join('، ')}`,
         `يبدأ ${names(t)[ludo.turn]}`,
       ],
     };

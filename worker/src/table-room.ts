@@ -5,9 +5,9 @@ import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, startAny, viewFor, withoutVoice,
+  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
 } from '../../shared/table';
-import { type GameKind, type GameVariant, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
+import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
 import { DominoError } from '../../shared/domino/engine';
 import { JackarooError } from '../../shared/jackaroo/engine';
@@ -32,6 +32,8 @@ type ClientMessage =
   | { type: 'vacate'; seat: number }
   | { type: 'botNow'; seat: number }
   | { type: 'stop' }
+  /** المالك يغيّر لعبة الطاولة (ينتقل الكل للعبة الجديدة) */
+  | { type: 'changeGame'; kind: string; variant?: string }
   | { type: 'kick'; uid: string }
   | { type: 'ban'; uid: string }
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
@@ -114,6 +116,7 @@ const ERRORS: Record<string, string> = {
   'game-started': 'اللعبة بدأت بالفعل',
   'seat-taken': 'المقعد محجوز',
   'not-full': 'يجب أن تكتمل المقاعد الأربعة',
+  'bad-count': 'عدد اللاعبين لا يناسب هذه اللعبة: الدومينو لاعبين أو أربعة، واللودو لاعبين أو ثلاثة أو أربعة (والفرق أربعة)',
   'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
   'not-a-spectator': 'هذا الشخص لم يعد في الطاولة',
   'not-a-member': 'هذا الشخص لم يعد في الطاولة',
@@ -535,7 +538,7 @@ export class TableRoom extends DurableObject<Env> {
       }
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
-        if (!isFull(t)) throw new TableError('not-full');
+        if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
         const { table: next, events } = startAny(t, rng);
         await this.save(next);
         this.broadcast(events);
@@ -617,6 +620,17 @@ export class TableRoom extends DurableObject<Env> {
         const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
         await this.save(setVoiceBlocked(t, msg.uid, msg.blocked === true));
         this.broadcast([msg.blocked ? `كتم مالك الطاولة ${who} في المحادثة الصوتية` : `ألغى مالك الطاولة كتم ${who}`]);
+        break;
+      }
+      case 'changeGame': {
+        if (!isOwner) throw new Error('not-owner');
+        const kind = msg.kind as GameKind;
+        if (!Object.hasOwn(GAME_NAMES, kind)) throw new Error('bad-request');
+        const variant = (VARIANTS[kind].includes(msg.variant as GameVariant) ? msg.variant : 'classic') as GameVariant;
+        const next = changeGame(t, kind, variant);
+        await this.save(next);
+        this.broadcast([`غيّر مالك الطاولة اللعبة إلى ${gameTitle(kind, variant)}`]);
+        await this.publish(next);
         break;
       }
       case 'stop': {
