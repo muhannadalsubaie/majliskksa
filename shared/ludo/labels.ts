@@ -18,6 +18,8 @@ export function safetyText(s: LudoState, owner: number, p: Progress): string {
   if (p === -1 || p === FINISH) return '';
   if (p > LAST_TRACK) return 'في أمان';
   if (SAFE.has(absPos(owner, p))) return 'في خانة آمنة';
+  // قطعتين أو أكثر من نفس اللون على خانة = حاجز ما ينأكل
+  if (s.tokens[owner].filter((q) => q === p).length >= 2) return 'في حاجز، ما ينأكل';
   return danger(s, owner, p) ? 'في خطر، خصم خلفه قريب' : 'في أمان';
 }
 
@@ -33,8 +35,8 @@ export function squareNumber(owner: number, p: Progress, me: number): number {
 /** مكان الحجر برقم الخانة، وهل هو في أمان */
 export function squareText(s: LudoState, owner: number, p: Progress, me: number): string {
   if (p === -1) return 'في البيت';
-  if (p === FINISH) return 'وصل الوسط';
-  if (p > LAST_TRACK) return `في ${owner === me ? 'الممر الأخير' : 'ممره الأخير'}، الخانة ${p - LAST_TRACK} من 5`;
+  if (p === FINISH) return 'وصل المنزل';
+  if (p > LAST_TRACK) return `في ${owner === me ? 'ممر المنزل' : 'ممر منزله'}، الخانة ${p - LAST_TRACK} من 6`;
   const safety = safetyText(s, owner, p);
   return `في الخانة ${squareNumber(owner, p, me)}${safety ? `، ${safety}` : ''}`;
 }
@@ -42,11 +44,11 @@ export function squareText(s: LudoState, owner: number, p: Progress, me: number)
 /** أين الحجر (ومع الحالة: هل هو في أمان) */
 export function placeText(owner: number, p: Progress, s?: LudoState): string {
   if (p === -1) return 'في البيت';
-  if (p === FINISH) return 'وصل الوسط';
-  if (p > LAST_TRACK) return `في الممر الأخير، باقي ${FINISH - p} للوسط`;
+  if (p === FINISH) return 'وصل المنزل';
+  if (p > LAST_TRACK) return `في ممر المنزل، باقي ${FINISH - p} للمنزل`;
   const safety = s ? safetyText(s, owner, p) : SAFE.has(absPos(owner, p)) ? 'خانة آمنة' : '';
   if (p === 0) return `على خانة البداية${safety ? `، ${safety}` : ''}`;
-  return `على المسار، باقي ${FINISH - p} للوسط${safety ? `، ${safety}` : ''}`;
+  return `على المسار، باقي ${FINISH - p} للمنزل${safety ? `، ${safety}` : ''}`;
 }
 
 /** نص خيار تحريك حجر (زر لقارئ الشاشة): أين يصل وماذا يحدث */
@@ -59,8 +61,8 @@ export function optionText(s: LudoState, seat: number, index: number, names: str
   const parts = [from === -1 ? `${who}: يطلع من البيت` : `${who}: يتقدم ${rollName(roll)}`];
   const caps = capturesAt(s, owner, to);
   if (caps.length) parts.push(`يأكل ${caps.map((c) => tokenName(c, names, seat)).join(' و')}`);
-  if (to === FINISH) parts.push('ويصل الوسط');
-  else if (to > LAST_TRACK && from <= LAST_TRACK) parts.push('ويدخل الممر الأخير');
+  if (to === FINISH) parts.push('ويصل المنزل');
+  else if (to > LAST_TRACK && from <= LAST_TRACK) parts.push('ويدخل ممر المنزل');
   else if (onTrack(to) && to > 0 && SAFE.has(absPos(owner, to))) parts.push('إلى خانة آمنة');
   else if (onTrack(to) && danger(s, owner, to)) parts.push('تحذير: خصم خلفه قريب');
   return parts.join('، ');
@@ -83,7 +85,7 @@ export function moveAnnouncement(s: LudoState, names: string[], me: number, with
   if (r.threeSixes) return [`${who} رمى ستة ثالثة، ضاع الدور`];
   if (!r.token) return [`${who} رمى ${rollName(r.roll)}، لا حركة${r.extraTurn ? '، ويرمي مرة أخرى' : ''}`];
   const t = tokenName(r.token, names, me);
-  const step = r.finished ? 'وصل الوسط' : `يتقدم ${rollName(r.roll)}`;
+  const step = r.finished ? 'وصل المنزل' : `يتقدم ${rollName(r.roll)}`;
   const out = withRoll
     ? [r.from === -1 ? `${who} رمى ستة، وطلّع ${t}` : `${who} رمى ${rollName(r.roll)}، ${t} ${step}`]
     : [r.from === -1 ? `${who} طلّع ${r.token.owner === r.seat && r.seat !== me ? `حجره ${r.token.index + 1}` : t}` : `${t} ${step}`];

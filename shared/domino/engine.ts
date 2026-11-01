@@ -64,7 +64,10 @@ export interface DominoState {
   handNo: number;
   /** من يبدأ الصكة التالية */
   nextStarter: number | null;
-  phase: 'playing' | 'handOver' | 'matchOver';
+  /** chooseStarter: الفريق الفائز بالصكة السابقة يختار من يبدأ (هو أو شريكه) */
+  phase: 'playing' | 'handOver' | 'matchOver' | 'chooseStarter';
+  /** من يختار البادئ (في chooseStarter) */
+  chooser?: number | null;
   lastHand: HandResult | null;
   /** آخر حركة (للإعلانات والمؤثرات) */
   lastMove: { seat: number; kind: 'play' | 'draw' | 'pass'; placed?: PlacedTile } | null;
@@ -73,7 +76,9 @@ export interface DominoState {
 export type DominoAction =
   | { type: 'play'; seat: number; tile: Tile; side?: Side }
   | { type: 'draw'; seat: number }
-  | { type: 'pass'; seat: number };
+  | { type: 'pass'; seat: number }
+  /** الفائز يختار من يبدأ الصكة: هو أو شريكه */
+  | { type: 'starter'; seat: number; starter: number };
 
 export class DominoError extends Error {}
 const fail = (m: string): never => { throw new DominoError(m); };
@@ -130,10 +135,11 @@ export function fits(s: DominoState, t: Tile): Side[] {
 
 export function playable(s: DominoState, seat: number): Tile[] {
   if (s.phase !== 'playing' || s.turn !== seat) return [];
-  // أول قطعة في أول صكة: الإجبارية فقط
+  // أول قطعة في أول صكة: صاحب أعلى دوس يلعبه إجبارياً (بلا دوس عند أحد: حر)
   if (!s.line.length && s.handNo === 1) {
     const forced = openingTile(s.hands);
-    return s.hands[seat].filter((t) => forced && sameTile(t, forced));
+    if (forced && isDouble(forced)) return s.hands[seat].filter((t) => sameTile(t, forced));
+    return s.hands[seat];
   }
   return s.hands[seat].filter((t) => fits(s, t).length > 0);
 }
@@ -153,14 +159,24 @@ export function openingTile(hands: Tile[][]): Tile | null {
 
 // ───── التوزيع ─────
 
+/** توزيع غير عادل: لاعب عنده 6 قطع أو أكثر فيها نفس الرقم، أو 5 دوس أو أكثر */
+function unfair(hands: Tile[][]): boolean {
+  return hands.some((h) => h.filter(isDouble).length >= 5 || ([0, 1, 2, 3, 4, 5, 6] as Pip[]).some((v) => h.filter((t) => t.a === v || t.b === v).length >= 6));
+}
+
 export function dealHand(rules: DominoRules, scores: number[], handNo: number, starter: number | null, rng: Rng): DominoState {
-  const set = shuffle(fullSet(), rng);
+  // توزيع عادل: نعيد التوزيع (حتى 100 مرة) إن كان غير عادل
+  let set = shuffle(fullSet(), rng);
+  for (let i = 0; i < 100 && unfair(Array.from({ length: rules.players }, (_, k) => set.slice(k * 7, k * 7 + 7))); i++) set = shuffle(fullSet(), rng);
   const hands = Array.from({ length: rules.players }, (_, i) => set.slice(i * 7, i * 7 + 7));
   const boneyard = set.slice(rules.players * 7);
   let turn = starter ?? 0;
   if (handNo === 1 || starter === null) {
+    // يبدأ صاحب أعلى دوس، وإن ما فيه دوس عند أحد فصاحب أعلى مجموع نقاط في يده
     const opening = openingTile(hands)!;
-    turn = hands.findIndex((h) => h.some((t) => sameTile(t, opening)));
+    turn = isDouble(opening)
+      ? hands.findIndex((h) => h.some((t) => sameTile(t, opening)))
+      : hands.map((h, i) => ({ i, n: h.reduce((sum, t) => sum + pips(t), 0) })).sort((x, y) => y.n - x.n)[0].i;
   }
   return {
     rules, hands, boneyard, line: [], turn, passes: 0, scores, handNo, nextStarter: null,
@@ -175,12 +191,21 @@ export function newMatch(rng: Rng, rules: DominoRules = DEFAULT_RULES): DominoSt
 
 export function nextHand(s: DominoState, rng: Rng): DominoState {
   if (s.phase !== 'handOver') fail('الصكة لم تنته');
-  return dealHand(s.rules, s.scores, s.handNo + 1, s.nextStarter, rng);
+  const dealt = dealHand(s.rules, s.scores, s.handNo + 1, s.nextStarter, rng);
+  // فاز فريق بالصكة (في الشراكة): يختار من يبدأ، هو أو شريكه
+  const winner = s.lastHand?.winnerSeat ?? null;
+  if (s.rules.players === 4 && winner !== null) return { ...dealt, phase: 'chooseStarter', chooser: winner, turn: winner };
+  return dealt;
 }
 
 // ───── الحركات ─────
 
 export function applyDomino(s: DominoState, a: DominoAction): DominoState {
+  if (a.type === 'starter') {
+    if (s.phase !== 'chooseStarter' || s.chooser !== a.seat) fail('ليس لك اختيار البادئ');
+    if (a.starter !== a.seat && a.starter !== (a.seat + 2) % 4) fail('اختر نفسك أو شريكك');
+    return { ...s, phase: 'playing', chooser: null, turn: a.starter, lastMove: null };
+  }
   if (s.phase !== 'playing') fail('اللعب متوقف');
   if (s.turn !== a.seat) fail('ليس دورك');
   switch (a.type) {
@@ -225,10 +250,7 @@ function applyPlay(s: DominoState, seat: number, tile: Tile, side?: Side): Domin
   }
   const next: DominoState = { ...s, hands, line, passes: 0, turn: nextSeat(s.rules, seat), lastMove: { seat, kind: 'play', placed } };
   if (!hands[seat].length) return finishHand(next, 'domino', seat);
-  // مع 4 لاعبين لا سحب: إن لم يستطع أحد اللعب بعد هذه القطعة فهو انسداد فوري
-  if (s.rules.players === 4 && hands.every((h) => !h.some((t) => fits(next, t).length))) {
-    return finishHand(next, 'blocked', null);
-  }
+  // الانسداد (الصدّة) بعد أربع تمريرات متتالية فقط
   return next;
 }
 

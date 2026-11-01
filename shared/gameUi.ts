@@ -10,6 +10,8 @@ import { boardSummary as ludoBoard, optionText, rollName, squareText } from './l
 
 export interface DominoUi {
   myTurn: boolean;
+  /** الفريق الفائز يختار من يبدأ الصكة: خياراتك (أنت أو شريكك) لو الاختيار لك */
+  starterOptions: { seat: number; text: string }[];
   canDraw: boolean;
   canPass: boolean;
   /** قطعك مرتبة (الأكبر أولاً): نصها لقارئ الشاشة، وهل تصلح، وعلى أي طرف */
@@ -67,11 +69,13 @@ export function dominoUi(s: DominoState, mySeat: number | null, names: string[])
     });
   const draw = mySeat !== null && canDraw(s, mySeat);
   const pass = mySeat !== null && canPass(s, mySeat);
+  const choosing = mySeat !== null && s.phase === 'chooseStarter' && s.chooser === mySeat;
+  const starterOptions = choosing ? [{ seat: mySeat!, text: 'أبدأ أنا' }, { seat: (mySeat! + 2) % 4, text: `يبدأ شريكي ${names[(mySeat! + 2) % 4]}` }] : [];
   return {
-    myTurn, canDraw: draw, canPass: pass, hand, ends: e, endsText: endsLabel(s), lineText: lineLabel(s),
+    myTurn, starterOptions, canDraw: draw, canPass: pass, hand, ends: e, endsText: endsLabel(s), lineText: lineLabel(s),
     scoreText: `النقاط: ${s.scores.map((n, side) => `${sideNames[side]} ${n}`).join('، ')}. الهدف ${s.rules.target}`,
     sideNames, mySide: mySeat === null ? -1 : s.rules.players === 4 ? mySeat % 2 : mySeat,
-    prompt: !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، جلا. ${endsLabel(s)}`,
+    prompt: choosing ? 'فاز فريقك بالصكة: اختر من يبدأ، أنت أو شريكك' : !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، جلا. ${endsLabel(s)}`,
   };
 }
 

@@ -19,13 +19,17 @@ import { COLOR_NAMES, moveAnnouncement as ludoMoveText, rollName } from './ludo/
 
 export type GameKind = 'baloot' | 'domino' | 'jackaroo' | 'ludo';
 /** classic: الافتراضي (والفردي في لودو)، complex: جاكارو كمبلكس، teams: لودو فرق */
-export type GameVariant = 'classic' | 'complex' | 'teams';
+/** نسخ الألعاب: الجاكارو كمبلكس، اللودو فرق، الدومينو هدف 150 أو 200 (العادي 100) */
+export type GameVariant = 'classic' | 'complex' | 'teams' | 't150' | 't200';
 export const GAME_NAMES: Record<GameKind, string> = { baloot: 'بلوت', domino: 'دومينو', jackaroo: 'جاكارو', ludo: 'لودو' };
 /** اسم اللعبة مع نسختها: "جاكارو كمبلكس"، "لودو فرق" */
 export const gameTitle = (kind: GameKind, variant?: GameVariant) =>
-  GAME_NAMES[kind] + (kind === 'jackaroo' && variant === 'complex' ? ' كمبلكس' : kind === 'ludo' && variant === 'teams' ? ' فرق' : '');
+  GAME_NAMES[kind] + (kind === 'jackaroo' && variant === 'complex' ? ' كمبلكس' : kind === 'ludo' && variant === 'teams' ? ' فرق'
+    : kind === 'domino' ? ` ${dominoTarget(variant)}` : '');
+/** هدف مباراة الدومينو: 100 أو 150 أو 200 */
+export const dominoTarget = (variant?: GameVariant) => (variant === 't150' ? 150 : variant === 't200' ? 200 : 100);
 /** النسخ الصالحة لكل لعبة (الأولى هي الافتراضية) */
-export const VARIANTS: Record<GameKind, GameVariant[]> = { baloot: ['classic'], domino: ['classic'], jackaroo: ['classic', 'complex'], ludo: ['classic', 'teams'] };
+export const VARIANTS: Record<GameKind, GameVariant[]> = { baloot: ['classic'], domino: ['classic', 't150', 't200'], jackaroo: ['classic', 'complex'], ludo: ['classic', 'teams'] };
 
 /** الدومينو على الطاولة: 4 لاعبين شراكة حتى 100 */
 export const TABLE_DOMINO_RULES = { players: 4, target: 100 } as const;
@@ -45,12 +49,12 @@ export function otherActive(t: TableData): boolean {
 
 export function startOther(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if (kindOf(t) === 'domino') {
-    // لاعبين أو أربعة (الجالسون مرتّبون على المقاعد الأولى)
-    const players = (t.seats.filter(Boolean).length === 2 ? 2 : 4) as 2 | 4;
-    const domino = newDomino(rng, { players, target: players === 4 ? TABLE_DOMINO_RULES.target : 100 });
+    // أربعة لاعبين دائماً (فريقين)، والهدف 100 أو 150 أو 200
+    const domino = newDomino(rng, { players: 4, target: dominoTarget(t.variant) });
+    const opening = domino.hands[domino.turn].filter((x) => x.a === x.b).sort((x, y) => y.a - x.a)[0];
     return {
       table: { ...t, domino, jackaroo: null, ludo: null, game: null, dominoLog: [{ hand: domino.handNo, lines: [] }] },
-      events: [`بدأت مباراة الدومينو${players === 2 ? ' بين لاعبين' : ''}، الهدف ${domino.rules.target} نقطة`, `يبدأ ${names(t)[domino.turn]} بـ 6 6`],
+      events: [`بدأت مباراة الدومينو، الهدف ${domino.rules.target} نقطة`, opening ? `يبدأ ${names(t)[domino.turn]} بـ ${opening.a} ${opening.a}` : `يبدأ ${names(t)[domino.turn]}، صاحب أعلى مجموع`],
     };
   }
   if (kindOf(t) === 'ludo') {
@@ -84,6 +88,7 @@ export function parseDomino(raw: unknown, seat: number): DominoAction | null {
   if (!a) return null;
   if (a.type === 'draw') return { type: 'draw', seat };
   if (a.type === 'pass') return { type: 'pass', seat };
+  if (a.type === 'starter' && typeof a.starter === 'number') return { type: 'starter', seat, starter: a.starter };
   if (a.type === 'play' && isTile(a.tile)) {
     const side = a.side === 'left' || a.side === 'right' ? (a.side as Side) : undefined;
     return { type: 'play', seat, tile: { a: a.tile.a, b: a.tile.b }, side };
@@ -127,7 +132,10 @@ export function applyOther(t: TableData, action: DominoAction | JackarooAction |
   if (t.ludo) return applyLudoEvents(t, action as LudoAction, rng);
   if (t.domino) {
     const after = applyDomino(t.domino, action as DominoAction);
-    const events = [dominoMoveText(after, names(t))];
+    const da = action as DominoAction;
+    const events = da.type === 'starter'
+      ? [da.starter === da.seat ? `${names(t)[da.seat]} اختار يبدأ بنفسه` : `${names(t)[da.seat]} اختار شريكه ${names(t)[da.starter]} يبدأ`]
+      : [dominoMoveText(after, names(t))];
     if (after.phase !== 'playing') events.push(...dominoHandText(after, names(t)).filter((e) => !e.startsWith('انتهت المباراة')));
     if (after.phase === 'matchOver') {
       const best = after.scores.indexOf(Math.max(...after.scores));
@@ -148,16 +156,22 @@ export function applyOther(t: TableData, action: DominoAction | JackarooAction |
   return { table: { ...t, jackaroo: after }, events };
 }
 
+/** مقعد يلعبه الذكاء الاصطناعي: روبوت، أو لاعب انقطع اتصاله (يلعب عنه مؤقتاً لين يرجع) */
+const autoSeat = (t: TableData, seat: number) => {
+  const m = t.seats[seat];
+  return !!m && (m.isBot || t.away?.[m.uid] !== undefined);
+};
+
 /** هل يجب أن يحدث شيء تلقائياً (روبوت، أو صكة دومينو جديدة)؟ ومتى؟ */
 export function otherAutoDelay(t: TableData, rng: Rng): number | null {
   const think = () => BOT_THINK_MS.min + Math.floor(rng() * (BOT_THINK_MS.max - BOT_THINK_MS.min));
   if (t.domino) {
     if (t.domino.phase === 'handOver') return 5000;
-    if (t.domino.phase === 'playing' && t.seats[t.domino.turn]?.isBot) return think();
+    if ((t.domino.phase === 'playing' || t.domino.phase === 'chooseStarter') && autoSeat(t, t.domino.turn)) return think();
   }
-  if (t.jackaroo?.phase === 'playing' && t.seats[t.jackaroo.turn]?.isBot) return think();
+  if (t.jackaroo?.phase === 'playing' && autoSeat(t, t.jackaroo.turn)) return think();
   if (t.ludo && t.ludo.phase !== 'over') {
-    if (t.seats[t.ludo.turn]?.isBot) return t.ludo.phase === 'move' ? 700 : think();
+    if (autoSeat(t, t.ludo.turn)) return t.ludo.phase === 'move' ? 700 : think();
     // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً للاعب أيضاً
     if (movableTokens(t.ludo, t.ludo.turn).length === 1) return 900;
   }
@@ -167,7 +181,8 @@ export function otherAutoDelay(t: TableData, rng: Rng): number | null {
 export function runOtherAuto(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if (t.domino?.phase === 'handOver') {
     const domino = nextDominoHand(t.domino, rng);
-    return { table: { ...t, domino, dominoLog: [...(t.dominoLog ?? []), { hand: domino.handNo, lines: [] }] }, events: [`صكة جديدة، يبدأ ${names(t)[domino.turn]}`] };
+    const first = domino.phase === 'chooseStarter' ? `صكة جديدة، ${names(t)[domino.chooser!]} يختار من يبدأ: هو أو شريكه` : `صكة جديدة، يبدأ ${names(t)[domino.turn]}`;
+    return { table: { ...t, domino, dominoLog: [...(t.dominoLog ?? []), { hand: domino.handNo, lines: [] }] }, events: [first] };
   }
   if (t.domino) {
     const a = dominoBotAction(t.domino, t.domino.turn);
@@ -176,7 +191,7 @@ export function runOtherAuto(t: TableData, rng: Rng): { table: TableData; events
   if (t.ludo) {
     const s = t.ludo;
     const only = movableTokens(s, s.turn);
-    const a = t.seats[s.turn]?.isBot ? ludoBotAction(s, s.turn) : only.length === 1 ? { type: 'move' as const, seat: s.turn, token: only[0] } : null;
+    const a = autoSeat(t, s.turn) ? ludoBotAction(s, s.turn) : only.length === 1 ? { type: 'move' as const, seat: s.turn, token: only[0] } : null;
     return a ? applyOther(t, a, rng) : { table: t, events: [] };
   }
   const a = t.jackaroo ? jackarooBotAction(t.jackaroo, t.jackaroo.turn) : null;
@@ -191,7 +206,7 @@ const HIDDEN_CARD: Card = { rank: '2', suit: 'S' };
 export function dominoViewFor(s: DominoState, mySeat: number | null): DominoState {
   return {
     ...s,
-    hands: s.hands.map((h, i) => (i === mySeat || s.phase !== 'playing' ? h : h.map(() => HIDDEN_TILE))),
+    hands: s.hands.map((h, i) => (i === mySeat || s.phase === 'handOver' || s.phase === 'matchOver' ? h : h.map(() => HIDDEN_TILE))),
     boneyard: s.boneyard.map(() => HIDDEN_TILE),
   };
 }

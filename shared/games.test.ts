@@ -102,7 +102,7 @@ describe('domino and jackaroo tables', () => {
     let t = startAny(table('ludo'), rng).table;
     t = { ...t, ludo: { ...t.ludo!, turn: 0, tokens: [[10, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] } };
     // نرد ثابت 3: حجر واحد فقط يتحرك (البقية في البيت)
-    const three = () => 2.5 / 6;
+    const three = () => 0.25 + 2 * 0.15 + 0.01;
     const r = applyOther(t, parseLudo({ type: 'roll' }, 0)!, three);
     expect(r.events).toEqual(['مهند رمى ثلاثة']);
     const step = nextAutoStep(r.table, rng);
@@ -149,9 +149,9 @@ describe('player counts and changing the game', () => {
     d = addBot(d, 2);
     expect(canStart(d)).toBe(true);
     const ds = startAny(d, seededRng(1)).table;
-    expect(ds.domino!.rules.players).toBe(2);
-    expect(ds.seats[1]?.isBot).toBe(true);
-    expect(ds.seats[2]).toBeNull();
+    // الدومينو أربعة دائماً: المقاعد الفاضية تكتمل بروبوتات
+    expect(ds.domino!.rules.players).toBe(4);
+    expect(ds.seats.every(Boolean)).toBe(true);
     let l = newTable('t2', owner, false, 0, 'ludo', 'classic');
     l = addBot(l, 1); l = addBot(l, 3);
     const ls = startAny(l, seededRng(2)).table;
@@ -161,10 +161,10 @@ describe('player counts and changing the game', () => {
     b = addBot(b, 1);
     expect(canStart(b)).toBe(true);
     b = addBot(b, 2);
-    expect(canStart(b)).toBe(false);
+    expect(canStart(b)).toBe(true);
     const c = changeGame(ds, 'jackaroo', 'complex');
     expect(c.kind).toBe('jackaroo');
     expect(c.domino).toBeNull();
-    expect(c.seats.filter(Boolean).length).toBe(2);
+    expect(c.seats.filter(Boolean).length).toBe(4);
   });
 });

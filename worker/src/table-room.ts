@@ -539,6 +539,9 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
+        // الدومينو أربعة دائماً: نكمل المقاعد الفاضية بروبوتات (بنفس سعر إضافة روبوت)
+        const empty = t.seats.filter((m) => !m).length;
+        if (kindOf(t) === 'domino' && empty > 0 && empty < 4) await this.db().adjustCoins(uid, -COINS.addBot * empty);
         const { table: next, events } = startAny(t, rng);
         await this.save(next);
         this.broadcast(events);

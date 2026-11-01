@@ -6,6 +6,12 @@ import {
 } from './engine';
 
 export function dominoBotAction(s: DominoState, seat: number): DominoAction | null {
+  // اختيار البادئ: يبدأ من عنده دوس أكثر (أو هو نفسه)
+  if (s.phase === 'chooseStarter' && s.chooser === seat) {
+    const partner = (seat + 2) % 4;
+    const doubles = (i: number) => s.hands[i].filter(isDouble).length;
+    return { type: 'starter', seat, starter: doubles(partner) > doubles(seat) ? partner : seat };
+  }
   if (s.phase !== 'playing' || s.turn !== seat) return null;
   const options = playable(s, seat);
   if (!options.length) return canDraw(s, seat) ? { type: 'draw', seat } : { type: 'pass', seat };

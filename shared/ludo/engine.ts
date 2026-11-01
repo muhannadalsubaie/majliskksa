@@ -25,17 +25,17 @@ export const DEFAULT_RULES: LudoRules = { players: 4, teams: false, threeSixes: 
 export const TEAM_RULES: LudoRules = { players: 4, teams: true, threeSixes: true };
 
 export const TRACK = 52;
-/** آخر خطوة على المسار العام قبل الممر الملوّن */
-export const LAST_TRACK = 50;
-/** الوسط (النهاية) */
-export const FINISH = 56;
+/** المسار الرئيسي 52 خانة (0..51 نسبةً لكل لون)، ثم ممر المنزل 6 خانات (52..57)، ثم المنزل 58 */
+export const LAST_TRACK = 51;
+/** المنزل (النهاية) */
+export const FINISH = 58;
 export const TOKENS = 4;
 /** خانات البداية (أماكن خروج كل لون) */
 export const STARTS = [0, 13, 26, 39];
 /** الخانات الآمنة على المسار العام: البدايات والنجوم */
 export const SAFE = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
-/** تقدم الحجر: -1 في البيت، 0..50 على المسار العام، 51..55 في الممر الملوّن، 56 في الوسط */
+/** تقدم الحجر: -1 في القاعدة، 0..51 على المسار العام، 52..57 في ممر المنزل، 58 في المنزل */
 export type Progress = number;
 export interface TokenRef { owner: number; index: number }
 
@@ -129,7 +129,10 @@ export function isSafeSpot(owner: number, p: Progress): boolean {
   return !onTrack(p) || SAFE.has(absPos(owner, p));
 }
 
-/** الأحجار التي تُؤكل لو وصل حجر owner إلى p */
+/**
+ * الأحجار التي تُؤكل لو وصل حجر owner إلى p: قطعة خصم وحدة على خانة غير آمنة ترجع للقاعدة.
+ * قطعتين أو أكثر من نفس اللون على خانة = حاجز: تقدر تنزل عليها (تتكدس) بس ما تاكلها.
+ */
 export function capturesAt(s: LudoState, owner: number, p: Progress): TokenRef[] {
   if (!onTrack(p)) return [];
   const sq = absPos(owner, p);
@@ -137,9 +140,17 @@ export function capturesAt(s: LudoState, owner: number, p: Progress): TokenRef[]
   const out: TokenRef[] = [];
   for (const o of s.seats) {
     if (o === owner || (s.rules.teams && teamOf(o) === teamOf(owner))) continue;
-    s.tokens[o].forEach((q, index) => { if (onTrack(q) && absPos(o, q) === sq) out.push({ owner: o, index }); });
+    const here: TokenRef[] = [];
+    s.tokens[o].forEach((q, index) => { if (onTrack(q) && absPos(o, q) === sq) here.push({ owner: o, index }); });
+    if (here.length === 1) out.push(here[0]);
   }
   return out;
+}
+
+/** النرد: الستة 25%، وكل رقم من 1 إلى 5 بـ 15% */
+export function rollDice(rng: Rng): number {
+  const r = rng();
+  return r < 0.25 ? 6 : 1 + Math.min(4, Math.floor((r - 0.25) / 0.15));
 }
 
 export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
@@ -147,7 +158,7 @@ export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
   if (a.seat !== s.turn) fail('ليس دورك');
   if (a.type === 'roll') {
     if (s.phase !== 'roll') fail('حرّك حجراً أولاً');
-    const roll = 1 + Math.floor(rng() * 6);
+    const roll = rollDice(rng);
     const sixes = roll === 6 ? s.sixes + 1 : 0;
     const blank = (extra: Partial<MoveRecord>): MoveRecord => ({
       seat: a.seat, roll, token: null, from: null, to: null, captured: [], finished: false, threeSixes: false, extraTurn: false, ...extra,
@@ -193,10 +204,10 @@ export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
 }
 
 function winnerOf(s: LudoState): number | null {
-  // الفوز: أول من يوصّل أحجاره الأربعة (في الفرق يفوز فريقه)
+  // الفوز الجماعي: تصل كل قطع الزميلين معاً (ومن أنهى قطعه يلعب بقطع زميله)
   if (s.rules.teams) {
-    const first = s.finishedOrder[0];
-    return first === undefined ? null : teamOf(first);
+    for (const team of [0, 1]) if (allHome(s, team) && allHome(s, team + 2)) return team;
+    return null;
   }
   return s.finishedOrder[0] ?? null;
 }

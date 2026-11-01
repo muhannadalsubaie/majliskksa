@@ -5,7 +5,7 @@ import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesA
 import { moveAnnouncement, optionText } from './labels';
 
 /** نرد مضبوط: يرجع القيم بالترتيب */
-const dice = (...vals: number[]) => { let i = 0; return () => (vals[i++ % vals.length] - 1) / 6 + 0.01; };
+const dice = (...vals: number[]) => { let i = 0; return () => { const v = vals[i++ % vals.length]; return v === 6 ? 0.1 : 0.25 + (v - 1) * 0.15 + 0.01; }; };
 
 function base(over: Partial<LudoState> = {}): LudoState {
   return { ...newGame(() => 0, DEFAULT_RULES), turn: 0, ...over };
@@ -28,10 +28,10 @@ describe('ludo', () => {
   });
 
   it('exact roll to finish; finishing gives another roll', () => {
-    let s = base({ tokens: [[54, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    let s = base({ tokens: [[56, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     s = applyLudo(s, { type: 'roll', seat: 0 }, dice(3));
-    expect(s.turn).toBe(1); // 54+3 يتجاوز الوسط
-    s = base({ tokens: [[54, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    expect(s.turn).toBe(1); // 56+3 يتجاوز المنزل
+    s = base({ tokens: [[56, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     s = applyLudo(s, { type: 'roll', seat: 0 }, dice(2));
     s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(1));
     expect(s.tokens[0][0]).toBe(FINISH);

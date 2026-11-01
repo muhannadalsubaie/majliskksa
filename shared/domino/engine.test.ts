@@ -142,3 +142,27 @@ describe('domino', () => {
     expect(handAnnouncement(s, names)).toEqual([]);
   });
 });
+
+describe('domino table rules', () => {
+  it('fair deal, highest double opens, winning team picks the next starter', async () => {
+    const { nextHand: nh } = await import('./engine');
+    for (let seed = 1; seed < 30; seed++) {
+      const s = newMatch(seededRng(seed));
+      for (const h of s.hands) {
+        expect(h.filter((x) => x.a === x.b).length).toBeLessThan(5);
+        for (let v = 0; v <= 6; v++) expect(h.filter((x) => x.a === v || x.b === v).length).toBeLessThan(6);
+      }
+    }
+    let s = newMatch(seededRng(4));
+    s = { ...s, phase: 'handOver', lastHand: { kind: 'domino', winnerSeat: 1, points: [0, 10], remaining: [0, 0, 0, 0] }, nextStarter: 1 };
+    const n = nh(s, seededRng(5));
+    expect(n.phase).toBe('chooseStarter');
+    expect(n.chooser).toBe(1);
+    expect(() => applyDomino(n, { type: 'starter', seat: 1, starter: 2 })).toThrow();
+    const p = applyDomino(n, { type: 'starter', seat: 1, starter: 3 });
+    expect(p.phase).toBe('playing');
+    expect(p.turn).toBe(3);
+    // يلعب أي قطعة (بلا شرط الدوس)
+    expect(playable(p, 3).length).toBe(p.hands[3].length);
+  });
+});
