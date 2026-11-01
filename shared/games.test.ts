@@ -149,15 +149,17 @@ describe('player counts and changing the game', () => {
     d = addBot(d, 2);
     expect(canStart(d)).toBe(true);
     const ds = startAny(d, seededRng(1)).table;
-    // الدومينو أربعة دائماً: المقاعد الفاضية تكتمل بروبوتات
-    expect(ds.domino!.rules.players).toBe(4);
-    expect(ds.seats.every(Boolean)).toBe(true);
+    // الدومينو لاعبين: يترتبون على أول مقعدين
+    expect(ds.domino!.rules.players).toBe(2);
+    expect(ds.seats[1]?.isBot).toBe(true);
+    expect(ds.seats[2]).toBeNull();
     let l = newTable('t2', owner, false, 0, 'ludo', 'classic');
     l = addBot(l, 1); l = addBot(l, 3);
     const ls = startAny(l, seededRng(2)).table;
     expect(ls.ludo!.seats).toEqual([0, 1, 2]);
     expect(ls.seats[2]?.isBot).toBe(true);
     let b = newTable('t3', owner, false, 0, 'domino', 'classic');
+    expect(canStart(b)).toBe(false);
     b = addBot(b, 1);
     expect(canStart(b)).toBe(true);
     b = addBot(b, 2);
@@ -165,6 +167,6 @@ describe('player counts and changing the game', () => {
     const c = changeGame(ds, 'jackaroo', 'complex');
     expect(c.kind).toBe('jackaroo');
     expect(c.domino).toBeNull();
-    expect(c.seats.filter(Boolean).length).toBe(4);
+    expect(c.seats.filter(Boolean).length).toBe(2);
   });
 });

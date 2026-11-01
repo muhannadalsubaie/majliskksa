@@ -116,7 +116,7 @@ const ERRORS: Record<string, string> = {
   'game-started': 'اللعبة بدأت بالفعل',
   'seat-taken': 'المقعد محجوز',
   'not-full': 'يجب أن تكتمل المقاعد الأربعة',
-  'bad-count': 'عدد اللاعبين لا يناسب هذه اللعبة: الدومينو لاعبين أو أربعة، واللودو لاعبين أو ثلاثة أو أربعة (والفرق أربعة)',
+  'bad-count': 'عدد اللاعبين لا يناسب هذه اللعبة: الدومينو واللودو لاعبين أو ثلاثة أو أربعة (لودو الفرق أربعة)',
   'not-owner': 'هذا الإجراء لمالك الطاولة فقط',
   'not-a-spectator': 'هذا الشخص لم يعد في الطاولة',
   'not-a-member': 'هذا الشخص لم يعد في الطاولة',
@@ -539,9 +539,6 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
-        // الدومينو أربعة دائماً: نكمل المقاعد الفاضية بروبوتات (بنفس سعر إضافة روبوت)
-        const empty = t.seats.filter((m) => !m).length;
-        if (kindOf(t) === 'domino' && empty > 0 && empty < 4) await this.db().adjustCoins(uid, -COINS.addBot * empty);
         const { table: next, events } = startAny(t, rng);
         await this.save(next);
         this.broadcast(events);

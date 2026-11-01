@@ -389,23 +389,18 @@ export function start(t: TableData, rng: Rng): TableData {
 /** عدد اللاعبين المسموح لكل لعبة: البلوت والجاكارو 4، الدومينو 2 أو 4، اللودو 2 أو 3 أو 4 (الفرق 4) */
 export function allowedPlayers(t: TableData): number[] {
   const kind = t.kind ?? 'baloot';
-  // الدومينو أربعة دائماً: المقاعد الفاضية يكملها الذكاء الاصطناعي عند البدء
-  if (kind === 'domino') return [1, 2, 3, 4];
+  // الدومينو: لاعبين أو ثلاثة (كل واحد لنفسه، مع السحب من البنك) أو أربعة (فريقين)
+  if (kind === 'domino') return [2, 3, 4];
   if (kind === 'ludo') return t.variant === 'teams' ? [4] : [2, 3, 4];
   return [4];
 }
 export const seatedCount = (t: TableData) => t.seats.filter(Boolean).length;
 export const canStart = (t: TableData) => allowedPlayers(t).includes(seatedCount(t));
 
-/** نرتّب الجالسين على المقاعد اللي تلعبها اللعبة: اللودو مقعدين متقابلين أو ثلاثة متتالية، والدومينو يكمل الفاضي بروبوتات */
+/** نرتّب الجالسين على المقاعد اللي تلعبها اللعبة: الدومينو المقاعد الأولى، واللودو مقعدين متقابلين أو ثلاثة متتالية */
 function compactSeats(t: TableData): TableData {
   const n = seatedCount(t);
   if (n === 4) return t;
-  if (t.kind === 'domino') {
-    let cur = t;
-    ([0, 1, 2, 3] as Seat[]).forEach((i) => { if (!cur.seats[i]) cur = addBot(cur, i); });
-    return cur;
-  }
   const members = t.seats.filter((m): m is Member => m !== null);
   const targets = (t.kind === 'ludo' ? (n === 2 ? [0, 2] : [0, 1, 2]) : [0, 1, 2, 3].slice(0, n));
   const seats: (Member | null)[] = [null, null, null, null];

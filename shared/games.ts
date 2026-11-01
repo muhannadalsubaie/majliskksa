@@ -49,12 +49,13 @@ export function otherActive(t: TableData): boolean {
 
 export function startOther(t: TableData, rng: Rng): { table: TableData; events: string[] } {
   if (kindOf(t) === 'domino') {
-    // أربعة لاعبين دائماً (فريقين)، والهدف 100 أو 150 أو 200
-    const domino = newDomino(rng, { players: 4, target: dominoTarget(t.variant) });
+    // لاعبين أو ثلاثة (كل واحد لنفسه) أو أربعة (فريقين)، والهدف 100 أو 150 أو 200
+    const players = t.seats.filter(Boolean).length as 2 | 3 | 4;
+    const domino = newDomino(rng, { players, target: dominoTarget(t.variant) });
     const opening = domino.hands[domino.turn].filter((x) => x.a === x.b).sort((x, y) => y.a - x.a)[0];
     return {
       table: { ...t, domino, jackaroo: null, ludo: null, game: null, dominoLog: [{ hand: domino.handNo, lines: [] }] },
-      events: [`بدأت مباراة الدومينو، الهدف ${domino.rules.target} نقطة`, opening ? `يبدأ ${names(t)[domino.turn]} بـ ${opening.a} ${opening.a}` : `يبدأ ${names(t)[domino.turn]}، صاحب أعلى مجموع`],
+      events: [`بدأت مباراة الدومينو${players < 4 ? ` بين ${players} لاعبين، كل واحد لنفسه` : ''}، الهدف ${domino.rules.target} نقطة`, opening ? `يبدأ ${names(t)[domino.turn]} بـ ${opening.a} ${opening.a}` : `يبدأ ${names(t)[domino.turn]}، صاحب أعلى مجموع`],
     };
   }
   if (kindOf(t) === 'ludo') {
