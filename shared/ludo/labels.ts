@@ -1,6 +1,6 @@
 // نصوص لودو لقارئ الشاشة والإعلانات.
 import {
-  type LudoState, type Progress, type TokenRef, FINISH, LAST_TRACK, SAFE, absPos, capturesAt, controlledOwner, isSafeSpot, onTrack, teamOf,
+  type LudoState, type Progress, type TokenRef, FINISH, LAST_TRACK, SAFE, STARTS, absPos, capturesAt, controlledOwner, isSafeSpot, onTrack, teamOf,
 } from './engine';
 
 export const COLOR_NAMES = ['الأحمر', 'الأخضر', 'الأصفر', 'الأزرق'];
@@ -19,6 +19,24 @@ export function safetyText(s: LudoState, owner: number, p: Progress): string {
   if (p > LAST_TRACK) return 'في أمان';
   if (SAFE.has(absPos(owner, p))) return 'في خانة آمنة';
   return danger(s, owner, p) ? 'في خطر، خصم خلفه قريب' : 'في أمان';
+}
+
+/**
+ * رقم الخانة لقارئ الشاشة: خانات المسار مرقّمة من 0 (خانة بدايتك) إلى 51 باتجاه اللعب،
+ * فتعرف بُعد كل حجر عن غيره. (للمشاهد: من خانة بداية اللاعب الأول)
+ */
+export function squareNumber(owner: number, p: Progress, me: number): number {
+  const base = STARTS[me >= 0 ? me : 0];
+  return (absPos(owner, p) - base + 52) % 52;
+}
+
+/** مكان الحجر برقم الخانة، وهل هو في أمان */
+export function squareText(s: LudoState, owner: number, p: Progress, me: number): string {
+  if (p === -1) return 'في البيت';
+  if (p === FINISH) return 'وصل الوسط';
+  if (p > LAST_TRACK) return `في ${owner === me ? 'الممر الأخير' : 'ممره الأخير'}، الخانة ${p - LAST_TRACK} من 5`;
+  const safety = safetyText(s, owner, p);
+  return `في الخانة ${squareNumber(owner, p, me)}${safety ? `، ${safety}` : ''}`;
 }
 
 /** أين الحجر (ومع الحالة: هل هو في أمان) */
@@ -86,6 +104,6 @@ export function moveAnnouncement(s: LudoState, names: string[], me: number, with
 export function boardSummary(s: LudoState, names: string[], me: number): string {
   return s.seats.map((o) => {
     const who = o === me ? 'أحجارك' : `أحجار ${names[o]}`;
-    return `${who}: ${s.tokens[o].map((p, i) => `${i + 1} ${placeText(o, p, s)}`).join('، ')}`;
+    return `${who}: ${s.tokens[o].map((p, i) => `${i + 1} ${squareText(s, o, p, me)}`).join('، ')}`;
   }).join('. ');
 }

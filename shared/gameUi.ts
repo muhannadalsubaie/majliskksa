@@ -6,7 +6,7 @@ import { endsLabel, handTileLabel, lineLabel, sideName as dominoSideName } from 
 import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn } from './jackaroo/engine';
 import { boardSummary as jkBoard, cardHint, cardName, marblePlace, moveText } from './jackaroo/labels';
 import { type LudoState, controlledOwner as ludoOwner, movableTokens } from './ludo/engine';
-import { boardSummary as ludoBoard, optionText, placeText, rollName } from './ludo/labels';
+import { boardSummary as ludoBoard, optionText, rollName, squareText } from './ludo/labels';
 
 export interface DominoUi {
   myTurn: boolean;
@@ -36,6 +36,14 @@ export interface JackarooUi {
 
 export interface LudoUi {
   myTurn: boolean;
+  /** قائمة الأماكن: كل لاعب وأحجاره في أي خانة */
+  positions: { name: string; color: number; tokens: string[] }[];
+  /** الدور عند مين */
+  turnText: string;
+  /** آخر رمية نرد ولمن */
+  diceText: string;
+  /** تقدر ترمي النرد الحين */
+  canRoll: boolean;
   options: { token: number; text: string }[];
   /** الأحجار اللي تتحرك الآن (للتمييز على اللوحة) */
   movableOwner: number;
@@ -98,10 +106,20 @@ export function ludoUi(s: LudoState, mySeat: number | null, names: string[]): Lu
   let mineText = ludoBoard(s, names, me);
   if (mySeat !== null) {
     const owner = ludoOwner(s, mySeat);
-    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${placeText(owner, p, s)}`).join('، ')}`;
+    mineText = `${owner === mySeat ? 'أحجارك' : `أنهيت أحجارك، تلعب بأحجار ${names[owner]}`}: ${s.tokens[owner].map((p, i) => `${i + 1} ${squareText(s, owner, p, me)}`).join('، ')}`;
   }
+  const who = (seat: number) => (seat === me ? 'أنت' : names[seat]);
+  const turnText = s.phase === 'over' ? 'انتهت اللعبة'
+    : s.turn === me ? (s.phase === 'roll' ? 'دورك، ارمِ النرد' : 'دورك، اختر الحجر')
+    : `دور ${names[s.turn]}${s.phase === 'move' ? '، يختار الحجر' : ''}`;
+  const last = s.lastMove;
+  const diceText = s.phase === 'move' && s.dice !== null
+    ? `${s.turn === me ? 'رميت' : `${names[s.turn]} رمى`} ${rollName(s.dice)}`
+    : last ? `آخر رمية: ${last.seat === me ? 'رميت' : `${names[last.seat]} رمى`} ${rollName(last.roll)}` : 'ما رمى أحد بعد';
   return {
     myTurn,
+    positions: s.seats.map((o) => ({ name: who(o), color: o, tokens: s.tokens[o].map((p, i) => `حجر ${i + 1}: ${squareText(s, o, p, me)}`) })),
+    turnText, diceText, canRoll: myTurn && s.phase === 'roll',
     options: options.map((token) => ({ token, text: optionText(s, me, token, names) })),
     movableOwner: mySeat === null ? -1 : ludoOwner(s, mySeat),
     boardText: ludoBoard(s, names, me), mineText,
