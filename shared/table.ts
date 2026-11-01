@@ -409,10 +409,10 @@ function compactSeats(t: TableData): TableData {
 }
 
 /** بدء مباراة بحسب نوع الطاولة، مع إعلانات البداية */
-export function startAny(t: TableData, rng: Rng): { table: TableData; events: string[] } {
+export function startAny(t: TableData, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
   if ((t.kind ?? 'baloot') === 'baloot') {
     const table = start(t, rng);
-    return { table, events: ['بدأت المباراة', dealAnnouncement(table)] };
+    return { table, events: ['بدأت المباراة', dealAnnouncement(table)], voices: ['first'] };
   }
   if (!canStart(t)) throw new TableError(t.kind === 'jackaroo' ? 'not-full' : 'bad-count');
   if (gameActive(t)) throw new TableError('game-started');
@@ -474,7 +474,9 @@ function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolea
  * الأصوات المنطوقة للمزايدة والدبل (يشغّلها التطبيق بالترتيب): مفاتيح ملفات صوتية بشرية
  * pass/wala/sun/hokm/hokm2/ashkal/qablak/double/three/four/gahwa/locked/open
  */
-export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open' | 'confirm' | `hokm2-${Suit}`;
+export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open' | 'confirm' | `hokm2-${Suit}`
+  /** أول (بداية الجولة)، ثاني (الكل قال بس في اللفة الأولى)، ورق (الكل قال بس مرتين: إعادة توزيع) */
+  | 'first' | 'second' | 'paper';
 const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'confirm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
@@ -513,7 +515,9 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       } else {
         events.push(`${who} ${bidText(action.bid, before.bidRound)}`);
       }
-      if (needsRedeal(after)) events.push('الكل مرّ مرتين — صنكة، إعادة توزيع');
+      if (needsRedeal(after)) { events.push('الكل مرّ مرتين — صنكة، إعادة توزيع'); voices.push('paper'); }
+      // الكل قال بس في اللفة الأولى: تبدأ اللفة الثانية
+      else if (before.bidRound === 1 && after.bidRound === 2 && after.phase === 'bidding') voices.push('second');
       break;
     }
     case 'double': {
@@ -638,11 +642,11 @@ export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: Ta
   if (step.kind === 'other') return runOtherAuto(t, rng);
   if (step.kind === 'redeal') {
     const table = { ...t, game: redeal(t.game!, rng) };
-    return { table, events: ['توزيع جديد', dealAnnouncement(table)] };
+    return { table, events: ['توزيع جديد', dealAnnouncement(table)], voices: ['first'] };
   }
   if (step.kind === 'nextHand') {
     const table = { ...t, game: nextHand(t.game!, rng) };
-    return { table, events: ['صكة جديدة', dealAnnouncement(table)] };
+    return { table, events: ['صكة جديدة', dealAnnouncement(table)], voices: ['first'] };
   }
   return applyWithEvents(t, step.action, rng);
 }

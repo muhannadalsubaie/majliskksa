@@ -539,9 +539,9 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
-        const { table: next, events } = startAny(t, rng);
+        const { table: next, events, voices } = startAny(t, rng);
         await this.save(next);
-        this.broadcast(events);
+        this.broadcast(events, undefined, voices);
         await this.publish(next);
         break;
       }
