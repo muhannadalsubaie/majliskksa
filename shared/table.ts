@@ -661,6 +661,8 @@ export interface GameView {
   qaba: Card | null;
   bidRound: 1 | 2;
   hokmBid: GameState['hokmBid'];
+  /** من اشترى الحكم الثاني (قبل وبعد ما يحدد اللون) */
+  secondHokmSeat: Seat | null;
   contract: GameState['contract'];
   doubling: GameState['doubling'];
   trick: GameState['trick'];
@@ -730,7 +732,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     const playing = mySeat !== null && !held;
     game = {
       phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, qaba: g.qaba, bidRound: g.bidRound,
-      hokmBid: g.hokmBid, contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
+      hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
       trickNo: g.trickNo, tricksWon: g.tricksWon, lastHand: g.lastHand, outcome: g.outcome,
       handCounts: g.hands.map((h) => h.length),
       myHand: mySeat !== null ? g.hands[mySeat] : [],
