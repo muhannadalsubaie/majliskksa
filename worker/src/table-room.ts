@@ -134,8 +134,13 @@ const BOTS_ALONE_GRACE_MS = 60_000;
  * التطبيق ينبض كل 3 ثوانٍ ("ping"): من انقطعت نبضته أكثر من هذا نعتبره انقطع (انقطع نته بلا إغلاق للاتصال)
  * فيُعلن انقطاعه فوراً بدل انتظار النظام دقائق ليكتشف ذلك. النسخ القديمة اللي ما تنبض ما تتأثر.
  */
-const STALE_AFTER_MS = 8_000;
+const STALE_AFTER_MS = 12_000;
 const STALE_CHECK_MS = 3_000;
+/**
+ * انقطاع قصير (شبكة الجوال تتقطع ثواني، أو التطبيق يعيد الاتصال) ما يُعلن ولا يحجز المقعد:
+ * ننتظر هذي المهلة، وإن رجع خلالها ما نقول شي (لا "انقطع" ولا "عاد")، ولا يلعب الروبوت عنه.
+ */
+const OFFLINE_GRACE_MS = 20_000;
 
 export class TableRoom extends DurableObject<Env> {
   private table: TableData | null = null;
@@ -421,6 +426,12 @@ export class TableRoom extends DurableObject<Env> {
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
     // عاد لاعب منقطع قبل انتهاء المهلة: يستعيد مقعده
     if (t?.away?.[uid] !== undefined) await this.save(markBack(t, uid));
+    // رجع خلال مهلة الانقطاع القصير: ولا كأنه انقطع (ما أُعلن شي، فما نعلن رجوعه)
+    const pending = (await this.ctx.storage.get<Record<string, number>>('pendingOffline')) ?? {};
+    if (pending[uid] !== undefined) {
+      delete pending[uid];
+      await this.ctx.storage.put('pendingOffline', pending);
+    }
     // كان منقطعاً (شبكة أو أُغلق التطبيق) ورجع: نعلن رجوعه للبقية
     const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
     if (offline[uid] !== undefined) {
@@ -687,21 +698,14 @@ export class TableRoom extends DurableObject<Env> {
       await this.ctx.storage.put('voiceGone', gone);
       await this.schedule();
     }
-    // لاعب جالس انقطع اتصاله أثناء المباراة (مكالمة، شبكة ضعيفة...): نحجز مقعده ثلاث دقائق
+    // انقطع اتصاله وهو في الطاولة: ما نعلن ولا نحجز مقعده فوراً، ننتظر مهلة قصيرة (OFFLINE_GRACE_MS)
+    // لأن أغلب الانقطاعات ثواني ويرجع التطبيق لحاله. إن ما رجع خلالها يُعلن ويُحجز مقعده (في المنبه)
     const current = this.table;
-    if (current && !stillHere) {
-      const next = markAway(current, uid, Date.now());
-      if (next !== current) {
-        await this.save(next);
-        await this.schedule();
-      }
-      // انقطع اتصاله (شبكة أو أُغلق التطبيق) وهو ما زال في الطاولة: نعلن ذلك للبقية، ونعلن رجوعه إن رجع
-      if (inTable(current, uid)) {
-        const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
-        offline[uid] = Date.now();
-        await this.ctx.storage.put('offline', offline);
-        this.broadcast([`انقطع اتصال ${memberName(current, uid) ?? 'لاعب'}${next !== current ? '، مقعده محجوز ثلاث دقائق' : ''}`]);
-      }
+    if (current && !stillHere && inTable(current, uid)) {
+      const pending = (await this.ctx.storage.get<Record<string, number>>('pendingOffline')) ?? {};
+      if (pending[uid] === undefined) pending[uid] = Date.now();
+      await this.ctx.storage.put('pendingOffline', pending);
+      await this.schedule();
     }
     // خارج اللعب: من لا يعود خلال المهلة يخرج من الطاولة (لا تبقى حسابات مغلقة أو محذوفة جالسة)
     const latest = this.table;
@@ -785,6 +789,39 @@ export class TableRoom extends DurableObject<Env> {
 
   // ───── الروبوتات والتوزيع التلقائي ─────
 
+  /** متى تنتهي أقرب مهلة انقطاع قصير */
+  private async nextPendingOffline(): Promise<number | null> {
+    const pending = (await this.ctx.storage.get<Record<string, number>>('pendingOffline')) ?? {};
+    const times = Object.values(pending);
+    return times.length ? Math.min(...times) + OFFLINE_GRACE_MS : null;
+  }
+
+  /**
+   * انتهت مهلة الانقطاع القصير وما رجع: الحين نحجز مقعده (أثناء المباراة) ونعلن انقطاعه للبقية،
+   * ونعلن رجوعه إن رجع بعدها
+   */
+  private async settlePendingOffline() {
+    const pending = (await this.ctx.storage.get<Record<string, number>>('pendingOffline')) ?? {};
+    const now = Date.now();
+    let changed = false;
+    for (const [uid, since] of Object.entries(pending)) {
+      if (now - since < OFFLINE_GRACE_MS - 200) continue;
+      delete pending[uid];
+      changed = true;
+      const connected = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
+      const cur = this.table;
+      if (connected || !cur || !inTable(cur, uid)) continue;
+      // مهلة حجز المقعد (ثلاث دقائق) تبدأ من الإعلان
+      const next = markAway(cur, uid, now);
+      if (next !== cur) await this.save(next);
+      const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
+      offline[uid] = now;
+      await this.ctx.storage.put('offline', offline);
+      this.broadcast([`انقطع اتصال ${memberName(cur, uid) ?? 'لاعب'}${next !== cur ? '، مقعده محجوز ثلاث دقائق' : ''}`]);
+    }
+    if (changed) await this.ctx.storage.put('pendingOffline', pending);
+  }
+
   private async schedule() {
     const t = await this.load();
     // لا أحد متصل: لا داعي لتشغيل الروبوتات، ننتظر مهلة الإغلاق فقط
@@ -806,7 +843,8 @@ export class TableRoom extends DurableObject<Env> {
     // فحص النبضات ما دام فيه اتصالات تنبض
     const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
     const staleAt = beating ? Date.now() + STALE_CHECK_MS : null;
-    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity);
+    const pendingAt = await this.nextPendingOffline();
+    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -815,6 +853,8 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (!t) return;
     await this.dropStale();
+    if (!this.table) return;
+    await this.settlePendingOffline();
     if (!this.table) return;
     const emptySince = await this.ctx.storage.get<number>('emptySince');
     if (emptySince) {
