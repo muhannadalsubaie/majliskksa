@@ -210,6 +210,20 @@ export class UserHub extends DurableObject<Env> {
     return uid in (await this.map('banned'));
   }
 
+  /** الصورة الشخصية (صغيرة، مضغوطة من التطبيق): تُحفظ هنا مع وقت آخر تغيير */
+  async setAvatar(data: ArrayBuffer | null, type = 'image/jpeg'): Promise<number> {
+    const at = Date.now();
+    if (data) await this.ctx.storage.put({ avatar: data, avatarType: type, avatarAt: at });
+    else await this.ctx.storage.delete(['avatar', 'avatarType', 'avatarAt']);
+    return at;
+  }
+  async getAvatar(): Promise<{ data: ArrayBuffer; type: string; at: number } | null> {
+    const m = await this.ctx.storage.get(['avatar', 'avatarType', 'avatarAt']);
+    const data = m.get('avatar') as ArrayBuffer | undefined;
+    if (!data) return null;
+    return { data, type: (m.get('avatarType') as string) ?? 'image/jpeg', at: (m.get('avatarAt') as number) ?? 0 };
+  }
+
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
 

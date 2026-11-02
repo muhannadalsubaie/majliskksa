@@ -50,6 +50,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (!url.pathname.startsWith('/api/')) return json({ error: 'not-found' }, 404);
     const pathname = url.pathname.slice(4); // إزالة البادئة /api
 
+    // الصورة الشخصية لأي لاعب (عامة مثل اسمه): تظهر في الملف الشخصي والطاولة
+    const avatarMatch = pathname.match(/^\/avatar\/([A-Za-z0-9_-]{1,128})$/);
+    if (avatarMatch && request.method === 'GET') {
+      const a = await env.HUBS.get(env.HUBS.idFromName(avatarMatch[1])).getAvatar();
+      if (!a) return new Response(null, { status: 404, headers: { ...CORS, 'Cache-Control': 'public, max-age=60' } });
+      return new Response(a.data, { headers: { ...CORS, 'Content-Type': a.type, 'Cache-Control': 'public, max-age=60', ETag: `"${a.at}"` } });
+    }
+
     if (pathname === '/health') {
       // فحص اتصال الخادم بقاعدة البيانات (بدون كشف أي بيانات)
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '');
@@ -216,6 +224,20 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       await db.update('users', user.uid, { username });
       return json({ ok: true, username });
+    }
+
+    // رفع صورتك الشخصية (أو حذفها): صورة JPEG أو PNG صغيرة (التطبيق يقصّها مربعة ويصغّرها)
+    if (pathname === '/profile/avatar' && request.method === 'POST') {
+      const body = (await request.json().catch(() => ({}))) as { image?: unknown; remove?: unknown };
+      if (body.remove === true) { await hub(user.uid).setAvatar(null); return json({ ok: true }); }
+      if (typeof body.image !== 'string' || body.image.length > 200_000) return json({ error: 'bad-image' }, 400);
+      let bytes: Uint8Array;
+      try { bytes = Uint8Array.from(atob(body.image), (c) => c.charCodeAt(0)); } catch { return json({ error: 'bad-image' }, 400); }
+      const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+      const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+      if (!jpeg && !png) return json({ error: 'bad-image' }, 400);
+      const at = await hub(user.uid).setAvatar(bytes.buffer as ArrayBuffer, png ? 'image/png' : 'image/jpeg');
+      return json({ ok: true, at });
     }
 
     // ───── الإعلانات ─────
