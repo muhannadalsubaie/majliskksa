@@ -111,9 +111,9 @@ describe('domino and jackaroo tables', () => {
     expect(step?.kind).toBe('other');
     const moved = runAutoStep(r.table, step!, rng);
     expect(moved.table.ludo!.tokens[0][0]).toBe(13);
-    expect(personalize(moved.events[0], ['مهند'], 0)).toBe('أنت تحركت من 10 إلى 13');
+    expect(personalize(moved.events[0], ['مهند'], 0)).toBe('أنت تحركت من 11 إلى 14');
     expect(moved.events[1]).toBe('في منطقة أمان');
-    expect(viewFor(moved.table, 'u1').ludoLog.slice(-2)).toEqual(['أنت تحركت من 10 إلى 13', 'في منطقة أمان']);
+    expect(viewFor(moved.table, 'u1').ludoLog.slice(-2)).toEqual(['أنت تحركت من 11 إلى 14', 'في منطقة أمان']);
     expect(parseLudo({ type: 'move', token: 'x' }, 0)).toBeNull();
   });
 });

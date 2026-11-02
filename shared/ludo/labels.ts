@@ -1,6 +1,6 @@
 // نصوص لودو لقارئ الشاشة والإعلانات.
 import {
-  type LudoState, type Progress, type TokenRef, FINISH, LAST_TRACK, SAFE, STARTS, absPos, capturesAt, controlledOwner, isSafeSpot, onTrack, teamOf,
+  type LudoState, type Progress, type TokenRef, FINISH, LAST_TRACK, SAFE, absPos, capturesAt, controlledOwner, isSafeSpot, onTrack, teamOf,
 } from './engine';
 
 export const COLOR_NAMES = ['الأحمر', 'الأزرق', 'الأصفر', 'الأخضر'];
@@ -24,12 +24,11 @@ export function safetyText(s: LudoState, owner: number, p: Progress): string {
 }
 
 /**
- * رقم الخانة لقارئ الشاشة: خانات المسار مرقّمة من 0 (خانة بدايتك) إلى 51 باتجاه اللعب،
- * فتعرف بُعد كل حجر عن غيره. (للمشاهد: من خانة بداية اللاعب الأول)
+ * رقم الخانة: خانات المسار مرقّمة من 1 إلى 52 باتجاه اللعب، ثابتة للجميع (نفس الأرقام المرسومة
+ * على اللوحة عند كل لاعب)، فكل اللاعبين يسمعون نفس الرقم لنفس الخانة.
  */
-export function squareNumber(owner: number, p: Progress, me: number): number {
-  const base = STARTS[me >= 0 ? me : 0];
-  return (absPos(owner, p) - base + 52) % 52;
+export function squareNumber(owner: number, p: Progress, _me: number): number {
+  return absPos(owner, p) + 1;
 }
 
 /** مكان الحجر برقم الخانة، و"منطقة أمان" بس لو كان على خانة أمان من خانات اللوحة */
