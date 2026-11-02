@@ -1,15 +1,15 @@
 // الدومينو والجاكارو على طاولات مجلسك: بدء المباراة، تطبيق الحركات وإعلاناتها، دور الروبوت،
 // وما يراه كل لاعب (بلا كشف قطع/أوراق غيره). البلوت له منطقه في table.ts.
 import type { TableData } from './table';
-import { BOT_THINK_MS } from './economy';
+import { human } from './botPace';
 import {
-  type DominoAction, type DominoState, type Side, type Tile, applyDomino, newMatch as newDomino, nextHand as nextDominoHand,
+  type DominoAction, type DominoState, type Side, type Tile, applyDomino, newMatch as newDomino, nextHand as nextDominoHand, playable as dominoPlayable,
 } from './domino/engine';
 import { dominoBotAction } from './domino/bot';
 import { handAnnouncement as dominoHandText, moveAnnouncement as dominoMoveText } from './domino/labels';
 import {
   type Card, type JackarooAction, type JackarooState, type MoveSpec, COMPLEX_RULES, DEFAULT_RULES as JACKAROO_CLASSIC,
-  applyJackaroo, newGame as newJackaroo, teamOf,
+  applyJackaroo, legalMoves as jackarooLegal, newGame as newJackaroo, teamOf,
 } from './jackaroo/engine';
 import { jackarooBotAction } from './jackaroo/bot';
 import { moveAnnouncement as jackarooMoveText } from './jackaroo/labels';
@@ -165,14 +165,30 @@ const autoSeat = (t: TableData, seat: number) => {
 
 /** هل يجب أن يحدث شيء تلقائياً (روبوت، أو صكة دومينو جديدة)؟ ومتى؟ */
 export function otherAutoDelay(t: TableData, rng: Rng): number | null {
-  const think = () => BOT_THINK_MS.min + Math.floor(rng() * (BOT_THINK_MS.max - BOT_THINK_MS.min));
+  // وقت تفكير مثل اللاعب الحقيقي، حسب القرار
   if (t.domino) {
-    if (t.domino.phase === 'handOver') return 5000;
-    if ((t.domino.phase === 'playing' || t.domino.phase === 'chooseStarter') && autoSeat(t, t.domino.turn)) return think();
+    const d = t.domino;
+    if (d.phase === 'handOver') return 5000;
+    if (d.phase === 'chooseStarter' && autoSeat(t, d.turn)) return human(rng, 1500, 3000);
+    if (d.phase === 'playing' && autoSeat(t, d.turn)) {
+      const options = dominoPlayable(d, d.turn).length;
+      if (!d.line.length) return human(rng, 1500, 3000); // أول قطعة
+      if (options === 0) return human(rng, 1000, 2000); // جلا أو سحب
+      if (options === 1) return human(rng, 1000, 1900);
+      return human(rng, 1600, 3400);
+    }
   }
-  if (t.jackaroo?.phase === 'playing' && autoSeat(t, t.jackaroo.turn)) return think();
+  if (t.jackaroo?.phase === 'playing' && autoSeat(t, t.jackaroo.turn)) {
+    const moves = jackarooLegal(t.jackaroo, t.jackaroo.turn).length;
+    if (moves === 0) return human(rng, 1500, 2800); // حرق ورقة
+    if (moves === 1) return human(rng, 1300, 2200);
+    return human(rng, 1800, 3800);
+  }
   if (t.ludo && t.ludo.phase !== 'over') {
-    if (autoSeat(t, t.ludo.turn)) return t.ludo.phase === 'move' ? 700 : think();
+    if (autoSeat(t, t.ludo.turn)) {
+      if (t.ludo.phase === 'roll') return human(rng, 800, 1700);
+      return movableTokens(t.ludo, t.ludo.turn).length > 1 ? human(rng, 900, 2000) : human(rng, 600, 1100);
+    }
     // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً للاعب أيضاً
     if (movableTokens(t.ludo, t.ludo.turn).length === 1) return 900;
   }

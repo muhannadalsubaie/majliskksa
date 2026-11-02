@@ -10,11 +10,12 @@ import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherA
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
 import type { LudoState } from './ludo/engine';
+import { human } from './botPace';
 import { type DominoUi, type JackarooUi, type LudoUi, dominoUi, jackarooUi, ludoUi } from './gameUi';
 
 /** أسماء المقاعد (للنصوص) */
 const seatNames = (t: TableData) => t.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
-import { BOT_REPLACE_AFTER_MS, BOT_THINK_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS, SPECTATOR_LEAVE_AFTER_MS } from './economy';
+import { BOT_REPLACE_AFTER_MS, KICK_BLOCK_MS, LOBBY_LEAVE_AFTER_MS, SPECTATOR_LEAVE_AFTER_MS } from './economy';
 
 export interface Member { uid: string; username: string; isBot: boolean }
 
@@ -621,7 +622,6 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   if (needsRedeal(g)) return { kind: 'redeal', delayMs: 2500 };
   // بين نهاية الجولة والجولة اللي بعدها 8 ثوانٍ
   if (handOver(g)) return { kind: 'nextHand', delayMs: 8000 };
-  const think = () => BOT_THINK_MS.min + Math.floor(rng() * (BOT_THINK_MS.max - BOT_THINK_MS.min));
   // نعطي الأولوية لمن عليه الدور، ثم إعلان البلوت لأي روبوت
   const order: Seat[] = [];
   if (g.phase === 'doubling') {
@@ -632,10 +632,28 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   for (const seat of order) {
     if (!t.seats[seat]?.isBot) continue;
     const action = botAction(g, seat);
-    // تمرير الدبل من الروبوت سريع، حتى لا يتأخر توزيع بقية الورق
-    if (action) return { kind: 'bot', seat, action, delayMs: action.type === 'doublePass' ? 300 : think() };
+    if (action) return { kind: 'bot', seat, action, delayMs: balootPace(g, seat, action, rng) };
   }
   return null;
+}
+
+/** وقت تفكير الروبوت في البلوت مثل اللاعب الحقيقي */
+function balootPace(g: GameState, seat: Seat, action: Action, rng: Rng): number {
+  switch (action.type) {
+    // «بس» و«ولا» أسرع، والشراء (حكم، صن، أشكل، تأكيد...) ياخذ تفكير
+    case 'bid': return action.bid.type === 'pass' ? human(rng, 1400, 3200) : human(rng, 2200, 4500);
+    case 'double': return human(rng, 2000, 4000);
+    case 'doublePass': return human(rng, 1000, 2200);
+    case 'doubleLock': return human(rng, 1500, 3000);
+    case 'play': {
+      const options = legalCardsFor(g, seat).length;
+      if (options <= 1) return human(rng, 900, 1600); // ورقة وحدة مسموحة
+      if (g.trickNo >= 7) return human(rng, 800, 1500); // آخر أكلة
+      if (!g.trick.length) return human(rng, 1600, 3400); // بداية الأكلة
+      return human(rng, 1200, 2800);
+    }
+    default: return human(rng, 600, 1200); // إعلان مشروع أو بلوت
+  }
 }
 
 export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {

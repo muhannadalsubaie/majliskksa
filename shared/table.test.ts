@@ -159,7 +159,8 @@ describe('table', () => {
       expect(events.some((e) => / اشترى (حكم|صن)/.test(e))).toBe(true);
       // الدبل يُعلن قبل مقفل/مفتوح
       const i = events.findIndex((e) => / اشترى دبل$/.test(e));
-      if (i >= 0) expect(events[i + 1]).toMatch(/^(مقفل|مفتوح|وُزّعت|القرار)/);
+      // (في الصن ما فيه مقفل/مفتوح: يبدأ اللعب بعده مباشرة)
+      if (i >= 0) expect(events[i + 1]).toMatch(/^(مقفل|مفتوح|وُزّعت|القرار)|^[^:]+: /);
     }
   });
 
