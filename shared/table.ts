@@ -10,6 +10,7 @@ import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherA
 import type { DominoState } from './domino/engine';
 import type { JackarooState } from './jackaroo/engine';
 import type { LudoState } from './ludo/engine';
+import { personalize as personalizeLudo } from './ludo/labels';
 import { human } from './botPace';
 import { type DominoUi, type JackarooUi, type LudoUi, dominoUi, jackarooUi, ludoUi } from './gameUi';
 
@@ -802,7 +803,8 @@ export function viewFor(t: TableData, uid: string): TableView {
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
     startCounts: allowedPlayers(t),
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
-    ludoLog: t.ludo ? t.ludoLog ?? [] : [],
+    // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
+    ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
     ui: t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null,
   };
 }

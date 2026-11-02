@@ -9,6 +9,7 @@ import {
 } from '../../shared/table';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
+import { personalize as personalizeLudo } from '../../shared/ludo/labels';
 import { DominoError } from '../../shared/domino/engine';
 import { JackarooError } from '../../shared/jackaroo/engine';
 import { Realtime, type SessionDescription } from './realtime';
@@ -884,10 +885,13 @@ export class TableRoom extends DurableObject<Env> {
   private broadcast(events: string[], except?: string, voices?: string[]) {
     const t = this.table;
     if (!t) return;
+    const names = t.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
     for (const ws of this.ctx.getWebSockets()) {
       const { uid } = ws.deserializeAttachment() as { uid: string };
       try {
-        if ((events.length || voices?.length) && uid !== except) ws.send(JSON.stringify({ type: 'events', events, ...(voices?.length ? { voices } : {}) }));
+        // إعلانات اللودو تُكمَّل لكل واحد: أرقام الخانات من خانة بدايته، و"أنت" بدل اسمه
+        const mine = t.ludo ? events.map((e) => personalizeLudo(e, names, seatOf(t, uid) ?? -1)) : events;
+        if ((events.length || voices?.length) && uid !== except) ws.send(JSON.stringify({ type: 'events', events: mine, ...(voices?.length ? { voices } : {}) }));
         ws.send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
       } catch { /* اتصال مغلق */ }
     }

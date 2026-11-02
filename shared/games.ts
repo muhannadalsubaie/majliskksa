@@ -122,7 +122,7 @@ function applyLudoEvents(t: TableData, action: LudoAction, rng: Rng): { table: T
   const after = applyLudo(t.ludo!, action, rng);
   // رمية تنتظر اختيار الحجر: نعلن الرمية وحدها (والحركة تُعلن بعدها بلا تكرار الرمية)
   const events = action.type === 'roll' && after.phase === 'move'
-    ? [`${names(t)[action.seat]} رمى ${rollName(after.dice!)}`]
+    ? [`⟦v|${action.seat}|رميت ${rollName(after.dice!)}|%n رمى ${rollName(after.dice!)}⟧`]
     : ludoMoveText(after, names(t), -1, action.type === 'roll');
   // سجل اللودو: كل رمية وحركة بالترتيب (آخر 150)
   const ludoLog = [...(t.ludoLog ?? []), ...events.filter(Boolean)].slice(-150);

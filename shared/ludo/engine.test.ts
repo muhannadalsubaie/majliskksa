@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { seededRng } from '../baloot/testing';
 import { ludoBotAction } from './bot';
 import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, newGame } from './engine';
-import { moveAnnouncement, optionText } from './labels';
+import { moveAnnouncement, optionText, personalize, squareText } from './labels';
 
 /** نرد مضبوط: يرجع القيم بالترتيب */
 const dice = (...vals: number[]) => { let i = 0; return () => { const v = vals[i++ % vals.length]; return v === 6 ? 0.1 : 0.25 + (v - 1) * 0.15 + 0.01; }; };
@@ -47,10 +47,33 @@ describe('ludo', () => {
     s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(1));
     expect(s.tokens[1][0]).toBe(-1);
     expect(s.turn).toBe(0);
-    expect(moveAnnouncement(s, ['أنت', 'سالم', 'فهد', 'علي'], 0)).toContain('أكل حجر سالم 1، ورجع للبيت');
+    const names = ['مهند', 'سالم', 'فهد', 'علي'];
+    const lines = moveAnnouncement(s, names, -1);
+    // لك: أرقام من خانة بدايتك، و"أنت"
+    expect(lines.map((l) => personalize(l, names, 0))).toEqual(['رميت واحد، وتحركت من 10 إلى 11', 'أكلت حجر سالم 1، ورجع للبيت', 'ترمي مرة أخرى']);
+    // لسالم: نفس الحركة بأرقام لوحته هو، وحجره اللي انأكل "حجرك"
+    expect(lines.map((l) => personalize(l, names, 1))).toEqual(['مهند رمى واحد، وتحرك من 49 إلى 50', 'مهند أكل حجرك 1، ورجع للبيت', 'مهند يرمي مرة أخرى']);
     // خانة النجمة 8 آمنة: الأخضر عند 47 (مطلق 8)
     const t = base({ tokens: [[2, -1, -1, -1], [47, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     expect(capturesAt(t, 0, 8)).toEqual([]);
+  });
+
+  it('announces moves by board numbers, and "منطقة أمان" only on the safe squares', () => {
+    const names = ['مهند', 'سالم', 'فهد', 'علي'];
+    // من 5 إلى 8 (خانة نجمة آمنة)
+    let s = base({ tokens: [[5, -1, -1, -1], [20, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    s = applyLudo(s, { type: 'roll', seat: 0 }, dice(3));
+    s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(3));
+    expect(moveAnnouncement(s, names, -1, false).map((l) => personalize(l, names, 0))).toEqual(['أنت تحركت من 5 إلى 8', 'في منطقة أمان']);
+    // من 26 إلى 29: خانة عادية، يقرأ الرقم بس
+    s = base({ tokens: [[26, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    s = applyLudo(s, { type: 'roll', seat: 0 }, dice(3));
+    s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(3));
+    expect(moveAnnouncement(s, names, -1, false).map((l) => personalize(l, names, 0))).toEqual(['أنت تحركت من 26 إلى 29']);
+    expect(moveAnnouncement(s, names, -1, false).map((l) => personalize(l, names, 2))).toEqual(['مهند تحرك من 0 إلى 3']);
+    // أماكن الأحجار: "منطقة أمان" بس على خانات الأمان، والباقي رقم بس
+    expect(squareText(s, 0, 29, 0)).toBe('في الخانة 29');
+    expect(squareText(s, 0, 8, 0)).toBe('في الخانة 8، منطقة أمان');
   });
 
   it('three sixes in a row lose the turn', () => {

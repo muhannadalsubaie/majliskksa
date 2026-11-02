@@ -4,6 +4,7 @@ import { applyOther, gameTitle, parseDomino, parseJackaroo, parseLudo } from './
 import { addBot, leave, newTable, nextAutoStep, runAutoStep, startAny, stopGame, viewFor, type TableData } from './table';
 import { playable } from './domino/engine';
 import { legalMoves } from './jackaroo/engine';
+import { personalize } from './ludo/labels';
 
 const owner = { uid: 'u1', username: 'مهند' };
 
@@ -104,12 +105,15 @@ describe('domino and jackaroo tables', () => {
     // نرد ثابت 3: حجر واحد فقط يتحرك (البقية في البيت)
     const three = () => 0.25 + 2 * 0.15 + 0.01;
     const r = applyOther(t, parseLudo({ type: 'roll' }, 0)!, three);
-    expect(r.events).toEqual(['مهند رمى ثلاثة']);
+    expect(r.events.map((e) => personalize(e, ['مهند'], 0))).toEqual(['رميت ثلاثة']);
+    expect(r.events.map((e) => personalize(e, ['مهند'], 1))).toEqual(['مهند رمى ثلاثة']);
     const step = nextAutoStep(r.table, rng);
     expect(step?.kind).toBe('other');
     const moved = runAutoStep(r.table, step!, rng);
     expect(moved.table.ludo!.tokens[0][0]).toBe(13);
-    expect(moved.events[0]).toBe('حجر مهند 1 يتقدم ثلاثة');
+    expect(personalize(moved.events[0], ['مهند'], 0)).toBe('أنت تحركت من 10 إلى 13');
+    expect(moved.events[1]).toBe('في منطقة أمان');
+    expect(viewFor(moved.table, 'u1').ludoLog.slice(-2)).toEqual(['أنت تحركت من 10 إلى 13', 'في منطقة أمان']);
     expect(parseLudo({ type: 'move', token: 'x' }, 0)).toBeNull();
   });
 });

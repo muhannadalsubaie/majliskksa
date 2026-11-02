@@ -32,13 +32,40 @@ export function squareNumber(owner: number, p: Progress, me: number): number {
   return (absPos(owner, p) - base + 52) % 52;
 }
 
-/** مكان الحجر برقم الخانة، وهل هو في أمان */
-export function squareText(s: LudoState, owner: number, p: Progress, me: number): string {
+/** مكان الحجر برقم الخانة، و"منطقة أمان" بس لو كان على خانة أمان من خانات اللوحة */
+export function squareText(_s: LudoState, owner: number, p: Progress, me: number): string {
   if (p === -1) return 'في البيت';
   if (p === FINISH) return 'وصل المنزل';
   if (p > LAST_TRACK) return `في ${owner === me ? 'ممر المنزل' : 'ممر منزله'}، الخانة ${p - LAST_TRACK} من 6`;
-  const safety = safetyText(s, owner, p);
-  return `في الخانة ${squareNumber(owner, p, me)}${safety ? `، ${safety}` : ''}`;
+  return `في الخانة ${squareNumber(owner, p, me)}${SAFE.has(absPos(owner, p)) ? '، منطقة أمان' : ''}`;
+}
+
+/** رقم المكان في إعلان الحركة: رقم الخانة، أو ممر المنزل، أو المنزل */
+function spotText(owner: number, p: Progress, me: number): string {
+  if (p === -1) return 'البيت';
+  if (p === FINISH) return 'المنزل';
+  if (p > LAST_TRACK) return `ممر المنزل ${p - LAST_TRACK}`;
+  return String(squareNumber(owner, p, me));
+}
+
+/**
+ * إعلانات اللودو تُكتب مرة للجميع بعلامات ⟦…⟧، وتُكمَّل لكل واحد قبل ما توصله:
+ * أرقام الخانات من خانة بدايته (نفس أرقام لوحته)، و"أنت" بدل اسمه.
+ *   ⟦v|مقعد|نص لك|نص لغيرك (%n = اسمه)⟧  ⟦sq|المالك|المكان⟧  ⟦tok|المالك|رقم الحجر⟧  ⟦team|الفريق⟧
+ */
+export function personalize(text: string, names: string[], me: number): string {
+  if (!text.includes('⟦')) return text;
+  return text.replace(/⟦([^⟧]*)⟧/g, (_m, body: string) => {
+    const [k, a, b, c] = body.split('|');
+    const x = Number(a);
+    switch (k) {
+      case 'v': return x === me ? b : (c ?? '').replace('%n', names[x] ?? '');
+      case 'sq': return spotText(x, Number(b) as Progress, me);
+      case 'tok': return tokenName({ owner: x, index: Number(b) }, names, me);
+      case 'team': return me >= 0 && teamOf(me) === x ? 'فاز فريقك!' : `فاز فريق ${names[x] ?? ''} و${names[x + 2] ?? ''}`;
+      default: return '';
+    }
+  });
 }
 
 /** أين الحجر (ومع الحالة: هل هو في أمان) */
@@ -58,12 +85,12 @@ export function optionText(s: LudoState, seat: number, index: number, names: str
   const roll = s.dice ?? 0;
   const to = from === -1 ? 0 : from + roll;
   const who = owner === seat ? `حجرك ${index + 1}` : `حجر ${names[owner]} ${index + 1}`;
-  const parts = [from === -1 ? `${who}: يطلع من البيت` : `${who}: يتقدم ${rollName(roll)}`];
+  const parts = [from === -1 ? `${who}: يطلع من البيت` : `${who}: يتقدم ${rollName(roll)}، من ${spotText(owner, from, seat)} إلى ${spotText(owner, to, seat)}`];
   const caps = capturesAt(s, owner, to);
   if (caps.length) parts.push(`يأكل ${caps.map((c) => tokenName(c, names, seat)).join(' و')}`);
   if (to === FINISH) parts.push('ويصل المنزل');
   else if (to > LAST_TRACK && from <= LAST_TRACK) parts.push('ويدخل ممر المنزل');
-  else if (onTrack(to) && to > 0 && SAFE.has(absPos(owner, to))) parts.push('إلى خانة آمنة');
+  else if (onTrack(to) && SAFE.has(absPos(owner, to))) parts.push('منطقة أمان');
   else if (onTrack(to) && danger(s, owner, to)) parts.push('تحذير: خصم خلفه قريب');
   return parts.join('، ');
 }
@@ -76,29 +103,43 @@ export function danger(s: LudoState, owner: number, p: Progress): boolean {
     s.tokens[o].some((q) => onTrack(q) && ((sq - absPos(o, q) + 52) % 52) >= 1 && ((sq - absPos(o, q) + 52) % 52) <= 6 && q + ((sq - absPos(o, q) + 52) % 52) <= LAST_TRACK));
 }
 
-/** إعلان آخر حركة للجميع */
-/** withRoll = false: الرمية أُعلنت قبل الحركة (اللعب على الطاولة)، فلا نكررها */
-export function moveAnnouncement(s: LudoState, names: string[], me: number, withRoll = true): string[] {
+/**
+ * إعلان آخر حركة للجميع (بعلامات تُكمَّل لكل واحد بـ personalize):
+ * "أنت تحركت من 5 إلى 8"، "سالم تحرك من 26 إلى 29"، و"منطقة أمان" بس لو وقف على خانة أمان.
+ * withRoll = false: الرمية أُعلنت قبل الحركة (اللعب على الطاولة)، فلا نكررها
+ */
+export function moveAnnouncement(s: LudoState, _names: string[], _me: number, withRoll = true): string[] {
   const r = s.lastMove;
   if (!r) return [];
-  const who = r.seat === me ? 'أنت' : names[r.seat];
-  if (r.threeSixes) return [`${who} رمى ستة ثالثة، ضاع الدور`];
-  if (!r.token) return [`${who} رمى ${rollName(r.roll)}، لا حركة${r.extraTurn ? '، ويرمي مرة أخرى' : ''}`];
-  const t = tokenName(r.token, names, me);
-  const step = r.finished ? 'وصل المنزل' : `يتقدم ${rollName(r.roll)}`;
-  const out = withRoll
-    ? [r.from === -1 ? `${who} رمى ستة، وطلّع ${t}` : `${who} رمى ${rollName(r.roll)}، ${t} ${step}`]
-    : [r.from === -1 ? `${who} طلّع ${r.token.owner === r.seat && r.seat !== me ? `حجره ${r.token.index + 1}` : t}` : `${t} ${step}`];
-  for (const c of r.captured) out.push(`أكل ${tokenName(c, names, me)}، ورجع للبيت`);
-  // بعد الحركة: هل الحجر في أمان؟
-  if (!r.finished && r.to !== null) {
-    const safety = safetyText(s, r.token.owner, r.to);
-    if (safety) out.push(`${t} ${safety}`);
+  const seat = r.seat;
+  const who = (meText: string, otherText: string) => `⟦v|${seat}|${meText}|${otherText}⟧`;
+  const roll = rollName(r.roll);
+  if (r.threeSixes) return [who('رميت ستة ثالثة، ضاع دورك', '%n رمى ستة ثالثة، ضاع الدور')];
+  if (!r.token) {
+    return [who(`رميت ${roll}، ما عندك حركة`, `%n رمى ${roll}، لا حركة`) + (r.extraTurn ? who('، وترمي مرة أخرى', '، ويرمي مرة أخرى') : '')];
   }
+  const { owner } = r.token;
+  // تلعب بأحجار شريكك بعد ما خلصت أحجارك
+  const other = owner !== seat ? ` ⟦tok|${owner}|${r.token.index}⟧` : '';
+  let line: string;
+  if (r.from === -1) {
+    line = withRoll
+      ? who(`رميت ستة، وطلّعت${other ? ` ${other.trim()}` : ' حجر'}`, `%n رمى ستة، وطلّع${other ? ` ${other.trim()}` : ' حجر'}`)
+      : who(`أنت طلّعت${other ? ` ${other.trim()}` : ' حجر'}`, `%n طلّع${other ? ` ${other.trim()}` : ' حجر'}`);
+    line += ` إلى ⟦sq|${owner}|0⟧`;
+  } else {
+    const path = `من ⟦sq|${owner}|${r.from}⟧ إلى ⟦sq|${owner}|${r.to}⟧`;
+    line = withRoll
+      ? who(`رميت ${roll}، و${other ? `حرّكت${other}` : 'تحركت'}`, `%n رمى ${roll}، و${other ? `حرّك${other}` : 'تحرك'}`) + ` ${path}`
+      : who(`أنت ${other ? `حرّكت${other}` : 'تحركت'}`, `%n ${other ? `حرّك${other}` : 'تحرك'}`) + ` ${path}`;
+  }
+  const out = [line];
+  for (const c of r.captured) out.push(who('أكلت', '%n أكل') + ` ⟦tok|${c.owner}|${c.index}⟧، ورجع للبيت`);
+  // "منطقة أمان" بس على خانات الأمان المرسومة في اللوحة
+  if (!r.finished && r.to !== null && onTrack(r.to) && SAFE.has(absPos(owner, r.to))) out.push('في منطقة أمان');
   if (s.phase === 'over' && s.winner !== null) {
-    if (s.rules.teams) out.push(teamOf(me) === s.winner ? 'فاز فريقك!' : `فاز فريق ${names[s.winner]} و${names[s.winner + 2]}`);
-    else out.push(s.winner === me ? 'فزت!' : `فاز ${names[s.winner]}`);
-  } else if (r.extraTurn) out.push(`${r.seat === me ? 'ترمي' : 'يرمي'} مرة أخرى`);
+    out.push(s.rules.teams ? `⟦team|${s.winner}⟧` : `⟦v|${s.winner}|فزت!|فاز %n⟧`);
+  } else if (r.extraTurn) out.push(who('ترمي مرة أخرى', '%n يرمي مرة أخرى'));
   return out;
 }
 
