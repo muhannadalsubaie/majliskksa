@@ -1,3 +1,4 @@
+import { sendPush } from './push';
 import { COINS, ONE_TIME_GIFTS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS } from '../../shared/games';
@@ -332,13 +333,24 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const b = await body();
       const friend = String(b.uid ?? '');
       if (!(await hub(user.uid).isFriend(friend))) return json({ error: 'not-friends' }, 400);
-      if (!(await hub(friend).isOnline())) return json({ error: 'offline' }, 400);
+      // غير متصل: تصله الدعوة كإشعار على جواله (إن كان سمح بالإشعارات)
+      const online = await hub(friend).isOnline();
+      const tokens = online ? [] : await hub(friend).pushTokens();
+      if (!online && !tokens.length) return json({ error: 'offline' }, 400);
       const tableId = inviteFriendMatch[1];
       // يمكن أن تحجز الدعوة مقعداً محدداً (من شاشة المقاعد)
       const seat = typeof b.seat === 'number' ? b.seat : undefined;
       const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid, seat);
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
-      await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName: await usernameOf(user.uid), at: Date.now() });
+      const fromName = await usernameOf(user.uid);
+      await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName, at: Date.now() });
+      if (!online) {
+        const game = (await env.TABLES.get(env.TABLES.idFromString(tableId)).gameName().catch(() => '')) || 'بلوت';
+        const dead = await sendPush(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '', tokens, {
+          title: 'دعوة للعب', body: `${fromName ?? 'صديقك'} دعاك للعب ${game}`, data: { type: 'invite', tableId },
+        }).catch(() => []);
+        await hub(friend).removePushTokens(dead);
+      }
       return json({ ok: true });
     }
 
@@ -423,6 +435,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // قبول/رفض دعوة طاولة
+    // رمز إشعارات هذا الجهاز (بعد ما يسمح المستخدم بالإشعارات)
+    if (pathname === '/profile/push-token' && request.method === 'POST') {
+      const b = await body();
+      const token = String(b.token ?? '');
+      if (token.length < 20 || token.length > 4096) return json({ error: 'bad-request' }, 400);
+      await hub(user.uid).addPushToken(token);
+      return json({ ok: true });
+    }
+
     if (pathname === '/invites/respond' && request.method === 'POST') {
       const b = await body();
       const tableId = String(b.tableId ?? '');

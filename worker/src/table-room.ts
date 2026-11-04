@@ -293,6 +293,12 @@ export class TableRoom extends DurableObject<Env> {
     return { isPrivate: t.isPrivate, kind: kindOf(t), variant: t.variant ?? 'classic' };
   }
 
+  /** اسم لعبة الطاولة (لنص إشعار الدعوة) */
+  async gameName(): Promise<string> {
+    const t = await this.load();
+    return t ? gameTitle(kindOf(t), t.variant) : '';
+  }
+
   async isMember(uid: string): Promise<boolean> {
     const t = await this.load();
     return !!t && (seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid));

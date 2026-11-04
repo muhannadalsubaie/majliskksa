@@ -136,6 +136,23 @@ export class UserHub extends DurableObject<Env> {
     await this.push();
   }
 
+  /** رموز إشعارات أجهزة المستخدم (آخر 5 أجهزة) */
+  async addPushToken(token: string): Promise<void> {
+    const list = ((await this.ctx.storage.get<string[]>('pushTokens')) ?? []).filter((t) => t !== token);
+    list.push(token);
+    await this.ctx.storage.put('pushTokens', list.slice(-5));
+  }
+
+  async pushTokens(): Promise<string[]> {
+    return (await this.ctx.storage.get<string[]>('pushTokens')) ?? [];
+  }
+
+  async removePushTokens(dead: string[]): Promise<void> {
+    if (!dead.length) return;
+    const list = ((await this.ctx.storage.get<string[]>('pushTokens')) ?? []).filter((t) => !dead.includes(t));
+    await this.ctx.storage.put('pushTokens', list);
+  }
+
   async pushInvite(invite: TableInvite): Promise<void> {
     const invites = (await this.invitesNow()).filter((i) => i.tableId !== invite.tableId);
     invites.push(invite);
