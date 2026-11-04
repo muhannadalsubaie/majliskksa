@@ -89,6 +89,8 @@ export interface JackarooState {
   phase: 'playing' | 'over';
   winnerTeam: number | null;
   lastMove: MoveRecord | null;
+  /** لاعبون ما عندهم أي لعب صالح بكل أوراقهم: انحرقت أوراقهم تلقائياً وتجاوزهم الدور لين التوزيعة الجاية */
+  autoBurned?: number[] | null;
 }
 
 export type JackarooAction =
@@ -151,7 +153,24 @@ export function newGame(rng: Rng, rules: JackarooRules = DEFAULT_RULES): Jackaro
     hands: [], deck: [], pile: [], dealer: PLAYERS - 1, dealNo: DEAL_SIZES.length,
     turn: 0, forcedBurn: null, phase: 'playing', winnerTeam: null, lastMove: null,
   };
-  return deal(s, rng);
+  return burnStuck(deal(s, rng), rng, []);
+}
+
+/**
+ * اللي عليه الدور وما يقدر يلعب أي ورقة من أوراقه (مثلاً كل أحجاره في البيت وما عنده أص ولا شايب):
+ * تنحرق أوراقه كلها تلقائياً ويتجاوزه الدور على طول لين التوزيعة الجاية. ويتكرر على اللي بعده.
+ */
+function burnStuck(s: JackarooState, rng: Rng, burned: number[]): JackarooState {
+  let next = s;
+  for (let guard = 0; guard < PLAYERS * 2 && next.phase === 'playing'; guard++) {
+    const t = next.turn;
+    if (next.hands[t].length === 0 || next.forcedBurn === t || legalMoves(next, t).length > 0) break;
+    next = { ...next, pile: [...next.pile, ...next.hands[t]], hands: next.hands.map((h, i) => (i === t ? [] : h)), turn: nextSeat(t) };
+    burned.push(t);
+    if (next.hands.every((h) => h.length === 0)) { next = deal(next, rng); continue; }
+    while (next.hands[next.turn].length === 0) next.turn = nextSeat(next.turn);
+  }
+  return burned.length ? { ...next, autoBurned: burned } : next;
 }
 
 // ───── المواضع ─────
@@ -417,14 +436,15 @@ export function applyJackaroo(s: JackarooState, a: JackarooAction, rng: Rng): Ja
     }
   }
   next.lastMove = record;
+  next.autoBurned = null;
   // فاز فريق بإدخال أحجاره الثمانية
   for (const team of [0, 1]) {
     if (isFinished(next, team) && isFinished(next, team + 2)) return { ...next, phase: 'over', winnerTeam: team };
   }
   next.turn = nextSeat(a.seat);
   // انتهت أوراق الجميع: توزيعة جديدة
-  if (next.hands.every((h) => h.length === 0)) return deal(next, rng);
+  if (next.hands.every((h) => h.length === 0)) return burnStuck(deal(next, rng), rng, []);
   // من لم تبق معه أوراق (أحرقتها البنت السوداء) يتخطاه الدور
   while (next.hands[next.turn].length === 0) next.turn = nextSeat(next.turn);
-  return next;
+  return burnStuck(next, rng, []);
 }

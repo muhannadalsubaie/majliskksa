@@ -22,8 +22,21 @@ describe('jackaroo', () => {
   it('uses one 52-card deck dealt 4, 4 then 5 cards', () => {
     expect(fullDeck()).toHaveLength(52);
     const s = newGame(seededRng(2));
-    expect(s.hands.map((h) => h.length)).toEqual([4, 4, 4, 4]);
+    // 4 لكل لاعب (اللي ما عنده لعب انحرقت أوراقه تلقائياً)
+    expect(s.hands.map((h) => h.length + 0).reduce((x, y) => x + y, 0) + s.pile.length).toBe(16);
+    for (const i of s.autoBurned ?? []) expect(s.hands[i]).toHaveLength(0);
     expect(s.deck).toHaveLength(36);
+  });
+
+  it('a player with no legal move burns all cards automatically and is skipped', () => {
+    // كل الأحجار في البيت ومعه أوراق بلا أص ولا شايب
+    const s = setup([[], [], [], []], [card('5'), card('Q'), card('9')]);
+    const s1 = { ...s, turn: 3, hands: [[card('5')], [card('A')], [card('7')], [card('2')]] };
+    const after = applyJackaroo(s1, { type: 'burn', seat: 3, card: card('2') }, seededRng(1));
+    // الدور على 0: ما عنده لعب (5 وكل أحجاره في البيت) فتنحرق ورقته ويروح الدور لـ1
+    expect(after.autoBurned).toEqual([0]);
+    expect(after.hands[0]).toHaveLength(0);
+    expect(after.turn).toBe(1);
   });
 
   it('only Ace or King brings a marble out to its base', () => {
@@ -119,9 +132,12 @@ describe('jackaroo', () => {
     const s = setup([[], [track(10)], [], []], [card('A')]);
     const names = ['أنت', 'سالم', 'فهد', 'علي'];
     const after = applyJackaroo(s, { type: 'play', seat: 0, card: card('A'), move: { kind: 'out', marble: { owner: 0, index: 0 } } }, seededRng(7));
-    expect(cardName(card('K'))).toBe('شايب');
-    expect(moveAnnouncement(after, names, 0)[0]).toBe('أنت لعب أص: إنزال حجرك 1');
-    expect(boardSummary(after, names, 0)).toMatch(/^أحجارك: 1 على قاعدته/);
+    expect(cardName(card('K'))).toBe('شايب سبيت');
+    expect(moveAnnouncement(after, names, 0)[0]).toBe('أنت لعب أكة سبيت: إنزال حجرك 1');
+    expect(boardSummary(after, names, 0)).toMatch(/^أحجارك: 1 في الخانة 0، على قاعدته/);
+    // رقم الخانة نفسه للجميع
+    expect(boardSummary(after, names, 1)).toMatch(/أحجار أنت: 1 في الخانة 0،/);
+    expect(moveAnnouncement(after, names, 0)[1]).toBe('حجرك 1 في الخانة 0، على قاعدته');
   });
 });
 
