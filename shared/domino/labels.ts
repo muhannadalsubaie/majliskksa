@@ -17,7 +17,7 @@ export const pipName = (p: Pip) => NUM[p];
 export function endsLabel(s: DominoState): string {
   const e = ends(s);
   if (!e) return 'الطاولة فارغة';
-  return `الطرفان: يمين ${NUM[e.right]}، يسار ${NUM[e.left]}`;
+  return `يمين ${NUM[e.right]} يسار ${NUM[e.left]}`;
 }
 
 /** خط اللعب كاملاً من اليمين لليسار (كما يُرى في الصفحة العربية) */

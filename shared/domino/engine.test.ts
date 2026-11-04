@@ -136,7 +136,7 @@ describe('domino', () => {
     const names = ['أنت', 'سالم', 'فهد', 'علي'];
     s = applyDomino(s, { type: 'play', seat: s.turn, tile: t(6, 6) });
     expect(moveAnnouncement(s, names)).toMatch(/لعب 6 6$/);
-    expect(endsLabel(s)).toBe('الطرفان: يمين 6، يسار 6');
+    expect(endsLabel(s)).toBe('يمين 6 يسار 6');
     expect(lineLabel(s)).toBe('على الطاولة 1 قطع: 6 6');
     expect(pips(t(6, 5))).toBe(11);
     expect(handAnnouncement(s, names)).toEqual([]);
