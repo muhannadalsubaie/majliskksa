@@ -66,6 +66,10 @@ it('baloot needs K and Q of trump', () => {
   expect(hasBaloot(cards('KH QH 7S'), 'H')).toBe(true);
   expect(hasBaloot(cards('KH QS 7S'), 'H')).toBe(false);
   expect(hasBaloot(cards('KH QH'), null)).toBe(false);
+  // مية الشياب أو مية البنات في الحكم تلغي البلوت
+  expect(hasBaloot(cards('KH QH KS KD KC'), 'H')).toBe(false);
+  expect(hasBaloot(cards('KH QH QS QD QC'), 'H')).toBe(false);
+  expect(hasBaloot(cards('KH QH JS JD JC JH'), 'H')).toBe(true);
 });
 
 it('project points: sun doubles sira, fifty and hundred; four hundred stays 40', () => {

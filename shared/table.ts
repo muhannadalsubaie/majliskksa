@@ -650,6 +650,8 @@ function balootPace(g: GameState, seat: Seat, action: Action, rng: Rng): number 
       const options = legalCardsFor(g, seat).length;
       if (options <= 1) return human(rng, 900, 1600); // ورقة وحدة مسموحة
       if (g.trickNo >= 7) return human(rng, 800, 1500); // آخر أكلة
+      // بعد آخر ورقة في الأكلة تبقى الأكلة ظاهرة ٣ ثواني قبل ما تنسحب: الروبوت ما يبدأ الأكلة الجاية قبلها
+      if (!g.trick.length && g.trickNo > 0) return human(rng, 3300, 4600);
       if (!g.trick.length) return human(rng, 1600, 3400); // بداية الأكلة
       return human(rng, 1200, 2800);
     }
@@ -682,6 +684,8 @@ export interface GameView {
   hokmBid: GameState['hokmBid'];
   /** من اشترى الحكم الثاني (قبل وبعد ما يحدد اللون) */
   secondHokmSeat: Seat | null;
+  /** شراء ما تأكد بعد (قبل ما يصير عقد): مين اشترى وعلى وش — للإيماءة «فلان اشترى حكم» */
+  pendingBuy: { seat: Seat; kind: 'hokm' | 'sun' | 'ashkal' | 'secondHokm' } | null;
   contract: GameState['contract'];
   doubling: GameState['doubling'];
   trick: GameState['trick'];
@@ -742,6 +746,15 @@ export interface TableView {
   history: HandRecord[];
 }
 
+/** الشراء الحالي قبل ما يتأكد: صن/أشكل (يمكن ياخذه اللي قبله)، حكم ثاني، أو حكم */
+function pendingBuy(g: GameState): GameView['pendingBuy'] {
+  if (g.contract) return null;
+  if (g.sunClaim) return { seat: g.sunClaim.caller, kind: g.sunClaim.ashkal ? 'ashkal' : 'sun' };
+  if (g.secondHokm) return { seat: g.secondHokm.seat, kind: 'secondHokm' };
+  if (g.hokmBid) return { seat: g.hokmBid.seat, kind: 'hokm' };
+  return null;
+}
+
 export function viewFor(t: TableData, uid: string): TableView {
   const mySeat = seatOf(t, uid);
   const g = t.game;
@@ -751,7 +764,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     const playing = mySeat !== null && !held;
     game = {
       phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, qaba: g.qaba, bidRound: g.bidRound,
-      hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
+      hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, pendingBuy: pendingBuy(g), contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
       trickNo: g.trickNo, tricksWon: g.tricksWon, lastHand: g.lastHand, outcome: g.outcome,
       handCounts: g.hands.map((h) => h.length),
       myHand: mySeat !== null ? g.hands[mySeat] : [],

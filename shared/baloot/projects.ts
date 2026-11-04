@@ -140,5 +140,8 @@ export function resolveProjects(declared: DeclaredProjects[], firstSeat: Seat, m
 
 export function hasBaloot(hand: Card[], trump: Suit | null): boolean {
   if (!trump) return false;
-  return hand.some((c) => c.suit === trump && c.rank === 'K') && hand.some((c) => c.suit === trump && c.rank === 'Q');
+  if (!(hand.some((c) => c.suit === trump && c.rank === 'K') && hand.some((c) => c.suit === trump && c.rank === 'Q'))) return false;
+  // مية الشياب (الأربعة شيبان) أو مية البنات في الحكم تلغي البلوت: الشايب أو البنت محسوبة في المية
+  const four = (r: Card['rank']) => hand.filter((c) => c.rank === r).length === 4;
+  return !four('K') && !four('Q');
 }
