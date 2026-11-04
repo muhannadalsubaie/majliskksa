@@ -56,6 +56,9 @@ export interface TableData {
   /** نوع اللعبة على الطاولة (الافتراضي بلوت) ونسختها (الجاكارو: عادي أو كمبلكس) */
   kind?: GameKind;
   variant?: GameVariant;
+  /** الدومينو: هدف المباراة (يكتبه المالك) والأربعة فرق أو فردي */
+  dominoTarget?: number;
+  dominoTeams?: boolean;
   domino?: DominoState | null;
   jackaroo?: JackarooState | null;
   ludo?: LudoState | null;
@@ -427,7 +430,31 @@ export function changeGame(t: TableData, kind: GameKind, variant: GameVariant): 
   return {
     ...t, kind, variant,
     game: null, domino: null, jackaroo: null, ludo: null, history: [], matchNo: 0, away: {}, hold: undefined,
-    dominoLog: undefined, ludoLog: undefined,
+    dominoLog: undefined, ludoLog: undefined, dominoTarget: undefined, dominoTeams: undefined,
+  };
+}
+
+/** خيارات اللعبة من صفحة المقاعد (قبل البدء): فردي/فرق، عادي/كمبلكس، وهدف الدومينو */
+export function setGameOptions(t: TableData, o: { teams?: boolean; complex?: boolean; target?: number }): TableData {
+  const kind = t.kind ?? 'baloot';
+  if (kind === 'ludo' && typeof o.teams === 'boolean') return { ...t, variant: o.teams ? 'teams' : 'classic' };
+  if (kind === 'jackaroo' && typeof o.complex === 'boolean') return { ...t, variant: o.complex ? 'complex' : 'classic' };
+  if (kind === 'domino') {
+    let next = t;
+    if (typeof o.teams === 'boolean') next = { ...next, dominoTeams: o.teams };
+    if (typeof o.target === 'number' && Number.isFinite(o.target)) next = { ...next, dominoTarget: Math.min(1000, Math.max(10, Math.round(o.target))) };
+    return next;
+  }
+  return t;
+}
+
+/** الخيارات الحالية للعرض في صفحة المقاعد */
+export function gameOptions(t: TableData): { teams: boolean; complex: boolean; target: number } {
+  const kind = t.kind ?? 'baloot';
+  return {
+    teams: kind === 'ludo' ? t.variant === 'teams' : kind === 'domino' ? t.dominoTeams !== false : true,
+    complex: t.variant === 'complex',
+    target: t.dominoTarget ?? (t.variant === 't150' ? 150 : t.variant === 't200' ? 200 : 100),
   };
 }
 
@@ -729,6 +756,10 @@ export interface TableView {
   game: GameView | null;
   kind: GameKind;
   variant: GameVariant;
+  /** خيارات اللعبة (لصفحة المقاعد): فرق، كمبلكس، هدف الدومينو */
+  options: { teams: boolean; complex: boolean; target: number };
+  /** اسم مالك الطاولة (يتحدث مع تغيّر المالك) */
+  ownerName: string;
   /** الدومينو والجاكارو: الحالة كاملة مع إخفاء قطع/أوراق الآخرين */
   domino: DominoState | null;
   jackaroo: JackarooState | null;
@@ -810,6 +841,8 @@ export function viewFor(t: TableData, uid: string): TableView {
     game,
     kind: t.kind ?? 'baloot',
     variant: t.variant ?? 'classic',
+    options: gameOptions(t),
+    ownerName: memberName(t, t.ownerUid) ?? '',
     domino: t.domino ? dominoViewFor(t.domino, mySeat) : null,
     jackaroo: t.jackaroo ? jackarooViewFor(t.jackaroo, mySeat) : null,
     ludo: t.ludo ?? null,

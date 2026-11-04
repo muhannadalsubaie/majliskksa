@@ -1,7 +1,7 @@
 // مساعدات العرض للتطبيقات الأصلية (أندرويد وآيفون) في الدومينو والجاكارو واللودو:
 // الخادم يحسب لكل لاعب حركاته المسموحة ونصوصها بالعربي، وقراءات اللوحة، ونص بداية دوره،
 // فلا تحتاج التطبيقات تعيد كتابة قوانين الألعاب — ترسم اللوحة وتعرض الأزرار وترسل الحركة كما هي.
-import { type DominoState, type Tile, canDraw, canPass, ends, fits, playable, sameTile } from './domino/engine';
+import { type DominoState, type Tile, canDraw, canPass, ends, fits, playable, sameTile, sideOf } from './domino/engine';
 import { endsLabel, handTileLabel, lineLabel, sideName as dominoSideName } from './domino/labels';
 import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn } from './jackaroo/engine';
 import { boardSummary as jkBoard, cardHint, cardName, marblePlace, moveText } from './jackaroo/labels';
@@ -75,7 +75,7 @@ export function dominoUi(s: DominoState, mySeat: number | null, names: string[])
     // الاختيار لك يُعد دورك (فيُنقال «دورك» مع نص الاختيار)
     myTurn: myTurn || choosing, starterOptions, canDraw: draw, canPass: pass, hand, ends: e, endsText: endsLabel(s), lineText: lineLabel(s),
     scoreText: `النقاط: ${s.scores.map((n, side) => `${sideNames[side]} ${n}`).join('، ')}. الهدف ${s.rules.target}`,
-    sideNames, mySide: mySeat === null ? -1 : s.rules.players === 4 ? mySeat % 2 : mySeat,
+    sideNames, mySide: mySeat === null ? -1 : sideOf(s.rules, mySeat),
     prompt: choosing ? 'فاز فريقك بالصكة: اختر من يبدأ، أنت أو شريكك' : !myTurn ? '' : legal.length ? `دورك. ${endsLabel(s)}` : draw ? `دورك. لا قطعة تصلح، اسحب من البنك. ${endsLabel(s)}` : `دورك. لا قطعة تصلح، جلا. ${endsLabel(s)}`,
   };
 }

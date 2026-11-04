@@ -21,6 +21,8 @@ export interface DominoRules {
   players: 2 | 3 | 4;
   /** هدف المباراة */
   target: number;
+  /** الأربعة: فريقين (الافتراضي) أو كل واحد لنفسه (false) */
+  teams?: boolean;
 }
 
 /** هدف المباراة المعتمد لكل عدد لاعبين (Pagat) */
@@ -110,8 +112,10 @@ export function shuffle<T>(items: T[], rng: Rng): T[] {
 // ───── الفرق ─────
 
 /** عدد الجوانب: فريقان مع 4 لاعبين، وإلا كل لاعب لنفسه */
-export const sidesCount = (r: DominoRules) => (r.players === 4 ? 2 : r.players);
-export const sideOf = (r: DominoRules, seat: number) => (r.players === 4 ? seat % 2 : seat);
+/** لعب فرق: أربعة لاعبين وما اختار المالك فردي */
+export const teamPlay = (r: DominoRules) => r.players === 4 && r.teams !== false;
+export const sidesCount = (r: DominoRules) => (teamPlay(r) ? 2 : r.players);
+export const sideOf = (r: DominoRules, seat: number) => (teamPlay(r) ? seat % 2 : seat);
 export const nextSeat = (r: DominoRules, seat: number) => (seat + 1) % r.players;
 
 // ───── الأطراف ─────
@@ -194,7 +198,7 @@ export function nextHand(s: DominoState, rng: Rng): DominoState {
   const dealt = dealHand(s.rules, s.scores, s.handNo + 1, s.nextStarter, rng);
   // فاز فريق بالصكة (في الشراكة): يختار من يبدأ، هو أو شريكه
   const winner = s.lastHand?.winnerSeat ?? null;
-  if (s.rules.players === 4 && winner !== null) return { ...dealt, phase: 'chooseStarter', chooser: winner, turn: winner };
+  if (teamPlay(s.rules) && winner !== null) return { ...dealt, phase: 'chooseStarter', chooser: winner, turn: winner };
   return dealt;
 }
 

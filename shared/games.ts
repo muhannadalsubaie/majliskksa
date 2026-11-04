@@ -23,9 +23,9 @@ export type GameKind = 'baloot' | 'domino' | 'jackaroo' | 'ludo';
 export type GameVariant = 'classic' | 'complex' | 'teams' | 't150' | 't200';
 export const GAME_NAMES: Record<GameKind, string> = { baloot: 'بلوت', domino: 'دومينو', jackaroo: 'جاكارو', ludo: 'لودو' };
 /** اسم اللعبة مع نسختها: "جاكارو كمبلكس"، "لودو فرق" */
-export const gameTitle = (kind: GameKind, variant?: GameVariant) =>
+export const gameTitle = (kind: GameKind, variant?: GameVariant, target?: number) =>
   GAME_NAMES[kind] + (kind === 'jackaroo' && variant === 'complex' ? ' كمبلكس' : kind === 'ludo' && variant === 'teams' ? ' فرق'
-    : kind === 'domino' ? ` ${dominoTarget(variant)}` : '');
+    : kind === 'domino' ? ` ${target ?? dominoTarget(variant)}` : '');
 /** هدف مباراة الدومينو: 100 أو 150 أو 200 */
 export const dominoTarget = (variant?: GameVariant) => (variant === 't150' ? 150 : variant === 't200' ? 200 : 100);
 /** النسخ الصالحة لكل لعبة (الأولى هي الافتراضية) */
@@ -51,7 +51,7 @@ export function startOther(t: TableData, rng: Rng): { table: TableData; events: 
   if (kindOf(t) === 'domino') {
     // لاعبين أو ثلاثة (كل واحد لنفسه) أو أربعة (فريقين)، والهدف 100 أو 150 أو 200
     const players = t.seats.filter(Boolean).length as 2 | 3 | 4;
-    const domino = newDomino(rng, { players, target: dominoTarget(t.variant) });
+    const domino = newDomino(rng, { players, target: t.dominoTarget ?? dominoTarget(t.variant), teams: t.dominoTeams !== false });
     const opening = domino.hands[domino.turn].filter((x) => x.a === x.b).sort((x, y) => y.a - x.a)[0];
     return {
       table: { ...t, domino, jackaroo: null, ludo: null, game: null, dominoLog: [{ hand: domino.handNo, lines: [] }] },

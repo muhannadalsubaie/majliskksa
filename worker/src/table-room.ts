@@ -5,7 +5,7 @@ import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  awayExpired, markAway, markBack, memberName, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
+  awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
 } from '../../shared/table';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
@@ -35,6 +35,7 @@ type ClientMessage =
   | { type: 'stop' }
   /** المالك يغيّر لعبة الطاولة (ينتقل الكل للعبة الجديدة) */
   | { type: 'changeGame'; kind: string; variant?: string }
+  | { type: 'setOptions'; teams?: boolean; complex?: boolean; target?: number }
   | { type: 'kick'; uid: string }
   | { type: 'ban'; uid: string }
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
@@ -642,6 +643,17 @@ export class TableRoom extends DurableObject<Env> {
         const next = changeGame(t, kind, variant);
         await this.save(next);
         this.broadcast([`غيّر مالك الطاولة اللعبة إلى ${gameTitle(kind, variant)}`]);
+        await this.publish(next);
+        break;
+      }
+      case 'setOptions': {
+        // خيارات اللعبة من صفحة المقاعد (المالك، وقبل ما تبدأ اللعبة)
+        if (!isOwner) throw new Error('not-owner');
+        if (t.game || otherActive(t)) throw new Error('game-running');
+        const next = setGameOptions(t, { teams: msg.teams, complex: msg.complex, target: typeof msg.target === 'number' ? msg.target : undefined });
+        if (next === t) break;
+        await this.save(next);
+        this.broadcast([`اللعبة: ${gameTitle(kindOf(next), next.variant, next.kind === 'domino' ? gameOptions(next).target : undefined)}${next.kind === 'domino' && t.dominoTeams !== next.dominoTeams ? (next.dominoTeams === false ? '، فردي' : '، فرق') : ''}`]);
         await this.publish(next);
         break;
       }
