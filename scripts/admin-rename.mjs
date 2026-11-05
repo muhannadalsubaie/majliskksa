@@ -1,6 +1,21 @@
 // تغيير اسم مستخدم من الإدارة: يدخل للخادم برمز Google لحساب الخدمة (ما يحتاج أي سر إضافي)
 import { createSign } from 'node:crypto';
-const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+// المفتاح أحياناً منسوخ بأسطر حقيقية داخل النص: نصلحها قبل القراءة
+function parseKey(raw) {
+  let out = '', inStr = false, esc = false;
+  for (const ch of raw.trim()) {
+    if (inStr) {
+      if (esc) { esc = false; out += ch; continue; }
+      if (ch === '\\') { esc = true; out += ch; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') continue;
+      out += ch;
+    } else { if (ch === '"') inStr = true; out += ch; }
+  }
+  return JSON.parse(out);
+}
+const sa = parseKey(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
 const b64u = (x) => Buffer.from(x).toString('base64url');
 const now = Math.floor(Date.now() / 1000);
 const unsigned = `${b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64u(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/userinfo.email', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 600 }))}`;

@@ -4,7 +4,7 @@ import { cleanUsername, usernameKey, validateUsername } from '../../shared/usern
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS } from '../../shared/games';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
-import { Firestore, deleteAuthUser } from './firestore';
+import { Firestore, deleteAuthUser, parseServiceAccount } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './table-room';
 import { type VerifiedPurchase, accountTokenFor, consumeGoogle, verifyApple, verifyGoogle } from './purchases';
@@ -134,7 +134,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (pathname === '/admin/rename' && request.method === 'POST') {
       const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
       const info = token ? (await (await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`)).json().catch(() => ({}))) as { email?: string } : {};
-      const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}') as { client_email?: string };
+      const sa = (() => { try { return parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT ?? ''); } catch { return { client_email: '' }; } })();
       if (!info.email || info.email !== sa.client_email) return json({ error: 'forbidden' }, 403);
       const b = (await request.json().catch(() => ({}))) as { from?: string; to?: string };
       const from = String(b.from ?? ''), to = String(b.to ?? '');

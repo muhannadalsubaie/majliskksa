@@ -143,4 +143,6 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FROM: ${{ inputs.rename_from }}
           TO: ${{ inputs.rename_to }}
-        run: node scripts/admin-rename.mjs | tee -a $GITHUB_STEP_SUMMARY
+        run: |
+          set -o pipefail
+          node scripts/admin-rename.mjs | tee -a $GITHUB_STEP_SUMMARY
