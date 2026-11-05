@@ -333,9 +333,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const b = await body();
       const friend = String(b.uid ?? '');
       if (!(await hub(user.uid).isFriend(friend))) return json({ error: 'not-friends' }, 400);
-      // غير متصل: تصله الدعوة كإشعار على جواله (إن كان سمح بالإشعارات)
+      // الدعوة تصل داخل التطبيق، ومعها إشعار على جواله دائماً (حتى لو يبان متصل: يمكن التطبيق في الخلفية
+      // أو انقفل للتو). والتطبيق المفتوح ما يعرض الإشعار، فما تتكرر الدعوة
       const online = await hub(friend).isOnline();
-      const tokens = online ? [] : await hub(friend).pushTokens();
+      const tokens = await hub(friend).pushTokens();
       if (!online && !tokens.length) return json({ error: 'offline' }, 400);
       const tableId = inviteFriendMatch[1];
       // يمكن أن تحجز الدعوة مقعداً محدداً (من شاشة المقاعد)
@@ -344,11 +345,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
       const fromName = await usernameOf(user.uid);
       await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName, at: Date.now() });
-      if (!online) {
+      if (tokens.length) {
         const game = (await env.TABLES.get(env.TABLES.idFromString(tableId)).gameName().catch(() => '')) || 'بلوت';
         const dead = await sendPush(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '', tokens, {
           title: 'دعوة للعب', body: `${fromName ?? 'صديقك'} دعاك للعب ${game}`, data: { type: 'invite', tableId },
-        }).catch(() => []);
+        }).catch((e) => { console.log('push failed', String(e)); return []; });
         await hub(friend).removePushTokens(dead);
       }
       return json({ ok: true });

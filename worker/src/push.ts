@@ -26,9 +26,11 @@ export async function sendPush(projectId: string, serviceAccountJson: string, to
       }),
     }).catch(() => null);
     if (!res) return;
-    if (res.status === 404 || res.status === 400) {
+    if (!res.ok) {
       const t = await res.text();
-      if (t.includes('UNREGISTERED') || t.includes('INVALID_ARGUMENT')) dead.push(token);
+      // يظهر في سجل الخادم: لو الإشعارات ما توصل نعرف السبب (صلاحية، مفتاح Apple، رمز منتهي…)
+      console.log('push error', res.status, t.slice(0, 300));
+      if ((res.status === 404 || res.status === 400) && (t.includes('UNREGISTERED') || t.includes('INVALID_ARGUMENT'))) dead.push(token);
     }
   }));
   return dead;
