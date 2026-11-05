@@ -1,5 +1,5 @@
 // منطق الطاولة (المقاعد، الأعضاء، الروبوتات، نصوص الإعلانات) — دوال نقية يستخدمها الخادم.
-import { type Card, type Seat, type Suit, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
+import { type Card, type Seat, type Suit, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, SUN_ORDER, cardLabel, nextSeat, teamOf } from './baloot/cards';
 import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
@@ -508,7 +508,9 @@ export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qab
   /** أول (بداية الجولة)، ثاني (الكل قال بس في اللفة الأولى)، ورق (الكل قال بس مرتين: إعادة توزيع) */
   | 'first' | 'second' | 'paper'
   /** سوا */
-  | 'sawa';
+  | 'sawa'
+  /** «إكة»: في الحكم بدأت الأكلة بورقة صارت الأكبر في نوعها (اللي فوقها نزل كله) — شريكك ما يقطعها */
+  | 'ekka';
 const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'confirm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
@@ -535,6 +537,17 @@ function revealProject(t: TableData, before: GameState, after: GameState): { sea
     return { seat, events: d.projects.map((p) => `مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`) };
   }
   return { seat, events: [`أُلغي مشروع ${who}`] };
+}
+
+/**
+ * «إكة»: في الحكم، أول ورقة في الأكلة من نوع غير الحكم (غير الإكة نفسها) وكل الأوراق الأكبر منها في نوعها
+ * نزلت قبل (ما هي في يد أي أحد)، فصارت هي الأكبر وتاكل — يسمعها شريكك فما يقطعها بالحكم.
+ */
+export function isBossLead(g: GameState, card: Card): boolean {
+  const c = g.contract;
+  if (g.phase !== 'playing' || !c || c.mode !== 'hokm' || card.suit === c.trump || card.rank === 'A' || g.trick.length > 0) return false;
+  const higher = SUN_ORDER.slice(0, SUN_ORDER.indexOf(card.rank));
+  return !g.hands.some((h) => h.some((x) => x.suit === card.suit && higher.includes(x.rank)));
 }
 
 /** مهلة التوزيع: ما أحد يلعب ولا ينعلن دور أحد لين تخلص */
@@ -641,6 +654,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
       if (newly && !equalsEarlier(newly, before.declared)) events.push(`${who}: مشروع ${newly.projects.map((p) => PROJECT_NAMES[p.kind]).join(' و')}`);
       events.push(`${who}: ${cardLabel(action.card)}`);
+      if (isBossLead(before, action.card)) voices.push('ekka');
       // البلوت تلقائي مع الورقة الثانية منه (الشايب أو البنت)
       if (after.balootSeat !== null && before.balootSeat === null) events.push(`${who}: بلوت`);
       if (after.lastTrick && after.trickNo !== before.trickNo) {

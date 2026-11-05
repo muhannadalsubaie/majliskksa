@@ -99,3 +99,19 @@ describe('سوا', () => {
     expect(found).toBeGreaterThan(0);
   });
 });
+
+describe('إكة في الحكم', () => {
+  it('أول ورقة غير حكم صارت الأكبر في نوعها (اللي فوقها نزل) تطلع صوت إكة، والإكة نفسها والحكم والصن لا', async () => {
+    const { isBossLead } = await import('./table');
+    const base = { phase: 'playing', trick: [], contract: { mode: 'hokm', trump: 'S', buyer: 0, qabaTo: 0 } } as unknown as Parameters<typeof isBossLead>[0];
+    const hands = (cards: string[][]) => cards.map((h) => h.map((x) => ({ rank: x.slice(0, -1), suit: x.slice(-1) })));
+    const g = { ...base, hands: hands([['KH', '7S'], ['9H'], ['8D'], ['QH']]) } as typeof base;
+    expect(isBossLead(g, { rank: 'K', suit: 'H' } as never)).toBe(true); // الإكة والعشرة نزلوا
+    const withTen = { ...g, hands: hands([['KH'], ['10H'], [], []]) } as typeof base;
+    expect(isBossLead(withTen, { rank: 'K', suit: 'H' } as never)).toBe(false); // العشرة باقية
+    expect(isBossLead({ ...g, hands: hands([['AH'], [], [], []]) } as typeof base, { rank: 'A', suit: 'H' } as never)).toBe(false); // الإكة نفسها
+    expect(isBossLead(g, { rank: '7', suit: 'S' } as never)).toBe(false); // حكم
+    expect(isBossLead({ ...g, trick: [{ seat: 3, card: { rank: '8', suit: 'H' } }] } as typeof base, { rank: 'K', suit: 'H' } as never)).toBe(false); // مو أول ورقة
+    expect(isBossLead({ ...g, contract: { mode: 'sun', buyer: 0, qabaTo: 0 } } as typeof base, { rank: 'K', suit: 'H' } as never)).toBe(false); // صن
+  });
+});
