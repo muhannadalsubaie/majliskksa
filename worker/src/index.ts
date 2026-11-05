@@ -1,5 +1,5 @@
 import { sendPush } from './push';
-import { COINS, ONE_TIME_GIFTS, MAX_ADS_PER_DAY } from '../../shared/economy';
+import { COINS, EVERYONE_GIFT, ONE_TIME_GIFTS, MAX_ADS_PER_DAY } from '../../shared/economy';
 import { cleanUsername, usernameKey, validateUsername } from '../../shared/username';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS } from '../../shared/games';
 import { isUnlimited, verifyToken, verifyUser } from './auth';
@@ -183,11 +183,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
         coins: COINS.signupBonus,
         createdAt: new Date(),
       });
+      // حساب جديد: رصيده الترحيبي فيه الهدية، فنسجّلها له حتى ما ياخذها مرة ثانية
+      const everyoneGift = `${EVERYONE_GIFT.id}-${user.uid}`;
+      if (created) await db.createIfMissing('gifts', everyoneGift, { uid: user.uid, coins: 0, at: new Date() });
       // علامة حساب المطوّر تُكتب من الخادم فقط
       if (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256)) await db.update('users', user.uid, { unlimited: true });
       // هدايا لمرة واحدة: سجل الهدية يُنشأ مرة واحدة فقط (ذرّياً) قبل إضافة العملات، فلا تتكرر
       let gift = 0;
       if (!created) {
+        // هدية ترحيبية لكل الحسابات الموجودة (مرة وحدة لكل حساب، السجل يُنشأ ذرّياً قبل إضافة العملات)
+        if (await db.createIfMissing('gifts', everyoneGift, { uid: user.uid, coins: EVERYONE_GIFT.coins, at: new Date() })) {
+          await db.adjustCoins(user.uid, EVERYONE_GIFT.coins);
+          gift += EVERYONE_GIFT.coins;
+        }
         const profile = await db.get('users', user.uid);
         const key = usernameKey(String(profile?.username ?? ''));
         for (const g of ONE_TIME_GIFTS) {
@@ -214,7 +222,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const key = usernameKey(raw);
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
 
-      await db.createIfMissing('users', user.uid, { username: '', coins: COINS.signupBonus, createdAt: new Date() });
+      if (await db.createIfMissing('users', user.uid, { username: '', coins: COINS.signupBonus, createdAt: new Date() })) {
+        // حساب جديد: الهدية الترحيبية داخلة في رصيده
+        await db.createIfMissing('gifts', `${EVERYONE_GIFT.id}-${user.uid}`, { uid: user.uid, coins: 0, at: new Date() });
+      }
       const profile = await db.get('users', user.uid);
       if (profile?.username) return json({ error: 'already-set' }, 409);
 

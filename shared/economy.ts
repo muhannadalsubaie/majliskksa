@@ -1,6 +1,6 @@
 // تكاليف الاقتصاد — مصدر واحد للحقيقة، والخصم الفعلي يتم في Cloud Functions فقط.
 export const COINS = {
-  signupBonus: 30,
+  signupBonus: 400,
   createTable: 2,
   joinTable: 1,
   inviteFriend: 1,
@@ -36,6 +36,12 @@ export const VOICE_MONTHLY_LISTEN_HOURS = 40_000;
 export const ONE_TIME_GIFTS: { id: string; username: string; coins: number }[] = [
   { id: 'gift-burjuazi-2026-10', username: 'البرجوازي', coins: 100 },
 ];
+
+/**
+ * هدية ترحيبية لكل الحسابات الموجودة قبل رفع الرصيد الترحيبي لـ 400: تُمنح مرة وحدة لكل حساب
+ * أول ما يفتح التطبيق. الحسابات الجديدة ما تاخذها (رصيدها الترحيبي 400 أصلاً).
+ */
+export const EVERYONE_GIFT = { id: 'welcome400-2026-11', coins: 400 } as const;
 
 /** باقات العملات للشراء من داخل التطبيق (معرّفات المنتجات نفسها في Google Play وApp Store) */
 export const COIN_PACKS = [
