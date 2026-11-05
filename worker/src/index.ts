@@ -345,6 +345,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
       const fromName = await usernameOf(user.uid);
       await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName, at: Date.now() });
+      // للتشخيص (بلا أي بيانات شخصية): هل لجواله رمز إشعارات؟
+      console.log('invite push', JSON.stringify({ online, tokens: tokens.length }));
       if (tokens.length) {
         const game = (await env.TABLES.get(env.TABLES.idFromString(tableId)).gameName().catch(() => '')) || 'بلوت';
         const dead = await sendPush(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '', tokens, {
@@ -438,6 +440,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // قبول/رفض دعوة طاولة
     // رمز إشعارات هذا الجهاز (بعد ما يسمح المستخدم بالإشعارات)
     if (pathname === '/profile/push-token' && request.method === 'POST') {
+      console.log('push token registered');
       const b = await body();
       const token = String(b.token ?? '');
       if (token.length < 20 || token.length > 4096) return json({ error: 'bad-request' }, 400);
