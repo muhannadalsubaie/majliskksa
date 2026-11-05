@@ -506,7 +506,9 @@ function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolea
  */
 export type Voice = 'pass' | 'wala' | 'sun' | 'hokm' | 'hokm2' | 'ashkal' | 'qablak' | 'double' | 'three' | 'four' | 'gahwa' | 'locked' | 'open' | 'confirm' | `hokm2-${Suit}`
   /** أول (بداية الجولة)، ثاني (الكل قال بس في اللفة الأولى)، ورق (الكل قال بس مرتين: إعادة توزيع) */
-  | 'first' | 'second' | 'paper';
+  | 'first' | 'second' | 'paper'
+  /** سوا */
+  | 'sawa';
 const BID_VOICE: Partial<Record<Bid['type'], Voice>> = { sun: 'sun', hokm: 'hokm', secondHokm: 'hokm2', ashkal: 'ashkal', qablak: 'qablak', confirmHokm: 'confirm', double: 'double' };
 const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three', فور: 'four', قهوة: 'gahwa' };
 
@@ -630,6 +632,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     case 'sawa': {
       // سوا: أوراقه كلها مضمونة، تنلعب وتنحسب الأكلات الباقية لفريقه وتنتهي الصكة
       events.push(`${who}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`);
+      voices.push('sawa');
       handEnd();
       break;
     }
