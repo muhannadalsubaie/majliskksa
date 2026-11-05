@@ -59,3 +59,43 @@ describe('المنقطع ما يبقى معلق', () => {
     expect(markLobbyAway(t, 'u1', now).lobbyAway?.u1).toBeUndefined();
   });
 });
+
+describe('سوا', () => {
+  it('يطلع بس لما يكون دورك تبدأ الأكلة وكل أوراقك مضمونة، ويحسب الأكلات الباقية لفريقك وينهي الصكة', async () => {
+    const { nextAutoStep, runAutoStep } = await import('./table');
+    const { canSawa, applyAction } = await import('./baloot/game');
+    const { teamOf } = await import('./baloot/cards');
+    let found = 0;
+    for (let seed = 1; seed < 200 && found < 5; seed++) {
+      let t = newTable('s', { uid: 'a', username: 'أحمد' }, false, 0);
+      t = addBot(t, 1); t = addBot(t, 2); t = addBot(t, 3);
+      t = { ...t, seats: t.seats.map((m, i) => (i === 0 ? { uid: 'bot-x', username: 'روبوت', isBot: true } : m)) };
+      t = start(t, seededRng(seed));
+      const rng = seededRng(seed + 7);
+      for (let i = 0; i < 200 && t.game && !t.game.lastHand; i++) {
+        const g = t.game!;
+        if (g.phase === 'playing' && canSawa(g, g.turn)) {
+          expect(g.trick.length).toBe(0);
+          const seat = g.turn;
+          const remaining = g.hands[seat].length;
+          const before = [...g.tricksWon] as number[];
+          const r = applyWithEvents(t, { type: 'sawa', seat }, seededRng(1));
+          const after = r.table.game!;
+          expect(after.lastHand).not.toBeNull();
+          expect(after.tricksWon[teamOf(seat)] - before[teamOf(seat)]).toBe(remaining);
+          expect(r.events.some((e) => e.includes('سوا'))).toBe(true);
+          expect(r.events.some((e) => e.startsWith('انتهت الصكة'))).toBe(true);
+          // اللي مو دوره ما يقدر يقول سوا
+          expect(canSawa(g, ((seat + 1) % 4) as 0 | 1 | 2 | 3)).toBe(false);
+          expect(() => applyAction(g, { type: 'sawa', seat: ((seat + 1) % 4) as 0 | 1 | 2 | 3 })).toThrow();
+          found++;
+          break;
+        }
+        const step = nextAutoStep(t, rng);
+        if (!step) break;
+        t = { ...runAutoStep(t, step, rng).table, hold: undefined };
+      }
+    }
+    expect(found).toBeGreaterThan(0);
+  });
+});

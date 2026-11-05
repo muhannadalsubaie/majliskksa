@@ -2,7 +2,7 @@
 import { type Card, type Seat, type Suit, type Team, MAX_PEOPLE_AT_TABLE, SUIT_NAMES, cardLabel, nextSeat, teamOf } from './baloot/cards';
 import { botAction } from './baloot/bot';
 import {
-  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, isDoublingTurn, isLockChoiceTurn,
+  type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
@@ -551,6 +551,28 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
   /** صاحب المشروع اللي انكشف الحين (يوقف الدور عنده) */
   let reveal: Seat | null = null;
   const who = 'seat' in action ? nameOf(t, action.seat) : '';
+  /** نهاية الصكة: سجل الجولة والنتيجة (بعد آخر ورقة، أو بعد «سوا») */
+  const handEnd = () => {
+    if (after.lastHand && !before.lastHand) {
+      const r = after.lastHand;
+      const c = after.contract!;
+      const buyerTeam = teamOf(c.buyer);
+      // أبناط الأوراق مع الأرض كما هي (الصن من 130)، والمشاريع منفصلة
+      const abnat = r.cardAbnat ?? r.abnat ?? [0, 0];
+      const level = after.doubling.level;
+      const record: HandRecord = {
+        match: t.matchNo ?? 1,
+        teams: [teamName(t, 0), teamName(t, 1)], contract: contractText(after), level, gahwa: after.doubling.gahwa,
+        buyer: nameOf(t, c.buyer), buyerTeam, abnat, projects: r.projectPoints ?? [0, 0], points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
+      };
+      history = [...(t.history ?? []), record];
+      // يُنطق نقاط كل فريق فقط — الفائز والأبناط وباقي التفاصيل في السجل
+      events.push(`انتهت الصكة. نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
+      events.push(`المجموع: ${after.scores[0]} مقابل ${after.scores[1]}`);
+      if (after.outcome.status === 'won') events.push(`انتهت المباراة — فاز ${teamName(t, after.outcome.winner)}`);
+      if (after.outcome.status === 'tiebreak') events.push('تعادل — جولة فاصلة');
+    }
+  };
 
   switch (action.type) {
     case 'bid': {
@@ -605,6 +627,12 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     case 'declareBaloot':
       events.push(`${who}: بلوت`);
       break;
+    case 'sawa': {
+      // سوا: أوراقه كلها مضمونة، تنلعب وتنحسب الأكلات الباقية لفريقه وتنتهي الصكة
+      events.push(`${who}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`);
+      handEnd();
+      break;
+    }
     case 'play': {
       // إعلان المشروع التلقائي قبل الورقة
       const newly = after.declared.find((d) => d.seat === action.seat && !before.declared.some((b) => b.seat === action.seat));
@@ -619,25 +647,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)، ويوقف الدور عنده لحظات عشان الكل يشوفه
       const shown = revealProject(t, before, after);
       if (shown) { events.push(...shown.events); reveal = shown.seat; }
-      if (after.lastHand && !before.lastHand) {
-        const r = after.lastHand;
-        const c = after.contract!;
-        const buyerTeam = teamOf(c.buyer);
-        // أبناط الأوراق مع الأرض كما هي (الصن من 130)، والمشاريع منفصلة
-        const abnat = r.cardAbnat ?? r.abnat ?? [0, 0];
-        const level = after.doubling.level;
-        const record: HandRecord = {
-          match: t.matchNo ?? 1,
-          teams: [teamName(t, 0), teamName(t, 1)], contract: contractText(after), level, gahwa: after.doubling.gahwa,
-          buyer: nameOf(t, c.buyer), buyerTeam, abnat, projects: r.projectPoints ?? [0, 0], points: r.points, buyerFailed: r.buyerFailed, kaboot: r.kaboot,
-        };
-        history = [...(t.history ?? []), record];
-        // يُنطق نقاط كل فريق فقط — الفائز والأبناط وباقي التفاصيل في السجل
-        events.push(`انتهت الصكة. نتيجة الصكة: ${teamName(t, 0)} ${r.points[0]}، ${teamName(t, 1)} ${r.points[1]}`);
-        events.push(`المجموع: ${after.scores[0]} مقابل ${after.scores[1]}`);
-        if (after.outcome.status === 'won') events.push(`انتهت المباراة — فاز ${teamName(t, after.outcome.winner)}`);
-        if (after.outcome.status === 'tiebreak') events.push('تعادل — جولة فاصلة');
-      }
+      handEnd();
       break;
     }
   }
@@ -764,6 +774,7 @@ export interface GameView {
     legal: Card[];
     canProject: boolean;
     canBaloot: boolean;
+    canSawa: boolean;
   };
 }
 
@@ -852,6 +863,8 @@ export function viewFor(t: TableData, uid: string): TableView {
         legal: playing ? legalCardsFor(g, mySeat) : [],
         canProject: playing && canDeclareProject(g, mySeat),
         canBaloot: playing && canDeclareBaloot(g, mySeat),
+        // سوا: دورك تبدأ الأكلة وكل أوراقك مضمونة تاكل (اختياري)
+        canSawa: playing && canSawa(g, mySeat),
       },
     };
   }

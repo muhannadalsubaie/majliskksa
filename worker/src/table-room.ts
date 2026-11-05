@@ -106,6 +106,7 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
     case 'doubleLock': return typeof a.locked === 'boolean' ? { type: 'doubleLock', seat, locked: a.locked } : null;
     case 'declareProject': return { type: 'declareProject', seat };
     case 'declareBaloot': return { type: 'declareBaloot', seat };
+    case 'sawa': return { type: 'sawa', seat };
     case 'play': return isCard(a.card) ? { type: 'play', seat, card: { suit: a.card.suit, rank: a.card.rank } } : null;
     default: return null;
   }

@@ -1,6 +1,6 @@
 import {
   type Card, type GameMode, type Seat, type Suit, type Team,
-  LAST_TRICK_BONUS, SUN_DOUBLE_THRESHOLD, cardPoints, createDeck, nextSeat, otherTeam, sameCard, teamOf,
+  LAST_TRICK_BONUS, SUN_DOUBLE_THRESHOLD, cardPoints, cardStrength, createDeck, nextSeat, otherTeam, sameCard, teamOf,
 } from './cards';
 import { type PlayedCard, legalCards, trickWinner } from './play';
 import { type DeclaredProjects, type ProjectResolution, findProjects, hasBaloot, resolveProjects } from './projects';
@@ -105,7 +105,9 @@ export type Action =
   | { type: 'doubleLock'; seat: Seat; locked: boolean }
   | { type: 'declareProject'; seat: Seat }
   | { type: 'declareBaloot'; seat: Seat }
-  | { type: 'play'; seat: Seat; card: Card };
+  | { type: 'play'; seat: Seat; card: Card }
+  /** سوا: كل أوراقك مضمونة تاكل، فتنلعب كلها وتنحسب الأكلات الباقية لك */
+  | { type: 'sawa'; seat: Seat };
 
 export class IllegalAction extends Error {}
 
@@ -500,5 +502,47 @@ export function applyAction(s: GameState, a: Action): GameState {
       if (!canDeclareBaloot(s, a.seat)) fail('لا يوجد بلوت');
       return { ...s, balootSeat: a.seat };
     case 'play': return applyPlay(s, a.seat, a.card);
+    case 'sawa': return applySawa(s, a.seat);
   }
+}
+
+/**
+ * سوا: دورك تبدأ الأكلة، وكل أوراقك (أنت بس، بدون شريكك) مضمونة تاكل مهما لعب الباقين:
+ *  • كل ورقة معك أعلى من كل أوراق الباقين من نفس النوع (حكم أو صن).
+ *  • في الحكم ومعك أوراق غير حكم: ما يبقى حكم عند أحد بعد ما تلعب حكمك (كل واحد مجبور يتبع الحكم لما تلعبه)،
+ *    فما أحد يقدر يقطع أوراقك الثانية.
+ */
+export function canSawa(s: GameState, seat: Seat): boolean {
+  if (s.phase !== 'playing' || s.turn !== seat || s.trick.length > 0 || !s.contract) return false;
+  const mine = s.hands[seat];
+  if (mine.length < 2) return false;
+  const mode = s.contract.mode;
+  const trump = mode === 'hokm' ? s.contract.trump ?? null : null;
+  const str = (c: Card) => cardStrength(c, mode, trump);
+  const others = ([0, 1, 2, 3] as Seat[]).filter((x) => x !== seat).map((x) => s.hands[x]);
+  for (const k of mine) for (const h of others) for (const o of h) if (o.suit === k.suit && str(o) > str(k)) return false;
+  if (trump && mine.some((k) => k.suit !== trump)) {
+    const myTrumps = mine.filter((k) => k.suit === trump).length;
+    for (const h of others) if (h.filter((o) => o.suit === trump).length > myTrumps) return false;
+  }
+  return true;
+}
+
+/** سوا: تنلعب الأكلات الباقية كلها (أنت تبدأ كل أكلة بحكمك أول، والباقين أي ورقة مسموحة) وتنتهي الصكة */
+function applySawa(s: GameState, seat: Seat): GameState {
+  if (!canSawa(s, seat)) fail('سوا غير ممكن');
+  const trump = s.contract!.mode === 'hokm' ? s.contract!.trump ?? null : null;
+  let cur = s;
+  for (let guard = 0; guard < 40 && cur.phase === 'playing' && cur.lastHand === null; guard++) {
+    const p = cur.turn;
+    let card: Card;
+    if (p === seat && cur.trick.length === 0) {
+      const hand = cur.hands[seat];
+      card = hand.find((c) => c.suit === trump) ?? hand[0];
+    } else {
+      card = legalCardsFor(cur, p)[0];
+    }
+    cur = applyPlay(cur, p, card);
+  }
+  return cur;
 }
