@@ -535,6 +535,8 @@ export class TableRoom extends DurableObject<Env> {
         if (seat === null || !t[msg.type]) throw new Error('not-a-player');
         const action = msg.type === 'domino' ? parseDomino(msg.action, seat) : msg.type === 'jackaroo' ? parseJackaroo(msg.action, seat) : parseLudo(msg.action, seat);
         if (!action) throw new Error('bad-action');
+        // الحجر لسه يمشي: ما يُقبل لعب جديد لين يوصل
+        if (holding(t)) break;
         const r = applyOther(t, action, rng);
         await this.save(r.table);
         this.broadcast(r.events);

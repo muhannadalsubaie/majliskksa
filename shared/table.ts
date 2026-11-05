@@ -676,20 +676,20 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
 function balootPace(g: GameState, seat: Seat, action: Action, rng: Rng): number {
   switch (action.type) {
     // «بس» و«ولا» أسرع، والشراء (حكم، صن، أشكل، تأكيد...) ياخذ تفكير
-    case 'bid': return action.bid.type === 'pass' ? human(rng, 1400, 3200) : human(rng, 2200, 4500);
-    case 'double': return human(rng, 2000, 4000);
-    case 'doublePass': return human(rng, 1000, 2200);
-    case 'doubleLock': return human(rng, 1500, 3000);
+    case 'bid': return action.bid.type === 'pass' ? human(rng, 2000, 3800) : human(rng, 3000, 5500);
+    case 'double': return human(rng, 2600, 4800);
+    case 'doublePass': return human(rng, 1600, 3000);
+    case 'doubleLock': return human(rng, 2000, 3600);
     case 'play': {
       const options = legalCardsFor(g, seat).length;
-      if (options <= 1) return human(rng, 900, 1600); // ورقة وحدة مسموحة
-      if (g.trickNo >= 7) return human(rng, 800, 1500); // آخر أكلة
+      if (options <= 1) return human(rng, 1400, 2400); // ورقة وحدة مسموحة
+      if (g.trickNo >= 7) return human(rng, 1300, 2200); // آخر أكلة
       // بعد آخر ورقة في الأكلة تبقى الأكلة ظاهرة ٣ ثواني قبل ما تنسحب: الروبوت ما يبدأ الأكلة الجاية قبلها
       if (!g.trick.length && g.trickNo > 0) return human(rng, 3300, 4600);
-      if (!g.trick.length) return human(rng, 1600, 3400); // بداية الأكلة
-      return human(rng, 1200, 2800);
+      if (!g.trick.length) return human(rng, 2200, 4200); // بداية الأكلة
+      return human(rng, 1800, 3600);
     }
-    default: return human(rng, 600, 1200); // إعلان مشروع أو بلوت
+    default: return human(rng, 900, 1600); // إعلان مشروع أو بلوت
   }
 }
 
@@ -860,8 +860,16 @@ export function viewFor(t: TableData, uid: string): TableView {
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
     ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
-    ui: t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null,
+    ui: heldUi(t, t.domino ? dominoUi(t.domino, mySeat, seatNames(t)) : t.jackaroo ? jackarooUi(t.jackaroo, mySeat, seatNames(t)) : t.ludo ? ludoUi(t.ludo, mySeat, seatNames(t)) : null),
   };
+}
+
+/** الحجر لسه يمشي (مهلة بعد الحركة): ما أحد يقدر يلعب، ودور اللي بعده يبدأ لما يوصل */
+function heldUi(t: TableData, ui: DominoUi | JackarooUi | LudoUi | null): DominoUi | JackarooUi | LudoUi | null {
+  if (!ui || t.game || !holding(t)) return ui;
+  if (t.jackaroo) { const j = ui as JackarooUi; return { ...j, myTurn: false, burning: false, prompt: '', hand: j.hand.map((h) => ({ ...h, usable: false, moves: [] })) }; }
+  if (t.ludo) { const l = ui as LudoUi; return { ...l, myTurn: false, canRoll: false, options: [], prompt: '' }; }
+  return ui;
 }
 
 /** للعميل: هل بدأت لعبة على الطاولة (أي نوع)، وهل هي جارية الآن */

@@ -129,7 +129,39 @@ function applyLudoEvents(t: TableData, action: LudoAction, rng: Rng): { table: T
   return { table: { ...t, ludo: after, ludoLog }, events };
 }
 
-export function applyOther(t: TableData, action: DominoAction | JackarooAction | LudoAction, rng: Rng): { table: TableData; events: string[] } {
+/** وقت كل خطوة يمشيها الحجر في اللودو والجاكارو (نفس سرعة صوت الطقطقة في التطبيقات) */
+export const STEP_MS = 220;
+
+/** كم خطوة مشى الحجر في آخر حركة (لين يوصل): لودو أو جاكارو */
+function movedSteps(before: TableData, after: TableData): { steps: number; captured: boolean } {
+  if (after.ludo) {
+    const m = after.ludo.lastMove;
+    if (!m || m === before.ludo?.lastMove || !m.token || m.from === null || m.to === null) return { steps: 0, captured: false };
+    return { steps: m.from === -1 ? 1 : m.to - m.from, captured: m.captured.length > 0 };
+  }
+  if (after.jackaroo) {
+    const m = after.jackaroo.lastMove;
+    if (!m || m === before.jackaroo?.lastMove || !m.move) return { steps: 0, captured: false };
+    const mv = m.move as { kind: string; steps?: number; parts?: { steps: number }[] };
+    const steps = mv.kind === 'split' ? (mv.parts ?? []).reduce((a, p) => a + p.steps, 0) : mv.kind === 'out' || mv.kind === 'swap' ? 1 : mv.steps ?? 0;
+    return { steps, captured: m.captured.length > 0 };
+  }
+  return { steps: 0, captured: false };
+}
+
+/** يطبق حركة لعبة غير البلوت، ولو مشى حجر: ما يبدأ اللاعب اللي بعده لين يوصل الحجر لمكانه */
+export function applyOther(t: TableData, action: DominoAction | JackarooAction | LudoAction, rng: Rng, now = Date.now()): { table: TableData; events: string[] } {
+  const { hold: _old, ...base } = t;
+  void _old;
+  const r = applyOtherMove(base, action, rng);
+  const { steps, captured } = movedSteps(t, r.table);
+  if (steps <= 0) return r;
+  // هامش للنرد قبل المشي (التطبيق يبدأ الطقطقة بعد صوت النرد) وصوت الأكل بعدها
+  const ms = Math.min(Math.max(steps, 1), 13) * STEP_MS + (captured ? 1200 : 700);
+  return { ...r, table: { ...r.table, hold: { until: now + ms, seat: 0 } } };
+}
+
+function applyOtherMove(t: TableData, action: DominoAction | JackarooAction | LudoAction, rng: Rng): { table: TableData; events: string[] } {
   if (t.ludo) return applyLudoEvents(t, action as LudoAction, rng);
   if (t.domino) {
     const after = applyDomino(t.domino, action as DominoAction);
@@ -169,25 +201,25 @@ export function otherAutoDelay(t: TableData, rng: Rng): number | null {
   if (t.domino) {
     const d = t.domino;
     if (d.phase === 'handOver') return 5000;
-    if (d.phase === 'chooseStarter' && autoSeat(t, d.turn)) return human(rng, 1500, 3000);
+    if (d.phase === 'chooseStarter' && autoSeat(t, d.turn)) return human(rng, 2200, 4000);
     if (d.phase === 'playing' && autoSeat(t, d.turn)) {
       const options = dominoPlayable(d, d.turn).length;
-      if (!d.line.length) return human(rng, 1500, 3000); // أول قطعة
-      if (options === 0) return human(rng, 1000, 2000); // جلا أو سحب
-      if (options === 1) return human(rng, 1000, 1900);
-      return human(rng, 1600, 3400);
+      if (!d.line.length) return human(rng, 2200, 4000); // أول قطعة
+      if (options === 0) return human(rng, 1600, 2800); // جلا أو سحب
+      if (options === 1) return human(rng, 1600, 2700);
+      return human(rng, 2400, 4600);
     }
   }
   if (t.jackaroo?.phase === 'playing' && autoSeat(t, t.jackaroo.turn)) {
     const moves = jackarooLegal(t.jackaroo, t.jackaroo.turn).length;
-    if (moves === 0) return human(rng, 1500, 2800); // حرق ورقة
-    if (moves === 1) return human(rng, 1300, 2200);
-    return human(rng, 1800, 3800);
+    if (moves === 0) return human(rng, 2200, 3600); // حرق ورقة
+    if (moves === 1) return human(rng, 1900, 3000);
+    return human(rng, 2600, 4800);
   }
   if (t.ludo && t.ludo.phase !== 'over') {
     if (autoSeat(t, t.ludo.turn)) {
-      if (t.ludo.phase === 'roll') return human(rng, 800, 1700);
-      return movableTokens(t.ludo, t.ludo.turn).length > 1 ? human(rng, 900, 2000) : human(rng, 600, 1100);
+      if (t.ludo.phase === 'roll') return human(rng, 1300, 2500);
+      return movableTokens(t.ludo, t.ludo.turn).length > 1 ? human(rng, 1500, 2900) : human(rng, 1000, 1700);
     }
     // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً للاعب أيضاً
     if (movableTokens(t.ludo, t.ludo.turn).length === 1) return 900;

@@ -130,7 +130,8 @@ describe('native app helpers (ui)', () => {
         if ((v.ui as { myTurn: boolean }).myTurn) break;
         const step = nextAutoStep(t, rng);
         if (!step) break;
-        t = runAutoStep(t, step, rng).table;
+        // الوقت يمر: الحجر وصل مكانه (تنتهي مهلة المشي)
+        t = { ...runAutoStep(t, step, rng).table, hold: undefined };
       }
       const ui = viewFor(t, 'u1').ui as unknown as Record<string, unknown>;
       expect(ui).toBeTruthy();
@@ -172,5 +173,36 @@ describe('player counts and changing the game', () => {
     expect(c.kind).toBe('jackaroo');
     expect(c.domino).toBeNull();
     expect(c.seats.filter(Boolean).length).toBe(2);
+  });
+});
+
+describe('مهلة مشي الحجر', () => {
+  it('بعد حركة حجر في اللودو ما يقدر أحد يلعب لين يوصل، وبعدها يرجع الدور', async () => {
+    const { holding } = await import('./table');
+    const { STEP_MS } = await import('./games');
+    const rng = seededRng(7);
+    let t = startAny(table('ludo'), rng).table;
+    // المالك يلعب كروبوت، ونشوف اللعبة من عين المشاهد u1
+    t = { ...t, seats: t.seats.map((m, i) => (i === 0 ? { uid: 'bot-x', username: 'روبوت', isBot: true } : m)) };
+    let moved: typeof t | null = null;
+    for (let i = 0; i < 400 && !moved; i++) {
+      const step = nextAutoStep(t, rng);
+      if (!step) break;
+      const before = t.ludo!.lastMove;
+      const now = Date.now();
+      const r = runAutoStep(t, step, rng).table;
+      const m = r.ludo!.lastMove;
+      if (m && m !== before && m.token && r.hold) {
+        const steps = m.from === -1 ? 1 : m.to! - m.from!;
+        expect(r.hold.until - now).toBeGreaterThanOrEqual(Math.min(steps, 13) * STEP_MS);
+        expect(holding(r)).toBe(true);
+        moved = r;
+      }
+      t = { ...r, hold: undefined };
+    }
+    expect(moved).not.toBeNull();
+    const ui = viewFor(moved!, 'u1').ui as { myTurn: boolean; canRoll: boolean };
+    expect(ui.myTurn).toBe(false);
+    expect(ui.canRoll).toBe(false);
   });
 });
