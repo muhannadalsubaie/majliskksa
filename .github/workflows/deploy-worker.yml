@@ -18,11 +18,16 @@ on:
       - .env
       - .github/workflows/deploy-worker.yml
   workflow_dispatch:
+    inputs:
+      tail_minutes:
+        description: للتشخيص فقط — يتابع سجل الخادم كم دقيقة بدل النشر (اتركه فاضي للنشر)
+        default: ''
 
 concurrency: worker-deploy
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_dispatch' || inputs.tail_minutes == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,3 +85,26 @@ jobs:
           sleep 5
           curl -s https://majlisk-api.majlisk.workers.dev/api/health; echo
           curl -s -X POST -H "Content-Type: application/json" --data '{"username":"test_check"}' https://majlisk-api.majlisk.workers.dev/api/username/available; echo
+
+  tail:
+    if: github.event_name == 'workflow_dispatch' && inputs.tail_minutes != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix worker
+      - name: Tail
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          timeout $(( ${{ inputs.tail_minutes }} * 60 )) npx wrangler tail --format json > tail.json || true
+          node -e '
+            const lines = require("fs").readFileSync("tail.json","utf8").split("\n").filter(Boolean);
+            for (const l of lines) { let e; try { e = JSON.parse(l) } catch { continue }
+              const url = e.event?.request?.url ?? ""; const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/[?].*$/, "");
+              const logs = (e.logs ?? []).map(x => x.message.join(" ")).join(" | ");
+              if (/invite|push/i.test(path) || /push/i.test(logs) || (e.exceptions ?? []).length)
+                console.log(new Date(e.eventTimestamp).toISOString(), e.event?.request?.method ?? "", path.replace(/[0-9a-f]{64}/, "<table>"), e.event?.response?.status ?? "", logs, JSON.stringify(e.exceptions ?? []));
+            }' | tee -a $GITHUB_STEP_SUMMARY
