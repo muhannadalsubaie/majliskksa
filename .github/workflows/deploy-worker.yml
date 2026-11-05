@@ -109,9 +109,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           timeout $(( ${{ inputs.tail_minutes }} * 60 )) npx wrangler tail --format json > tail.json || true
+          echo "tail bytes: $(wc -c < tail.json)"
           node -e '
-            const lines = require("fs").readFileSync("tail.json","utf8").split("\n").filter(Boolean);
-            for (const l of lines) { let e; try { e = JSON.parse(l) } catch { continue }
+            // كل حدث JSON على عدة أسطر: نقسمها بعدّ الأقواس
+            const txt = require("fs").readFileSync("tail.json","utf8"); const objs = []; let depth = 0, start = -1, inStr = false, esc = false;
+            for (let i = 0; i < txt.length; i++) { const ch = txt[i];
+              if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === "\"") inStr = false; continue; }
+              if (ch === "\"") inStr = true; else if (ch === "{") { if (depth++ === 0) start = i; } else if (ch === "}") { if (--depth === 0) objs.push(txt.slice(start, i + 1)); } }
+            console.log("events:", objs.length);
+            for (const o of objs) { let e; try { e = JSON.parse(o) } catch { continue }
               const url = e.event?.request?.url ?? ""; const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/[?].*$/, "");
               const logs = (e.logs ?? []).map(x => x.message.join(" ")).join(" | ");
               if (/invite|push/i.test(path) || /push/i.test(logs) || (e.exceptions ?? []).length)
