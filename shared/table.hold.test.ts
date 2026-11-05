@@ -111,6 +111,10 @@ describe('إكة في الحكم', () => {
     expect(isBossLead(withTen, { rank: 'K', suit: 'H' } as never)).toBe(false); // العشرة باقية
     expect(isBossLead({ ...g, hands: hands([['AH'], [], [], []]) } as typeof base, { rank: 'A', suit: 'H' } as never)).toBe(false); // الإكة نفسها
     expect(isBossLead(g, { rank: '7', suit: 'S' } as never)).toBe(false); // حكم
+    // العشرة بعد ما نزلت الإكة، والسبعة بعد ما نزل كل اللي فوقها
+    expect(isBossLead({ ...g, hands: hands([['10D'], ['8D'], [], []]) } as typeof base, { rank: '10', suit: 'D' } as never)).toBe(true);
+    expect(isBossLead({ ...g, hands: hands([['7C'], [], [], []]) } as typeof base, { rank: '7', suit: 'C' } as never)).toBe(true);
+    expect(isBossLead({ ...g, hands: hands([['7C'], ['8C'], [], []]) } as typeof base, { rank: '7', suit: 'C' } as never)).toBe(false);
     expect(isBossLead({ ...g, trick: [{ seat: 3, card: { rank: '8', suit: 'H' } }] } as typeof base, { rank: 'K', suit: 'H' } as never)).toBe(false); // مو أول ورقة
     expect(isBossLead({ ...g, contract: { mode: 'sun', buyer: 0, qabaTo: 0 } } as typeof base, { rank: 'K', suit: 'H' } as never)).toBe(false); // صن
   });
