@@ -129,6 +129,22 @@ export class UserHub extends DurableObject<Env> {
     await this.push(notice ? { type: 'notice', text: notice } : undefined);
   }
 
+  /** صديق تغيّر اسمه: نحدّث الاسم في قائمة الأصدقاء والطلبات */
+  async renameFriend(uid: string, username: string): Promise<void> {
+    const friends = await this.map('friends');
+    const requests = await this.map('requests');
+    if (!(uid in friends) && !(uid in requests)) return;
+    if (uid in friends) friends[uid] = username;
+    if (uid in requests) requests[uid] = username;
+    await this.ctx.storage.put({ friends, requests });
+    await this.push();
+  }
+
+  /** معرّفات الأصدقاء (لتحديث اسمي عندهم) */
+  async friendIds(): Promise<string[]> {
+    return Object.keys(await this.map('friends'));
+  }
+
   async removeFriend(uid: string): Promise<void> {
     const friends = await this.map('friends');
     delete friends[uid];

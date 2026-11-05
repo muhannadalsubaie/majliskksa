@@ -130,6 +130,35 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(request);
     }
 
+    // ───── إدارة (من GitHub Actions فقط): الدخول برمز Google لحساب الخدمة نفسه ─────
+    if (pathname === '/admin/rename' && request.method === 'POST') {
+      const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
+      const info = token ? (await (await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`)).json().catch(() => ({}))) as { email?: string } : {};
+      const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}') as { client_email?: string };
+      if (!info.email || info.email !== sa.client_email) return json({ error: 'forbidden' }, 403);
+      const b = (await request.json().catch(() => ({}))) as { from?: string; to?: string };
+      const from = String(b.from ?? ''), to = String(b.to ?? '');
+      const invalid = validateUsername(to);
+      if (invalid) return json({ error: invalid }, 400);
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      const oldKey = usernameKey(from), newKey = usernameKey(to);
+      const entry = await db.get('usernames', oldKey);
+      if (!entry?.uid) return json({ error: 'not-found' }, 404);
+      const uid = String(entry.uid);
+      const username = cleanUsername(to);
+      if (newKey !== oldKey && !(await db.createIfMissing('usernames', newKey, { uid, username, createdAt: new Date() }))) {
+        const holder = await db.get('usernames', newKey);
+        if (holder?.uid !== uid) return json({ error: 'taken' }, 409);
+      }
+      await db.update('users', uid, { username });
+      if (newKey !== oldKey) await db.remove('usernames', oldKey);
+      else await db.update('usernames', newKey, { username });
+      const hubOf = (id: string) => env.HUBS.get(env.HUBS.idFromName(id));
+      const friends = await hubOf(uid).friendIds();
+      for (const f of friends) await hubOf(f).renameFriend(uid, username);
+      return json({ ok: true, friendsUpdated: friends.length });
+    }
+
     const user = await verifyUser(request, env.FIREBASE_PROJECT_ID, devAuth);
     if (!user) return json({ error: 'unauthenticated' }, 401);
     const hub = (uid: string) => env.HUBS.get(env.HUBS.idFromName(uid));

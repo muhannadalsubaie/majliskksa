@@ -25,12 +25,18 @@ on:
       grant_gift:
         description: يمنح هدية الترحيب لكل الحسابات الموجودة بدل النشر (yes)
         default: ''
+      rename_from:
+        description: تغيير اسم مستخدم بدل النشر — الاسم الحالي
+        default: ''
+      rename_to:
+        description: الاسم الجديد
+        default: ''
 
 concurrency: worker-deploy
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '')
+    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '' && inputs.rename_from == '')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,3 +130,17 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: npx --yes tsx@4.19.2 scripts/grant-everyone-gift.ts | tee -a $GITHUB_STEP_SUMMARY
+
+  rename:
+    if: github.event_name == 'workflow_dispatch' && inputs.rename_from != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Rename
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FROM: ${{ inputs.rename_from }}
+          TO: ${{ inputs.rename_to }}
+        run: node scripts/admin-rename.mjs | tee -a $GITHUB_STEP_SUMMARY
