@@ -515,6 +515,26 @@ const HOLD_BIDS = new Set<Bid['type']>(['hokm', 'secondHokm', 'sun', 'ashkal', '
 export const DECISION_GAP_MS = 1500;
 /** بعد كل توزيع: ثانية ونص قبل ما يبدأ الدور عند أحد، عشان تنسمع ورقة الأرض كاملة */
 export const DEAL_GAP_MS = 1500;
+/** كشف المشروع في اللفة الثانية: كم يوقف الدور عند صاحبه قبل ما يلعب (عشان الكل يشوف المشروع) */
+export const REVEAL_GAP_MS = 3000;
+/** الأكلة المكتملة تبقى ظاهرة في التطبيقات ٣ ثواني (والمشروع يظهر بعدها) */
+const TRICK_SHOW_MS = 3000;
+
+/** جاء دور صاحب مشروع في اللفة الثانية (وما لعب بعد): إعلان أوراق مشروعه، أو إلغاؤه */
+function revealProject(t: TableData, before: GameState, after: GameState): { seat: Seat; events: string[] } | null {
+  if (after.phase !== 'playing' || after.trickNo !== 1 || !after.projects) return null;
+  const seat = after.turn;
+  if (before.trickNo === 1 && before.turn === seat) return null;
+  if (after.trick.some((p) => p.seat === seat)) return null;
+  const d = after.declared.find((x) => x.seat === seat);
+  if (!d || equalsEarlier(d, after.declared.slice(0, after.declared.indexOf(d)))) return null;
+  const who = nameOf(t, seat);
+  if (after.projects.winningTeam === teamOf(seat)) {
+    return { seat, events: d.projects.map((p) => `مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`) };
+  }
+  return { seat, events: [`أُلغي مشروع ${who}`] };
+}
+
 /** مهلة التوزيع: ما أحد يلعب ولا ينعلن دور أحد لين تخلص */
 export function withDealHold(t: TableData, now = Date.now()): TableData {
   return t.game ? { ...t, hold: { until: now + DEAL_GAP_MS, seat: t.game.turn, deal: true } } : t;
@@ -528,6 +548,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
   const events: string[] = [];
   const voices: Voice[] = [];
   let history: HandRecord[] | undefined;
+  /** صاحب المشروع اللي انكشف الحين (يوقف الدور عنده) */
+  let reveal: Seat | null = null;
   const who = 'seat' in action ? nameOf(t, action.seat) : '';
 
   switch (action.type) {
@@ -590,22 +612,13 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       events.push(`${who}: ${cardLabel(action.card)}`);
       // البلوت تلقائي مع الورقة الثانية منه (الشايب أو البنت)
       if (after.balootSeat !== null && before.balootSeat === null) events.push(`${who}: بلوت`);
-      // كشف المشروع في اللفة الثانية: بعد أن يلعب صاحبه ورقته تُنطق أوراق مشروعه
-      // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)
-      const mineDeclared = before.trickNo === 1 ? after.declared.find((d) => d.seat === action.seat) : undefined;
-      const hidden = mineDeclared ? equalsEarlier(mineDeclared, after.declared.slice(0, after.declared.indexOf(mineDeclared))) : false;
-      if (mineDeclared && after.projects && !hidden) {
-        if (after.projects.winningTeam === teamOf(action.seat)) {
-          for (const p of mineDeclared.projects) {
-            events.push(`مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`);
-          }
-        } else {
-          events.push(`أُلغي مشروع ${who}`);
-        }
-      }
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
       }
+      // كشف المشروع في اللفة الثانية: أول ما يجي دور صاحبه (قبل ما يلعب ورقته) تُنطق أوراق مشروعه
+      // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)، ويوقف الدور عنده لحظات عشان الكل يشوفه
+      const shown = revealProject(t, before, after);
+      if (shown) { events.push(...shown.events); reveal = shown.seat; }
       if (after.lastHand && !before.lastHand) {
         const r = after.lastHand;
         const c = after.contract!;
@@ -629,6 +642,12 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     }
   }
   void rng;
+  // كشف مشروع: الدور يوقف عند صاحبه ٣ ثواني قبل ما يقدر يلعب
+  if (reveal !== null && after.phase === 'playing') {
+    const { hold: _o, ...rest0 } = t;
+    void _o;
+    return { table: { ...rest0, game: after, ...(history ? { history } : {}), hold: { until: now + REVEAL_GAP_MS + (before.trickNo !== after.trickNo ? TRICK_SHOW_MS : 0), seat: reveal } }, events, ...(voices.length ? { voices } : {}) };
+  }
   // ثانية ونص بعد شراء حكم أو صن (أو أشكل/قبلك/تأكيد الحكم) قبل ما ينتقل الدور لمن بعده يختار — لا بعد «بس» ولا الدبل ولا لعب الورق
   const decision = action.type === 'bid' && HOLD_BIDS.has(action.bid.type);
   const hold = decision && after.phase !== 'matchOver' && !needsRedeal(after) ? { until: now + DECISION_GAP_MS, seat: action.seat } : undefined;
@@ -813,7 +832,8 @@ export function viewFor(t: TableData, uid: string): TableView {
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
       // مشروع بنفس قوة مشروع أُعلن قبله لا يظهر (يُعلن مشروع الأسبق فقط)
       declared: g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
-        const shown = g.trickNo > 1 || (g.trickNo === 1 && g.trick.some((p) => p.seat === d.seat));
+        // تنكشف أول ما يجي دور صاحبها في اللفة الثانية (قبل ما يلعب)
+        const shown = g.trickNo > 1 || (g.trickNo === 1 && (g.trick.some((p) => p.seat === d.seat) || g.turn === d.seat));
         const won = g.projects?.winningTeam === teamOf(d.seat);
         return {
           seat: d.seat,
