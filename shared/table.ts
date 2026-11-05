@@ -46,7 +46,8 @@ export interface TableData {
   /** خارج اللعب: من انقطع اتصاله ومتى (يخرج من الطاولة إن لم يعد خلال LOBBY_LEAVE_AFTER_MS) */
   lobbyAway?: Record<string, number>;
   /** مهلة بعد شراء حكم أو صن قبل انتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
-  hold?: { until: number; seat: Seat };
+  /** deal: مهلة بعد التوزيع (تنسمع ورقة الأرض قبل ما يبدأ الدور) */
+  hold?: { until: number; seat: Seat; deal?: true };
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
   banned?: string[];
   /** مطرودون: uid → متى يُسمح له بالعودة لهذه الطاولة */
@@ -416,7 +417,7 @@ function compactSeats(t: TableData): TableData {
 /** بدء مباراة بحسب نوع الطاولة، مع إعلانات البداية */
 export function startAny(t: TableData, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
   if ((t.kind ?? 'baloot') === 'baloot') {
-    const table = start(t, rng);
+    const table = withDealHold(start(t, rng));
     return { table, events: ['بدأت المباراة', dealAnnouncement(table)], voices: ['first'] };
   }
   if (!canStart(t)) throw new TableError(t.kind === 'jackaroo' ? 'not-full' : 'bad-count');
@@ -512,6 +513,12 @@ const DOUBLE_VOICE: Record<string, Voice> = { دبل: 'double', ثري: 'three',
 /** المهلة بين شراء حكم أو صن وانتقال الدور */
 const HOLD_BIDS = new Set<Bid['type']>(['hokm', 'secondHokm', 'sun', 'ashkal', 'qablak', 'confirmHokm']);
 export const DECISION_GAP_MS = 1500;
+/** بعد كل توزيع: ثانية ونص قبل ما يبدأ الدور عند أحد، عشان تنسمع ورقة الأرض كاملة */
+export const DEAL_GAP_MS = 1500;
+/** مهلة التوزيع: ما أحد يلعب ولا ينعلن دور أحد لين تخلص */
+export function withDealHold(t: TableData, now = Date.now()): TableData {
+  return t.game ? { ...t, hold: { until: now + DEAL_GAP_MS, seat: t.game.turn, deal: true } } : t;
+}
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
 export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
 
@@ -689,11 +696,11 @@ function balootPace(g: GameState, seat: Seat, action: Action, rng: Rng): number 
 export function runAutoStep(t: TableData, step: AutoStep, rng: Rng): { table: TableData; events: string[]; voices?: Voice[] } {
   if (step.kind === 'other') return runOtherAuto(t, rng);
   if (step.kind === 'redeal') {
-    const table = { ...t, game: redeal(t.game!, rng) };
+    const table = withDealHold({ ...t, game: redeal(t.game!, rng) });
     return { table, events: ['توزيع جديد', dealAnnouncement(table)], voices: ['first'] };
   }
   if (step.kind === 'nextHand') {
-    const table = { ...t, game: nextHand(t.game!, rng) };
+    const table = withDealHold({ ...t, game: nextHand(t.game!, rng) });
     return { table, events: ['صكة جديدة', dealAnnouncement(table)], voices: ['first'] };
   }
   return applyWithEvents(t, step.action, rng);
@@ -706,6 +713,8 @@ export interface GameView {
   dealer: Seat;
   scores: [number, number];
   turn: Seat;
+  /** مهلة ما بعد التوزيع: الدور ما بدأ بعد (التطبيق ما يعلن «دور فلان» لين تخلص) */
+  dealing: boolean;
   qaba: Card | null;
   bidRound: 1 | 2;
   hokmBid: GameState['hokmBid'];
@@ -794,7 +803,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     const held = holding(t);
     const playing = mySeat !== null && !held;
     game = {
-      phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, qaba: g.qaba, bidRound: g.bidRound,
+      phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, dealing: held && !!t.hold!.deal, qaba: g.qaba, bidRound: g.bidRound,
       hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, pendingBuy: pendingBuy(g), contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
       trickNo: g.trickNo, tricksWon: g.tricksWon, lastHand: g.lastHand, outcome: g.outcome,
       handCounts: g.hands.map((h) => h.length),

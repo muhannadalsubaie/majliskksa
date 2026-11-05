@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
-import { DECISION_GAP_MS, addBot, applyWithEvents, holding, newTable, start, viewFor } from './table';
+import { DEAL_GAP_MS, DECISION_GAP_MS, addBot, applyWithEvents, holding, newTable, start, startAny, viewFor } from './table';
 
 describe('مهلة القرار', () => {
   it('بعد شراء صن يبقى الدور عند صاحبه ثانية ونص بلا أزرار، ثم ينتقل', () => {
@@ -20,6 +20,25 @@ describe('مهلة القرار', () => {
     expect(applyWithEvents(t, { type: 'bid', seat, bid: { type: 'pass' } }, seededRng(1), now).table.hold).toBeUndefined();
     expect(v.myHand.length).toBeGreaterThan(0);
     const after = viewFor({ ...r.table, hold: undefined }, 'u1').game!;
+    expect(after.turn).toBe(r.table.game!.turn);
+  });
+});
+
+describe('مهلة التوزيع', () => {
+  it('بعد التوزيع ثانية ونص ما يبدأ الدور: بلا أزرار و dealing، ثم يبدأ', () => {
+    let t = newTable('t2', { uid: 'u1', username: 'مهند' }, false, 0);
+    t = addBot(t, 1); t = addBot(t, 2); t = addBot(t, 3);
+    const r = startAny(t, seededRng(4));
+    const h = r.table.hold!;
+    expect(h.deal).toBe(true);
+    expect(h.seat).toBe(r.table.game!.turn);
+    expect(h.until - Date.now()).toBeLessThanOrEqual(DEAL_GAP_MS);
+    expect(holding(r.table)).toBe(true);
+    const v = viewFor(r.table, 'u1').game!;
+    expect(v.dealing).toBe(true);
+    expect(v.actions.bids).toEqual([]);
+    const after = viewFor({ ...r.table, hold: undefined }, 'u1').game!;
+    expect(after.dealing).toBe(false);
     expect(after.turn).toBe(r.table.game!.turn);
   });
 });
