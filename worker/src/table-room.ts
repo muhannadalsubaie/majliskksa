@@ -434,7 +434,12 @@ export class TableRoom extends DurableObject<Env> {
             return await rt.pullWithOffer(sessionId, req.offer, req.mid, remote.sessionId, VOICE_TRACK);
           } catch (e) {
             console.error('voice pull offer', (e as Error).message);
-            throw e;
+            // جلسة الاستماع انتهت لخمولها قبل أول صوت (ما اتصلت بعد): جلسة جديدة ونفس العرض عليها
+            if (!isStaleSession(e) || mine!.mic) throw e;
+            const fresh = await rt.newSession();
+            await this.save({ ...t, voice: { ...t.voice, [uid]: { ...mine!, sessionId: fresh } } });
+            this.broadcast([]);
+            return { ...(await rt.pullWithOffer(fresh, req.offer, req.mid, remote.sessionId, VOICE_TRACK)), sessionId: fresh };
           }
         }
         try {
