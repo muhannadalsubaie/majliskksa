@@ -120,7 +120,7 @@ jobs:
             for (const o of objs) { let e; try { e = JSON.parse(o) } catch { continue }
               const url = e.event?.request?.url ?? ""; const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/[?].*$/, "");
               const logs = (e.logs ?? []).map(x => x.message.join(" ")).join(" | ");
-              if (/invite|push/i.test(path) || /push/i.test(logs) || (e.exceptions ?? []).length)
+              if (/invite|push|voice/i.test(path) || /push|voice/i.test(logs) || (e.exceptions ?? []).length)
                 console.log(new Date(e.eventTimestamp).toISOString(), e.event?.request?.method ?? "", path.replace(/[0-9a-f]{64}/, "<table>"), e.event?.response?.status ?? "", logs, JSON.stringify(e.exceptions ?? []));
             }' | tee -a $GITHUB_STEP_SUMMARY
 
