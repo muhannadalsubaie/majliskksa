@@ -79,11 +79,21 @@ describe('سوا', () => {
           const seat = g.turn;
           const remaining = g.hands[seat].length;
           const before = [...g.tricksWon] as number[];
-          const r = applyWithEvents(t, { type: 'sawa', seat }, seededRng(1));
+          // أول شي: الأوراق تنكشف ثانيتين (الصكة ما تنحسب بعد)
+          const shown = applyWithEvents(t, { type: 'sawa', seat }, seededRng(1));
+          expect(shown.table.sawa?.seat).toBe(seat);
+          expect(shown.table.sawa?.hands.map((h) => h.length)).toEqual(g.hands.map((h) => h.length));
+          expect(shown.table.game!.lastHand).toBeNull();
+          expect(shown.events.some((e) => e.includes('سوا'))).toBe(true);
+          expect(holding(shown.table)).toBe(true);
+          // بعدها الخطوة التلقائية تحسب الصكة
+          const step = nextAutoStep(shown.table, rng)!;
+          expect(step.kind).toBe('bot');
+          const r = runAutoStep(shown.table, step, rng);
           const after = r.table.game!;
+          expect(r.table.sawa).toBeUndefined();
           expect(after.lastHand).not.toBeNull();
           expect(after.tricksWon[teamOf(seat)] - before[teamOf(seat)]).toBe(remaining);
-          expect(r.events.some((e) => e.includes('سوا'))).toBe(true);
           expect(r.events.some((e) => e.startsWith('انتهت الصكة'))).toBe(true);
           // اللي مو دوره ما يقدر يقول سوا
           expect(canSawa(g, ((seat + 1) % 4) as 0 | 1 | 2 | 3)).toBe(false);

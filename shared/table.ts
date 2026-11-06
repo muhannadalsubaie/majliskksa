@@ -48,6 +48,8 @@ export interface TableData {
   /** مهلة بعد شراء حكم أو صن قبل انتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
   /** deal: مهلة بعد التوزيع (تنسمع ورقة الأرض قبل ما يبدأ الدور) */
   hold?: { until: number; seat: Seat; deal?: true };
+  /** «سوا» انضغط: أوراق الكل الباقية مكشوفة قدام أصحابها ثانيتين، وبعدها تنحسب الصكة */
+  sawa?: { seat: Seat; hands: Card[][] };
   /** محظورون من الطاولة (حظرهم المالك): لا يستطيعون الدخول مرة أخرى */
   banned?: string[];
   /** مطرودون: uid → متى يُسمح له بالعودة لهذه الطاولة */
@@ -555,11 +557,22 @@ export function withDealHold(t: TableData, now = Date.now()): TableData {
   return t.game ? { ...t, hold: { until: now + DEAL_GAP_MS, seat: t.game.turn, deal: true } } : t;
 }
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
-export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
+export const holding = (t: TableData, now = Date.now()) => (!!t.hold && now < t.hold.until) || !!t.sawa;
+
+/** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة */
+export const SAWA_SHOW_MS = 2000;
 
 export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Date.now()): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
   const after = applyAction(before, action);
+  // «سوا»: أول شي تنكشف أوراق الكل الباقية ثانيتين (الصكة ما تنحسب الحين)، وبعدها الخطوة التلقائية تحسبها
+  if (action.type === 'sawa' && !t.sawa) {
+    return {
+      table: { ...t, sawa: { seat: action.seat, hands: before.hands.map((h) => [...h]) }, hold: { until: now + SAWA_SHOW_MS, seat: action.seat } },
+      events: [`${nameOf(t, action.seat)}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`],
+      voices: ['sawa'],
+    };
+  }
   const events: string[] = [];
   const voices: Voice[] = [];
   let history: HandRecord[] | undefined;
@@ -643,9 +656,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       events.push(`${who}: بلوت`);
       break;
     case 'sawa': {
-      // سوا: أوراقه كلها مضمونة، تنلعب وتنحسب الأكلات الباقية لفريقه وتنتهي الصكة
-      events.push(`${who}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`);
-      voices.push('sawa');
+      // سوا (بعد كشف الأوراق): تنلعب وتنحسب الأكلات الباقية لفريقه وتنتهي الصكة
       handEnd();
       break;
     }
@@ -678,8 +689,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
   // ثانية ونص بعد شراء حكم أو صن (أو أشكل/قبلك/تأكيد الحكم) قبل ما ينتقل الدور لمن بعده يختار — لا بعد «بس» ولا الدبل ولا لعب الورق
   const decision = action.type === 'bid' && HOLD_BIDS.has(action.bid.type);
   const hold = decision && after.phase !== 'matchOver' && !needsRedeal(after) ? { until: now + DECISION_GAP_MS, seat: action.seat } : undefined;
-  const { hold: _old, ...rest } = t;
-  void _old;
+  const { hold: _old, sawa: _sawa, ...rest } = t;
+  void _old; void _sawa;
   return { table: { ...rest, game: after, ...(history ? { history } : {}), ...(hold ? { hold } : {}) }, events, ...(voices.length ? { voices } : {}) };
 }
 
@@ -703,6 +714,8 @@ export function nextAutoStep(t: TableData, rng: Rng): AutoStep | null {
   if (needsRedeal(g)) return { kind: 'redeal', delayMs: 2500 };
   // بين نهاية الجولة والجولة اللي بعدها 8 ثوانٍ
   if (handOver(g)) return { kind: 'nextHand', delayMs: 8000 };
+  // «سوا» انكشفت أوراقه: تنحسب الصكة بعد ما تخلص مهلة الكشف
+  if (t.sawa) return { kind: 'bot', seat: t.sawa.seat, action: { type: 'sawa', seat: t.sawa.seat }, delayMs: 0 };
   // نعطي الأولوية لمن عليه الدور، ثم إعلان البلوت لأي روبوت
   const order: Seat[] = [];
   if (g.phase === 'doubling') {
@@ -768,6 +781,8 @@ export interface GameView {
   secondHokmSeat: Seat | null;
   /** شراء ما تأكد بعد (قبل ما يصير عقد): مين اشترى وعلى وش — للإيماءة «فلان اشترى حكم» */
   pendingBuy: { seat: Seat; kind: 'hokm' | 'sun' | 'ashkal' | 'secondHokm' } | null;
+  /** «سوا»: أوراق الكل الباقية مكشوفة (كل لاعب قدامه أوراقه) لين تنحسب الصكة */
+  sawaReveal: { seat: Seat; hands: Card[][] } | null;
   contract: GameState['contract'];
   doubling: GameState['doubling'];
   trick: GameState['trick'];
@@ -851,7 +866,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     const playing = mySeat !== null && !held;
     game = {
       phase: g.phase, dealer: g.dealer, scores: g.scores, turn: held ? t.hold!.seat : g.turn, dealing: held && !!t.hold!.deal, qaba: g.qaba, bidRound: g.bidRound,
-      hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, pendingBuy: pendingBuy(g), contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
+      hokmBid: g.hokmBid, secondHokmSeat: g.secondHokm?.seat ?? null, pendingBuy: pendingBuy(g), sawaReveal: t.sawa ?? null, contract: g.contract, doubling: g.doubling, trick: g.trick, lastTrick: g.lastTrick,
       trickNo: g.trickNo, tricksWon: g.tricksWon, lastHand: g.lastHand, outcome: g.outcome,
       handCounts: g.hands.map((h) => h.length),
       myHand: mySeat !== null ? g.hands[mySeat] : [],
