@@ -1,3 +1,4 @@
+import { usernameKey } from '../../shared/username';
 import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
@@ -204,6 +205,37 @@ export class TableRoom extends DurableObject<Env> {
       return { adjustCoins: async () => 99, set: async () => {}, remove: async () => {} } as unknown as Firestore;
     }
     return new Firestore(this.env.FIREBASE_PROJECT_ID, this.env.FIREBASE_SERVICE_ACCOUNT);
+  }
+
+  /**
+   * طلب إداري لمرة وحدة: أول توزيع جديد (بلوت) فيه اللاعب المطلوب تكون أوراقه الخمس فيها الأكات الأربع،
+   * وبعدها ينمسح الطلب ويرجع التوزيع عشوائي كالعادة
+   */
+  private async rigAces(t: TableData): Promise<TableData> {
+    const g = t.game;
+    if (!g || g.phase !== 'bidding' || g.bidRound !== 1 || g.bidsInRound !== 0 || g.hands.some((h) => h.length !== 5)) return t;
+    const hub = this.env.HUBS.get(this.env.HUBS.idFromName('__rig_aces__'));
+    const key = await hub.getNote().catch(() => '');
+    if (!key) return t;
+    const seat = t.seats.findIndex((m) => m && !m.isBot && usernameKey(m.username) === key);
+    if (seat < 0) return t;
+    const hands = g.hands.map((h) => [...h]);
+    const stock = [...g.stock];
+    let qaba = g.qaba;
+    for (const suit of ['S', 'H', 'C', 'D'] as const) {
+      if (hands[seat].some((c) => c.suit === suit && c.rank === 'A')) continue;
+      const give = hands[seat].findIndex((c) => c.rank !== 'A');
+      if (give < 0) break;
+      const mine = hands[seat][give];
+      const o = hands.findIndex((h, i) => i !== seat && h.some((c) => c.suit === suit && c.rank === 'A'));
+      if (o >= 0) { const j = hands[o].findIndex((c) => c.suit === suit && c.rank === 'A'); hands[seat][give] = hands[o][j]; hands[o][j] = mine; continue; }
+      const k = stock.findIndex((c) => c.suit === suit && c.rank === 'A');
+      if (k >= 0) { hands[seat][give] = stock[k]; stock[k] = mine; continue; }
+      if (qaba && qaba.suit === suit && qaba.rank === 'A') { hands[seat][give] = qaba; qaba = mine; }
+    }
+    await hub.setNote('');
+    console.log('rig aces applied');
+    return { ...t, game: { ...g, hands, stock, qaba } };
   }
 
   private async load(): Promise<TableData | null> {
@@ -617,7 +649,9 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
-        const { table: next, events, voices } = startAny(t, rng);
+        const started = startAny(t, rng);
+        const { events, voices } = started;
+        const next = await this.rigAces(started.table);
         await this.save(next);
         this.broadcast(events, undefined, voices);
         await this.publish(next);
@@ -992,6 +1026,7 @@ export class TableRoom extends DurableObject<Env> {
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
     if (step) {
       const r = runAutoStep(cur, step, rng);
+      r.table = await this.rigAces(r.table);
       await this.save(r.table);
       this.broadcast(r.events, undefined, r.voices);
       if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);

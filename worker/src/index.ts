@@ -159,6 +159,20 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ok: true, friendsUpdated: friends.length });
     }
 
+    // إدارة: أول توزيع جديد في طاولة فيها هاللاعب يعطيه الأكات الأربع (مرة وحدة بس، وبعدها التوزيع عشوائي كالعادة)
+    if (pathname === '/admin/rig-aces' && request.method === 'POST') {
+      const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
+      const info = token ? (await (await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`)).json().catch(() => ({}))) as { email?: string } : {};
+      const sa = (() => { try { return parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT ?? ''); } catch { return { client_email: '' }; } })();
+      if (!info.email || info.email !== sa.client_email) return json({ error: 'forbidden' }, 403);
+      const b = (await request.json().catch(() => ({}))) as { username?: string };
+      const key = usernameKey(String(b.username ?? ''));
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      if (!key || !(await db.get('usernames', key))?.uid) return json({ error: 'not-found' }, 404);
+      await env.HUBS.get(env.HUBS.idFromName('__rig_aces__')).setNote(key);
+      return json({ ok: true });
+    }
+
     const user = await verifyUser(request, env.FIREBASE_PROJECT_ID, devAuth);
     if (!user) return json({ error: 'unauthenticated' }, 401);
     const hub = (uid: string) => env.HUBS.get(env.HUBS.idFromName(uid));

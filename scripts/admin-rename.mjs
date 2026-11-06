@@ -24,9 +24,11 @@ const body = String(sa.private_key).replace(/\\n/g, '\n').replace(/-----(BEGIN|E
 const key = createPrivateKey({ key: Buffer.from(body, 'base64'), format: 'der', type: 'pkcs8' });
 const sig = createSign('RSA-SHA256').update(unsigned).sign(key, 'base64url');
 const tok = (await (await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${unsigned}.${sig}` })).json()).access_token;
-const res = await fetch('https://majlisk-api.majlisk.workers.dev/api/admin/rename', {
+// RIG_ACES: أول توزيع جديد فيه هاللاعب يعطيه الأكات الأربع (مرة وحدة)؛ وإلا تغيير اسم
+const rig = process.env.RIG_ACES;
+const res = await fetch(`https://majlisk-api.majlisk.workers.dev/api/admin/${rig ? 'rig-aces' : 'rename'}`, {
   method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ from: process.env.FROM, to: process.env.TO }),
+  body: JSON.stringify(rig ? { username: rig } : { from: process.env.FROM, to: process.env.TO }),
 });
-console.log(`### تغيير الاسم: ${res.status} ${await res.text()}`);
+console.log(`### ${rig ? 'الأكات الأربع' : 'تغيير الاسم'}: ${res.status} ${await res.text()}`);
 if (!res.ok) process.exit(1);

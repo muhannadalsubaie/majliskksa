@@ -31,12 +31,15 @@ on:
       rename_to:
         description: الاسم الجديد
         default: ''
+      rig_aces:
+        description: أول توزيع جديد فيه هاللاعب (اسم المستخدم) يعطيه الأكات الأربع مرة وحدة بدل النشر
+        default: ''
 
 concurrency: worker-deploy
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '' && inputs.rename_from == '')
+    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '' && inputs.rename_from == '' && inputs.rig_aces == '')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +126,21 @@ jobs:
               if (/invite|push|voice/i.test(path) || /push|voice/i.test(logs) || (e.exceptions ?? []).length)
                 console.log(new Date(e.eventTimestamp).toISOString(), e.event?.request?.method ?? "", path.replace(/[0-9a-f]{64}/, "<table>"), e.event?.response?.status ?? "", logs, JSON.stringify(e.exceptions ?? []));
             }' | tee -a $GITHUB_STEP_SUMMARY
+
+  rig-aces:
+    if: github.event_name == 'workflow_dispatch' && inputs.rig_aces != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Rig aces once
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RIG_ACES: ${{ inputs.rig_aces }}
+        run: |
+          set -o pipefail
+          node scripts/admin-rename.mjs | tee -a $GITHUB_STEP_SUMMARY
 
   grant-gift:
     if: github.event_name == 'workflow_dispatch' && inputs.grant_gift == 'yes'
