@@ -521,8 +521,8 @@ export const DECISION_GAP_MS = 1500;
 export const DEAL_GAP_MS = 1500;
 /** كشف المشروع في اللفة الثانية: كم يوقف الدور عند صاحبه قبل ما يلعب (عشان الكل يشوف المشروع) */
 export const REVEAL_GAP_MS = 3000;
-/** الأكلة المكتملة تبقى ظاهرة في التطبيقات ٣ ثواني (والمشروع يظهر بعدها) */
-const TRICK_SHOW_MS = 3000;
+/** الأكلة المكتملة تبقى ظاهرة في التطبيقات ثانية ونص (والمشروع يظهر بعدها) */
+const TRICK_SHOW_MS = 1500;
 
 /** جاء دور صاحب مشروع في اللفة الثانية (وما لعب بعد): إعلان أوراق مشروعه، أو إلغاؤه */
 function revealProject(t: TableData, before: GameState, after: GameState): { seat: Seat; events: string[] } | null {
@@ -731,7 +731,7 @@ function balootPace(g: GameState, seat: Seat, action: Action, rng: Rng): number 
       if (options <= 1) return human(rng, 1400, 2400); // ورقة وحدة مسموحة
       if (g.trickNo >= 7) return human(rng, 1300, 2200); // آخر أكلة
       // بعد آخر ورقة في الأكلة تبقى الأكلة ظاهرة ٣ ثواني قبل ما تنسحب: الروبوت ما يبدأ الأكلة الجاية قبلها
-      if (!g.trick.length && g.trickNo > 0) return human(rng, 3300, 4600);
+      if (!g.trick.length && g.trickNo > 0) return human(rng, 1900, 3200); // بعد ما تنسحب الأكلة (ثانية ونص)
       if (!g.trick.length) return human(rng, 2200, 4200); // بداية الأكلة
       return human(rng, 1800, 3600);
     }
