@@ -155,6 +155,20 @@ export class TableRoom extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
 
+  /**
+   * كل ما يغيّر الطاولة يمشي واحد ورا الثاني: الطاولة تنتظر خدمات برا (المحادثة الصوتية، العملات، Firestore)،
+   * وفي هالانتظار كان يدخل طلب ثاني (ورقة لاعب أو روبوت)، وبعدها نحفظ نسخة الطاولة القديمة فوقه:
+   * ترجع الورقة لصاحبها ويطلع صوت التوزيع. التسلسل يمنع هذا.
+   */
+  private chain: Promise<unknown> = Promise.resolve();
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    // لو علّق طلب قبله (خدمة برا ما ردّت) ما ننتظره للأبد: بعد 8 ثواني نكمل
+    const prev = Promise.race([this.chain, new Promise((r) => setTimeout(r, 8000))]);
+    const run = prev.then(fn, fn);
+    this.chain = run.catch(() => {});
+    return run;
+  }
+
   /** اتصالات تنبض (نسخ التطبيق الجديدة) وانقطعت نبضتها */
   private staleSockets(): WebSocket[] {
     const now = Date.now();
@@ -169,7 +183,7 @@ export class TableRoom extends DurableObject<Env> {
   private async dropStale() {
     for (const ws of this.staleSockets()) {
       try { ws.close(4000, 'stale'); } catch { /* already closed */ }
-      await this.webSocketClose(ws);
+      await this.webSocketCloseInner(ws);
     }
   }
 
@@ -223,6 +237,10 @@ export class TableRoom extends DurableObject<Env> {
   // ───── استدعاءات من الخادم الرئيسي (RPC) ─────
 
   async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
+    return this.serial(() => this.createInner(id, owner, isPrivate, kind, variant));
+  }
+
+  private async createInner(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
     const t = newTable(id, owner, isPrivate, Date.now(), kind, variant);
     await this.save(t);
     await this.publish(t);
@@ -232,6 +250,10 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async joinTable(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
+    return this.serial(() => this.joinTableInner(user, invite));
+  }
+
+  private async joinTableInner(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     try {
@@ -258,6 +280,10 @@ export class TableRoom extends DurableObject<Env> {
    * إن لم يكن فيها أحد متصل نبدأ مهلة الإغلاق (إن لم تكن بدأت).
    */
   async checkAlive(): Promise<boolean> {
+    return this.serial(() => this.checkAliveInner());
+  }
+
+  private async checkAliveInner(): Promise<boolean> {
     const t = await this.load();
     if (!t) return false;
     if (this.onlyBots(t)) { await this.closeTable(); return false; }
@@ -273,6 +299,10 @@ export class TableRoom extends DurableObject<Env> {
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
   async createInvite(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
+    return this.serial(() => this.createInviteInner(uid, seat));
+  }
+
+  private async createInviteInner(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     if (t.ownerUid !== uid) return { error: 'not-owner' };
@@ -333,6 +363,10 @@ export class TableRoom extends DurableObject<Env> {
    * فلا يستطيع أحد سحب صوت طاولة ليس فيها أو التحكم بجلسة غيره.
    */
   async voice(uid: string, req: VoiceRequest): Promise<unknown> {
+    return this.serial(() => this.voiceInner(uid, req));
+  }
+
+  private async voiceInner(uid: string, req: VoiceRequest): Promise<unknown> {
     const t = await this.load();
     if (!t) throw new Error('not-found');
     const name = memberName(t, uid);
@@ -427,6 +461,10 @@ export class TableRoom extends DurableObject<Env> {
   // ───── WebSocket ─────
 
   async fetch(request: Request): Promise<Response> {
+    return this.serial(() => this.fetchInner(request));
+  }
+
+  private async fetchInner(request: Request): Promise<Response> {
     const uid = request.headers.get('X-Uid');
     if (!uid || request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
     const pair = new WebSocketPair();
@@ -474,6 +512,10 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    return this.serial(() => this.webSocketMessageInner(ws, raw));
+  }
+
+  private async webSocketMessageInner(ws: WebSocket, raw: string | ArrayBuffer) {
     const { uid } = ws.deserializeAttachment() as { uid: string };
     let msg: ClientMessage;
     try { msg = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)); } catch { return; }
@@ -709,6 +751,10 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket) {
+    return this.serial(() => this.webSocketCloseInner(ws));
+  }
+
+  private async webSocketCloseInner(ws: WebSocket) {
     try { ws.close(); } catch { /* already closed */ }
     // انقطع اتصاله بالطاولة: يخرج من المحادثة الصوتية (إن لم يكن متصلاً من جهاز آخر)
     const { uid } = ws.deserializeAttachment() as { uid: string };
@@ -873,6 +919,10 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async alarm() {
+    return this.serial(() => this.alarmInner());
+  }
+
+  private async alarmInner() {
     const t = await this.load();
     if (!t) return;
     await this.dropStale();
