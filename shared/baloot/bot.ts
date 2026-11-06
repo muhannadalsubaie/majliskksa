@@ -24,15 +24,18 @@ export interface BotParams {
   raise: number;
   /** لعب متقدم: يتذكّر من خلص عنده لون (علناً)، ويختار الافتتاح والرمي كما يلعب الخبير */
   smart?: boolean;
+  /** اللعب الخبير: التهريب وقراءته، والسيدات أول (الأكبر أول)، وحساب القطع، والقطع بأصغر حكم يكفي */
+  expert?: boolean;
 }
 
 // مضبوطة بمباريات تجريبية (bot.tuning.test.ts و bot.compare.test.ts) مع ميل للتحفظ أمام اللاعبين البشر:
 // حكم ≈ ولد مع تسعة أو أكة، أو ولد مع حكم طويل. صن ≈ ثلاث أكات، أو أكتان مع عشرة وشايب.
 // مع اللعب المتقدم وعتبة الحكم 3.4 يفوز على النسخة السابقة (3.8 بلا لعب متقدم) في ≈59% من المباريات.
-export const DEFAULT_BOT: BotParams = { hokm: 3.4, sun: 3.8, overPartner: 4, double: 6.5, raise: 9, smart: true };
+// والخبير (التهريب وقراءته، السيدات أول، حساب القطع، تقييم أشمل للشراء، دبل بأكلات الدفاع) يفوز على «المتقدم» في ≈55% (600 مباراة).
+export const DEFAULT_BOT: BotParams = { hokm: 3.4, sun: 3.8, overPartner: 4, double: 6.5, raise: 9, smart: true, expert: true };
 
 /** النسخة السابقة (للمقارنة فقط) */
-export const PREVIOUS_BOT: BotParams = { hokm: 3.8, sun: 3.8, overPartner: 4, double: 6.5, raise: 9 };
+export const PREVIOUS_BOT: BotParams = { hokm: 3.4, sun: 3.8, overPartner: 4, double: 6.5, raise: 9, smart: true };
 
 // ───── تقييم اليد ─────
 
@@ -42,7 +45,8 @@ const has = (hand: Card[], suit: Suit, rank: Rank) => hand.some((c) => c.suit ==
  * قوة الحكم بلون معين (≈ عدد الأكلات المتوقعة):
  * الولد والتسعة من أقوى الأوراق، وطول لون الحكم مهم، والأكات الجانبية أكلات شبه مضمونة.
  */
-export function hokmStrength(hand: Card[], trump: Suit): number {
+export function hokmStrength(hand: Card[], trump: Suit): number { return hokmStrengthBase(hand, trump); }
+function hokmStrengthBase(hand: Card[], trump: Suit): number {
   const trumps = hand.filter((c) => c.suit === trump);
   let s = 0;
   if (has(hand, trump, 'J')) s += 2.2;
@@ -58,6 +62,34 @@ export function hokmStrength(hand: Card[], trump: Suit): number {
   // لون فارغ مع حكم كافٍ = فرصة قطع
   const voids = SUITS.filter((x) => x !== trump && !hand.some((c) => c.suit === x)).length;
   if (trumps.length >= 3) s += voids * 0.5;
+  return s;
+}
+
+/**
+ * تقييم الحكم الكامل (للروبوت الخبير): نفس أساس hokmStrength مع اليد كاملة —
+ * الحكم بدون ولد ولا تسعة ضعيف، والعشرة والشايب مع الإكة الجانبية، والزات الطويل مع الإكة، والفردة الجانبية مع حكم كافٍ.
+ */
+export function hokmStrengthPro(hand: Card[], trump: Suit): number {
+  const trumps = hand.filter((c) => c.suit === trump);
+  const J = has(hand, trump, 'J'), N = has(hand, trump, '9');
+  let s = 0;
+  if (J) s += 2.2;
+  if (N) s += J ? 1.6 : 1.1;
+  if (has(hand, trump, 'A')) s += J || N || trumps.length >= 3 ? 1 : 0.7;
+  if (has(hand, trump, '10')) s += J || has(hand, trump, 'A') ? 0.6 : 0.4;
+  s += Math.max(0, trumps.length - 2) * 0.8;
+  if (!J && !N) s -= 0.8;
+  for (const suit of SUITS) {
+    if (suit === trump) continue;
+    const len = hand.filter((c) => c.suit === suit).length;
+    const a = has(hand, suit, 'A'), t = has(hand, suit, '10'), k = has(hand, suit, 'K');
+    if (a) s += 1;
+    if (a && t) s += 0.6;
+    if (a && t && k) s += 0.3;
+    if (!a && t && k) s += 0.3;
+    if (a && len >= 4) s += 0.3;
+    if (trumps.length >= 3) s += len === 0 ? 0.5 : len === 1 && !a ? 0.25 : 0;
+  }
   return s;
 }
 
@@ -105,6 +137,7 @@ function chooseBid(s: GameState, seat: Seat, p: BotParams): Bid {
   const qaba = s.qaba!;
   const withQaba = [...hand, qaba]; // المشتري يأخذ القبلة
 
+  const hokmStrength = p.expert ? hokmStrengthPro : hokmStrengthBase;
   const sun = sunStrength(withQaba);
   // صاحب "الثاني" بعد أن قال الجميع بس: تأكيد الحكم أو صن (إن كانت اليد أقوى صناً بوضوح)، ثم أقوى لون
   if (s.secondHokm?.remaining === 0) {
@@ -155,7 +188,63 @@ function wantsLock(s: GameState, seat: Seat): boolean {
   return c.mode === 'hokm' && (has(hand, c.trump!, 'J') || has(hand, c.trump!, '9'));
 }
 
+/**
+ * أكلات الدفاع المتوقعة ضد المشتري (للدبل): ما يعتمد على الحظ، بس الأوراق اللي تاكل فعلاً ضد العقد.
+ * في الحكم: الولد، والتسعة (مع الولد أو مع حكم طويل)، والحكم الطويل، والأكات الجانبية.
+ * في الصن: الأكات، والعشرة مع الإكة، والزات الطويل مع الإكة.
+ */
+export function defenseTricks(hand: Card[], mode: 'sun' | 'hokm', trump: Suit | null): number {
+  let t = 0;
+  if (mode === 'hokm') {
+    const trumps = hand.filter((c) => c.suit === trump).length;
+    if (has(hand, trump!, 'J')) t += 1;
+    if (has(hand, trump!, '9')) t += has(hand, trump!, 'J') || trumps >= 3 ? 1 : 0.4;
+    if (has(hand, trump!, 'A') && trumps >= 3) t += 0.5;
+    t += Math.max(0, trumps - 3) * 0.6;
+    for (const suit of SUITS) {
+      if (suit === trump) continue;
+      const len = hand.filter((c) => c.suit === suit).length;
+      // الإكة الجانبية: لو الزات طويل تنقطع أسرع
+      if (has(hand, suit, 'A')) t += len >= 5 ? 0.6 : 0.9;
+      if (has(hand, suit, 'A') && has(hand, suit, '10') && len <= 4) t += 0.6;
+    }
+    return t;
+  }
+  for (const suit of SUITS) {
+    const len = hand.filter((c) => c.suit === suit).length;
+    const a = has(hand, suit, 'A'), ten = has(hand, suit, '10');
+    if (a) t += 1;
+    if (a && ten) t += 0.9;
+    else if (ten && has(hand, suit, 'K')) t += 0.4;
+    if (a && len >= 4) t += 0.5 * (len - 3);
+  }
+  return t;
+}
+
+function chooseDoubleExpert(s: GameState, seat: Seat, p: BotParams): Action {
+  const option = availableDouble(s, seat);
+  const c = s.contract!;
+  if (!option) return { type: 'doublePass', seat };
+  const buyerSide = teamOf(c.buyer) === teamOf(seat);
+  const hand = c.qabaTo === seat && s.hands[seat].length < 8 && s.qaba ? [...s.hands[seat], s.qaba] : s.hands[seat];
+  const scale = 8 / Math.max(hand.length, 1);
+  let go: boolean;
+  if (buyerSide) {
+    // المشتري يرفع (ثري/قهوة) بس لو يده قوية جداً
+    const raw = c.mode === 'hokm' ? hokmStrength(hand, c.trump!) : sunStrength(hand);
+    go = raw * scale >= (option.label === 'قهوة' ? p.raise + 2 : p.raise);
+  } else {
+    // الخصم يدبّل (أو يرفع فور) بس لو يده قوية فعلاً ضد الحاكم: أكلات مضمونة كافية
+    const d = defenseTricks(hand, c.mode, c.trump ?? null) * scale;
+    const strongTrump = c.mode === 'sun' || has(hand, c.trump!, 'J') || (has(hand, c.trump!, '9') && hand.filter((x) => x.suit === c.trump).length >= 3);
+    go = strongTrump && d >= (option.label === 'دبل' ? 4.6 : 5.6);
+  }
+  if (!go) return { type: 'doublePass', seat };
+  return { type: 'double', seat, locked: option.needsLockChoice ? wantsLock(s, seat) : undefined };
+}
+
 function chooseDouble(s: GameState, seat: Seat, p: BotParams): Action {
+  if (p.expert) return chooseDoubleExpert(s, seat, p);
   const option = availableDouble(s, seat);
   const c = s.contract!;
   // الدبل قبل توزيع بقية الورق: المشتري (أو صاحب القبلة) يعرف أن ورقة الأرض له
@@ -334,6 +423,200 @@ function choosePlaySmart(s: GameState, seat: Seat): Card {
   return discard();
 }
 
+// ───── اللعب الخبير: التهريب وقراءته، وعدّ الورق، وحساب القطع ─────
+
+/** أخو الزات: الديمن والهاص إخوان، والسبيت والشريا إخوان */
+export const brotherOf = (suit: Suit): Suit => ({ S: 'C', C: 'S', H: 'D', D: 'H' } as const)[suit];
+
+/** ورقة كبيرة في التهريب: الإكة والعشرة والشايب والبنت (ترتيب الصن) */
+const isBigSignal = (c: Card) => c.rank === 'A' || c.rank === '10' || c.rank === 'K' || c.rank === 'Q';
+
+/**
+ * وش يبي الشريك (من تهريبه وهو ماسك الأكلة فقط، والتهريب وقت ما الأكلة مو له ما يُقرأ):
+ *  • هرّب ورقة كبيرة من زات ← يبي أخوها. ومن الكبير للصغير في نفس الزات ← يتأكد إنه يبي الأخ.
+ *  • من الصغير للكبير في نفس الزات ← يبي نفس الزات.
+ *  • هرّب من الزاتين الإخوان (مثلاً هاص وديمن واللعب سبيت) ← يبي أخو الزات الملعوب.
+ *  • هرّب الإكة ← يبي نفس الزات (معه العشرة: «تعال معي العشرة»).
+ * آخر إشارة واضحة هي المعتمدة، وما نرجع إشارة لزات ما عنده (بان إنه خلص) أو للحكم.
+ */
+export function partnerWants(s: GameState, seat: Seat): Suit | null {
+  const partner = nextSeat(seat, 2);
+  const { mode, trump } = s.contract!;
+  const mine = (s.discards ?? []).filter((d) => d.seat === partner && d.toPartner);
+  if (!mine.length) return null;
+  const ok = (x: Suit) => !(mode === 'hokm' && x === trump);
+  let want: Suit | null = null;
+  const seen: Record<string, Card[]> = {};
+  for (const d of mine) {
+    const suit = d.card.suit;
+    const prev = seen[suit] ?? [];
+    seen[suit] = [...prev, d.card];
+    const bro = brotherOf(suit);
+    if (d.card.rank === 'A') { want = suit; continue; }
+    if ((seen[bro] ?? []).length) {
+      // هرّب من الزاتين الإخوان: يبي أخو الزات الملعوب
+      want = brotherOf(d.led);
+      continue;
+    }
+    if (prev.length) {
+      const before = prev[prev.length - 1];
+      const up = cardStrength(d.card, 'sun', null) > cardStrength(before, 'sun', null);
+      want = up ? suit : bro;
+      continue;
+    }
+    if (isBigSignal(d.card)) want = bro;
+  }
+  if (!want || !ok(want)) return null;
+  // بان إن الشريك خلص منه: ما عاد يبيه
+  if (s.voids?.[partner]?.includes(want)) return null;
+  return want;
+}
+
+export function choosePlayExpert(s: GameState, seat: Seat): Card {
+  const legal = legalCardsFor(s, seat);
+  if (legal.length === 1) return legal[0];
+  const { mode, trump } = s.contract!;
+  const hand = s.hands[seat];
+  const gone = playedCards(s);
+  const isTrump = (c: Card) => mode === 'hokm' && c.suit === trump;
+  const pts = (c: Card) => cardPoints(c, mode, trump);
+  const str = (c: Card) => cardStrength(c, mode, trump);
+  const partner = nextSeat(seat, 2);
+  const opps = [nextSeat(seat, 1), nextSeat(seat, 3)] as Seat[];
+  const isVoid = (p: Seat, suit: Suit) => s.voids?.[p]?.includes(suit) ?? false;
+  // أوراق ما نعرف مكانها: لا انلعبت ولا معي ولا على الطاولة
+  const outside = (suit: Suit) => createDeck().filter((c) => c.suit === suit && !gone.some((g) => sameCard(g, c)) && !hand.some((h) => sameCard(h, c)) && !s.trick.some((p) => sameCard(p.card, c)));
+  // حكم الخصوم: باقي حكم برا، وواحد منهم على الأقل ما بان إنه خلص حكمه
+  const oppsHaveTrump = mode === 'hokm' && outside(trump!).length > 0 && opps.some((o) => !isVoid(o, trump!));
+  // خطر القطع على زات: الخصم خلص منه وعنده حكم، أو أغلب ورق الزات طلع (باقي برا ورقتين أو أقل)
+  const cutRisk = (suit: Suit, who: Seat[] = opps) => mode === 'hokm' && suit !== trump && oppsHaveTrump
+    && (who.some((o) => isVoid(o, suit) && !isVoid(o, trump!)) || outside(suit).length <= 2);
+  const master = (c: Card) => isMaster(c, s, hand, gone);
+  const suitLen = (suit: Suit) => hand.filter((h) => h.suit === suit).length;
+  const guarded10 = (c: Card) => c.rank === '10' && !isTrump(c) && !has(hand, c.suit, 'A') && outside(c.suit).some((x) => x.rank === 'A');
+  const cheapest = (cards: Card[]) => [...cards].sort((a, b) => pts(a) - pts(b) || str(a) - str(b))[0];
+  const strongest = (cards: Card[]) => [...cards].sort((a, b) => str(b) - str(a))[0];
+  const buyerTeam = teamOf(s.contract!.buyer) === teamOf(seat);
+  /** الرمي وقت الأكلة مو لنا: أصغر ورقة (بدون إشارة غلط)، بلا حكم ولا سيدة ولا عشرة محمية ولا إكة */
+  const lowest = () => {
+    const pool = legal.filter((c) => !isTrump(c));
+    const base = pool.length ? pool : legal;
+    const keep = base.filter((c) => !master(c) && !guarded10(c) && c.rank !== 'A');
+    const from = keep.length ? keep : base;
+    return [...from].sort((a, b) => pts(a) - pts(b) || str(a) - str(b) || suitLen(a.suit) - suitLen(b.suit))[0];
+  };
+
+  // ── الافتتاح ──
+  if (s.trick.length === 0) {
+    // ١) فريق المشتري في الحكم: نسحب حكم الخصوم بالحكم السيد، ونوقف إذا خلص حكمهم
+    if (mode === 'hokm' && buyerTeam && oppsHaveTrump) {
+      const masterTrump = legal.filter((c) => isTrump(c) && master(c));
+      if (masterTrump.length) return strongest(masterTrump);
+      const myTrumps = legal.filter(isTrump);
+      if (myTrumps.length > outside(trump!).length && myTrumps.length >= 3) return cheapest(myTrumps);
+    }
+    // ٢) الأوراق الحرة (السيدة) أول، من زات ما ينقطع، والأكبر أول في نفس الزات (الإكة قبل العشرة)
+    const masters = legal.filter((c) => !isTrump(c) && master(c) && !cutRisk(c.suit));
+    if (masters.length) return [...masters].sort((a, b) => str(b) - str(a) || pts(b) - pts(a))[0];
+    // ٣) نلبّي تهريب الشريك: ورقة صغيرة من الزات اللي يبيه (ما نفتحه بورقة كبيرة)
+    const want = partnerWants(s, seat);
+    if (want) {
+      const ofWant = legal.filter((c) => c.suit === want && !isTrump(c));
+      if (ofWant.length && !(mode === 'hokm' && cutRisk(want, opps) && opps.some((o) => isVoid(o, want)))) return cheapest(ofWant);
+    }
+    // ٤) زات خلص عند الشريك وعنده حكم (وما يقطعه الخصم): نفتحه صغير فيقطع الشريك
+    if (mode === 'hokm' && !isVoid(partner, trump!)) {
+      const forPartner = legal.filter((c) => !isTrump(c) && isVoid(partner, c.suit) && !opps.some((o) => isVoid(o, c.suit) && !isVoid(o, trump!)) && !guarded10(c) && c.rank !== 'A');
+      if (forPartner.length) return cheapest(forPartner);
+    }
+    // ٥) أصغر ورقة من أطول زات آمن
+    const small = legal.filter((c) => !isTrump(c) && pts(c) === 0 && !cutRisk(c.suit));
+    if (small.length) return [...small].sort((a, b) => suitLen(b.suit) - suitLen(a.suit) || str(a) - str(b))[0];
+    return lowest();
+  }
+
+  // ── المتابعة ──
+  const winner = trickWinner(s.trick, mode, trump);
+  const partnerWinning = teamOf(winner) === teamOf(seat);
+  const last = s.trick.length === 3;
+  const led = s.trick[0].card.suit;
+  const trickPoints = s.trick.reduce((sum, p) => sum + pts(p.card), 0);
+  const winners = legal.filter((c) => trickWinner([...s.trick, { seat, card: c }], mode, trump) === seat);
+  // اللاعبين اللي بعدي في هذه الأكلة
+  const after = ([1, 2, 3] as const).slice(0, 3 - s.trick.length).map((n) => nextSeat(seat, n));
+  const oppsAfter = after.filter((p) => teamOf(p) !== teamOf(seat));
+  const following = legal.some((c) => c.suit === led);
+
+  if (partnerWinning) {
+    const partnerCard = s.trick.find((p) => p.seat === winner)!.card;
+    // أكلة الشريك مضمونة: آخر واحد، أو ورقته سيدة وما يقطعها اللي بعدي، أو اللي بعدي ما يقدر يغلبها
+    const nextCanCut = isTrump(partnerCard) ? false : oppsAfter.some((o) => mode === 'hokm' && isVoid(o, led) && !isVoid(o, trump!) && oppsHaveTrump);
+    const partnerTop = isTrump(partnerCard)
+      ? outside(trump!).every((c) => str(c) < str(partnerCard))
+      : master(partnerCard);
+    const nextIsOut = oppsAfter.every((o) => isVoid(o, led) && (mode === 'sun' || isTrump(partnerCard) || isVoid(o, trump!)));
+    const partnerSafe = last || oppsAfter.length === 0 || (partnerTop && !nextCanCut) || nextIsOut;
+    if (partnerSafe) {
+      if (!following) {
+        // تهريب لخوينا (هو ماسك الأكلة): نعلّمه وش نبي
+        const sig = signalCard(legal);
+        if (sig) return sig;
+      }
+      // نعطيه أبناط بدون ما نضيّع حكم، ولا سيدة، ولا إكة
+      const feed = legal.filter((c) => !isTrump(c)).sort((a, b) => Number(master(a) || a.rank === 'A') - Number(master(b) || b.rank === 'A') || pts(b) - pts(a));
+      if (feed.length) return feed[0];
+      return cheapest(legal);
+    }
+    // مو مضمونة والأكلة ثمينة: نضمنها بورقة سيدة ما تنقطع
+    // (بالحكم بس لو الأكلة فيها أبناط)
+    const secure = winners.filter((c) => master(c) && (isTrump(c) ? trickPoints >= 10 : !cutRisk(led, oppsAfter)));
+    if (secure.length) return cheapest(secure);
+    return lowest();
+  }
+
+  // الخصم ماسك الأكلة
+  if (winners.length) {
+    if (last) return cheapest(winners);
+    const trumpWins = winners.filter(isTrump);
+    const plainWins = winners.filter((c) => !isTrump(c));
+    // نفوز بورقة سيدة ما يقطعها اللي بعدي، والأكبر أول لو معي أكثر من سيدة في الزات (الإكة قبل العشرة)
+    const safeMasters = plainWins.filter((c) => master(c) && !cutRisk(led, oppsAfter));
+    if (safeMasters.length) return safeMasters.length > 1 ? strongest(safeMasters) : safeMasters[0];
+    if (plainWins.length && (trickPoints >= 10 || s.trickNo === 7)) return cheapest(plainWins);
+    if (trumpWins.length) {
+      // القطع: بأصغر حكم يكفي (ويغلب أي حكم ممكن يجي بعدي لو نقدر)، وما نقطع أكلة فاضية لو نحتاج الحكم بعدين
+      const optional = legal.some((c) => !isTrump(c));
+      const needTrumpLater = buyerTeam && oppsHaveTrump && hand.filter(isTrump).length <= outside(trump!).length;
+      if (optional && trickPoints < 5 && needTrumpLater) return lowest();
+      const topOutside = Math.max(0, ...outside(trump!).map(str));
+      const unbeatable = trumpWins.filter((c) => str(c) > topOutside);
+      const othersCanOvercut = oppsAfter.some((o) => isVoid(o, led) && !isVoid(o, trump!));
+      if (othersCanOvercut && unbeatable.length) return cheapest(unbeatable);
+      return cheapest(trumpWins);
+    }
+  }
+  return lowest();
+
+  /** التهريب لخوينا وهو ماسك: نختار ورقة توصّل له الزات اللي نبيه */
+  function signalCard(cards: Card[]): Card | null {
+    const plain = cards.filter((c) => !isTrump(c));
+    if (!plain.length) return null;
+    // الإكة والعشرة من نفس الزات والحاكم خصم (في الحكم): نهرّب الإكة = «تعال معي العشرة»
+    if (mode === 'hokm' && !buyerTeam) {
+      const aceSig = plain.find((c) => c.rank === 'A' && has(hand, c.suit, '10') && outside(c.suit).length >= 2);
+      if (aceSig) return aceSig;
+    }
+    // زات نبيه: معنا فيه ورقة سيدة وورقة ثانية (نقدر ناكل فيه أكثر من مرة)
+    const wanted = SUITS.filter((x) => !(mode === 'hokm' && x === trump) && x !== led && hand.some((h) => h.suit === x && master(h)) && suitLen(x) >= 2);
+    for (const w of wanted) {
+      // ورقة كبيرة (مو إكة ولا سيدة) من أخو الزات اللي نبيه
+      const bro = plain.filter((c) => c.suit === brotherOf(w) && isBigSignal(c) && c.rank !== 'A' && !master(c));
+      if (bro.length) return strongest(bro);
+    }
+    return null;
+  }
+}
+
 /** الحركة التالية للروبوت في هذا المقعد (أو null إن لم يكن دوره). */
 export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_BOT): Action | null {
   if (s.phase === 'bidding' && s.turn === seat && s.qaba) return { type: 'bid', seat, bid: chooseBid(s, seat, params) };
@@ -344,7 +627,10 @@ export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_
   if (isLockChoiceTurn(s, seat)) return { type: 'doubleLock', seat, locked: wantsLock(s, seat) };
   if (s.phase === 'playing') {
     if (s.turn !== seat || s.trickNo >= 8) return null;
-    return { type: 'play', seat, card: params.smart ? choosePlaySmart(s, seat) : choosePlay(s, seat) };
+    const card = params.expert ? choosePlayExpert(s, seat) : params.smart ? choosePlaySmart(s, seat) : choosePlay(s, seat);
+    // حماية: لو لأي سبب طلعت ورقة غير قانونية، نرجع لأول ورقة قانونية
+    const legal = legalCardsFor(s, seat);
+    return { type: 'play', seat, card: legal.some((c) => sameCard(c, card)) ? card : legal[0] };
   }
   return null;
 }

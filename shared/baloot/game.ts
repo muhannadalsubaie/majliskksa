@@ -49,6 +49,8 @@ export interface DoublingState {
   lockPending?: Seat | null;
 }
 
+export interface Discard { seat: Seat; card: Card; led: Suit; toPartner: boolean }
+
 export interface GameState {
   phase: Phase;
   dealer: Seat;
@@ -91,6 +93,11 @@ export interface GameState {
    * أو في الحكم ما قطع والقطع إجباري عليه). يستخدمها الروبوت ليلعب كما يلعب الناس.
    */
   voids?: Suit[][];
+  /**
+   * التهريب (علني): كل ورقة رماها لاعب من غير اللون المطلوب وبغير الحكم، بالترتيب،
+   * ومعها هل كان شريكه ماسك الأكلة وقتها. يقرأها الروبوت كما يقرأها الناس.
+   */
+  discards?: Discard[];
   tricksWon: [number, number];
   cardAbnat: [number, number];
   lastHand: HandScore | null;
@@ -427,7 +434,7 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   const balootSeat = s.balootSeat === null && isKQ && hasBaloot(s.initialHands[seat], c.trump)
     && !hands[seat].some((x) => x.suit === c.trump && (x.rank === 'K' || x.rank === 'Q'))
     ? seat : s.balootSeat;
-  let next: GameState = { ...s, hands, trick, declared, balootSeat, turn: nextSeat(seat), voids: noteVoids(s, seat, card) };
+  let next: GameState = { ...s, hands, trick, declared, balootSeat, turn: nextSeat(seat), voids: noteVoids(s, seat, card), discards: noteDiscard(s, seat, card) };
   if (trick.length < 4) return next;
 
   const winner = trickWinner(trick, c.mode, c.trump);
@@ -457,6 +464,16 @@ function noteVoids(s: GameState, seat: Seat, card: Card): Suit[][] | undefined {
   const voids = (s.voids ?? [[], [], [], []]).map((v) => [...v]);
   for (const suit of add) if (!voids[seat].includes(suit)) voids[seat].push(suit);
   return voids;
+}
+
+/** تهريب: ورقة من غير اللون المطلوب وبغير الحكم */
+function noteDiscard(s: GameState, seat: Seat, card: Card): Discard[] | undefined {
+  if (!s.trick.length) return s.discards;
+  const c = s.contract!;
+  const led = s.trick[0].card.suit;
+  if (card.suit === led || (c.mode === 'hokm' && card.suit === c.trump)) return s.discards;
+  const toPartner = teamOf(trickWinner(s.trick, c.mode, c.trump)) === teamOf(seat);
+  return [...(s.discards ?? []), { seat, card, led, toPartner }];
 }
 
 function finishHand(s: GameState): GameState {

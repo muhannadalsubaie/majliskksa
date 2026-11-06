@@ -10,7 +10,7 @@ it.runIf(import.meta.env.TUNE)('tune bot thresholds by self-play', { timeout: 3_
   console.log('default vs random:', winRate(DEFAULT_BOT, 'random', 40).toFixed(2), `(${Date.now() - t0}ms for 40 matches)`);
   let best: BotParams = DEFAULT_BOT;
   // بحث إحداثي: نحسّن كل عتبة على حدة ضد أفضل نسخة حتى الآن، جولتين
-  const grid: Record<Exclude<keyof BotParams, 'smart'>, number[]> = {
+  const grid: Record<Exclude<keyof BotParams, 'smart' | 'expert'>, number[]> = {
     hokm: [3.5, 4, 4.5, 5, 5.5, 6],
     sun: [2.5, 3, 3.5, 4, 4.5, 5],
     overPartner: [1, 2.5, 4],
