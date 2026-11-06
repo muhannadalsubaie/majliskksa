@@ -419,6 +419,10 @@ export class TableRoom extends DurableObject<Env> {
         if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
         // صوت من كتمه المالك لا يُسحب لأحد
         if (isVoiceBlocked(t, req.uid as string)) throw new Error('voice-blocked');
+        // التطبيقات الجديدة: عرض منها وجواب مباشر (بدون إعادة تفاوض من الخدمة)
+        if (isSdp(req.offer, 'offer') && typeof req.mid === 'string') {
+          return await rt.pullWithOffer(sessionId, req.offer, req.mid, remote.sessionId, VOICE_TRACK);
+        }
         try {
           return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
         } catch (e) {

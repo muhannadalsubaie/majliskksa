@@ -408,7 +408,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (voiceMatch && request.method === 'POST') {
       const b = (await body()) as unknown as VoiceRequest;
       try {
-        return json(await env.TABLES.get(env.TABLES.idFromString(voiceMatch[1])).voice(user.uid, b));
+        const t0 = Date.now();
+        const out = await env.TABLES.get(env.TABLES.idFromString(voiceMatch[1])).voice(user.uid, b);
+        // للتشخيص (بلا بيانات مستخدم): نوع الطلب، وهل جاء بعرض من التطبيق، والمدة
+        console.log('voice ok', b.op, b.offer ? 'offer' : '-', `${Date.now() - t0}ms`);
+        return json(out);
       } catch (e) {
         const code = (e as Error).message;
         console.error('voice', code);

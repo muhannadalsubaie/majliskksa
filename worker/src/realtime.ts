@@ -74,6 +74,21 @@ export class Realtime {
     });
   }
 
+  /**
+   * سحب صوت شخص بعرض من التطبيق (مكان جاهز للاستقبال في عرضه): يرجع جواباً مباشرة.
+   * نفس طريقة نشر الميكروفون (اللي تشتغل دائماً)، بدل ما الخدمة ترسل عرض والتطبيق يجاوب.
+   */
+  async pullWithOffer(sessionId: string, offer: SessionDescription, mid: string, remoteSessionId: string, trackName: string): Promise<TracksResponse> {
+    const r = await this.call<TracksResponse>('POST', `/sessions/${sessionId}/tracks/new`, {
+      sessionDescription: offer,
+      tracks: [{ location: 'remote', sessionId: remoteSessionId, trackName, mid }],
+    });
+    const bad = r.tracks?.find((t) => t.errorCode);
+    if (bad) throw new Error(`realtime: ${bad.errorCode} ${bad.errorDescription ?? ''}`.trim());
+    if (!r.sessionDescription) throw new Error('realtime: no answer');
+    return r;
+  }
+
   renegotiate(sessionId: string, answer: SessionDescription): Promise<unknown> {
     return this.call('PUT', `/sessions/${sessionId}/renegotiate`, { sessionDescription: answer });
   }
