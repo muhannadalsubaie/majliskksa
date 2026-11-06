@@ -36,6 +36,16 @@ export class Realtime {
     return (await this.call<{ sessionId: string }>('POST', '/sessions/new')).sessionId;
   }
 
+  /**
+   * جلسة استماع متصلة من أول لحظة: التطبيق يرسل عرضاً (قناة بيانات فقط) فيقوم الاتصال قبل أي سحب.
+   * بدونها الجلسة الفارغة ما تتصل حتى يفتح صاحبها الميكروفون، فما يسمع أحداً.
+   */
+  async connectedSession(offer: SessionDescription): Promise<{ sessionId: string; answer: SessionDescription }> {
+    const r = await this.call<{ sessionId: string; sessionDescription?: SessionDescription }>('POST', '/sessions/new', { sessionDescription: offer });
+    if (!r.sessionDescription) throw new Error('realtime: no answer');
+    return { sessionId: r.sessionId, answer: r.sessionDescription };
+  }
+
   /** نشر الميكروفون في جلسة موجودة */
   async pushTrack(sessionId: string, offer: SessionDescription, mid: string, trackName: string): Promise<SessionDescription> {
     const r = await this.call<TracksResponse>('POST', `/sessions/${sessionId}/tracks/new`, {
