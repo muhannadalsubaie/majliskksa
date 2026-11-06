@@ -391,7 +391,10 @@ export class TableRoom extends DurableObject<Env> {
         const acc = await this.accountVoice(t);
         if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
         // التطبيقات الجديدة ترسل عرضاً فتتصل الجلسة فوراً (وإلا جلسة فارغة كالسابق)
-        const connected = isSdp(req.offer, 'offer') ? await rt.connectedSession(req.offer) : undefined;
+        // لو رفضت الخدمة العرض: جلسة فارغة كالسابق (التطبيق يتراجع عن عرضه ويكمل)، بدل ما يفشل الانضمام كله
+        const connected = isSdp(req.offer, 'offer')
+          ? await rt.connectedSession(req.offer).catch((e) => { console.error('voice session offer', (e as Error).message); return undefined; })
+          : undefined;
         const sessionId = connected?.sessionId ?? await rt.newSession();
         await this.save({ ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } });
         // إعادة اتصال صامتة (كان في المحادثة): لا نعلن "انضم" مرة أخرى
@@ -427,7 +430,12 @@ export class TableRoom extends DurableObject<Env> {
         if (isVoiceBlocked(t, req.uid as string)) throw new Error('voice-blocked');
         // التطبيقات الجديدة: عرض منها وجواب مباشر (بدون إعادة تفاوض من الخدمة)
         if (isSdp(req.offer, 'offer') && typeof req.mid === 'string') {
-          return await rt.pullWithOffer(sessionId, req.offer, req.mid, remote.sessionId, VOICE_TRACK);
+          try {
+            return await rt.pullWithOffer(sessionId, req.offer, req.mid, remote.sessionId, VOICE_TRACK);
+          } catch (e) {
+            console.error('voice pull offer', (e as Error).message);
+            throw e;
+          }
         }
         try {
           return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
