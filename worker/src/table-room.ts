@@ -428,20 +428,9 @@ export class TableRoom extends DurableObject<Env> {
         if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
         // صوت من كتمه المالك لا يُسحب لأحد
         if (isVoiceBlocked(t, req.uid as string)) throw new Error('voice-blocked');
-        // التطبيقات الجديدة: عرض منها وجواب مباشر (بدون إعادة تفاوض من الخدمة)
-        if (isSdp(req.offer, 'offer') && typeof req.mid === 'string') {
-          try {
-            return await rt.pullWithOffer(sessionId, req.offer, req.mid, remote.sessionId, VOICE_TRACK);
-          } catch (e) {
-            console.error('voice pull offer', (e as Error).message);
-            // جلسة الاستماع انتهت لخمولها قبل أول صوت (ما اتصلت بعد): جلسة جديدة ونفس العرض عليها
-            if (!isStaleSession(e) || mine!.mic) throw e;
-            const fresh = await rt.newSession();
-            await this.save({ ...t, voice: { ...t.voice, [uid]: { ...mine!, sessionId: fresh } } });
-            this.broadcast([]);
-            return { ...(await rt.pullWithOffer(fresh, req.offer, req.mid, remote.sessionId, VOICE_TRACK)), sessionId: fresh };
-          }
-        }
+        // سحب بعرض من التطبيق (نسخة 1132 / 10113): الخدمة ترد بعرض منها مو جواب، فيعلق الاتصال وينكسر المايك.
+        // نرفضه قبل ما يوصل للخدمة عشان الاتصال يبقى سليم (المايك يشتغل) لين يتحدث التطبيق
+        if (req.offer !== undefined) throw new Error('bad-request');
         try {
           return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
         } catch (e) {
