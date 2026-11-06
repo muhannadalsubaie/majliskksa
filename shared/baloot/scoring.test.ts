@@ -18,10 +18,17 @@ describe('scoreHand — hokm', () => {
   it('buyer over 81 → both teams score', () => {
     expect(scoreHand(hokm({})).points).toEqual([10, 6]);
   });
-  it('buyer projects count toward 81', () => {
-    const r = scoreHand(hokm({ cardAbnat: [70, 92], projectAbnat: [20, 0] }));
-    expect(r.buyerFailed).toBe(false);
-    expect(r.points).toEqual([9, 9]);
+  it('buyer needs more than the opponents, projects included on both sides', () => {
+    // 80 + سرا 20 = 100 مقابل 82: ينجح
+    const ok = scoreHand(hokm({ cardAbnat: [80, 82], projectAbnat: [20, 0] }));
+    expect(ok.buyerFailed).toBe(false);
+    expect(ok.points).toEqual([10, 8]);
+    // 70 + 20 = 90 مقابل 92: يخسر (الحد مو 81 ثابت لما فيه مشاريع)
+    expect(scoreHand(hokm({ cardAbnat: [70, 92], projectAbnat: [20, 0] })).buyerFailed).toBe(true);
+    // الصكة 9: المشتري 50 + مشاريع 40 = 90 مقابل 112 ← يخسر، والخصم ياخذ 16 + 4
+    const r = scoreHand(hokm({ cardAbnat: [50, 112], projectAbnat: [40, 0] }));
+    expect(r.buyerFailed).toBe(true);
+    expect(r.points).toEqual([0, 20]);
   });
   it('buyer under 81 → everything (incl. projects) to opponents', () => {
     const r = scoreHand(hokm({ cardAbnat: [60, 102], projectAbnat: [0, 50] }));

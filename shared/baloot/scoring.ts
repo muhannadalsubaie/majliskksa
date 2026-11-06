@@ -7,7 +7,7 @@ import { type GameMode, type Team, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTea
  * - البلوت نقطتان ثابتتان لصاحبه دائماً.
  */
 export const RULES = {
-  /** الحكم: ينجح المشتري إذا تجاوزت أبناطه (مع مشاريعه) هذا الحد */
+  /** الحكم بدون مشاريع: ينجح المشتري إذا تجاوزت أبناطه هذا الحد (مع المشاريع: لازم يتجاوز الخصم) */
   hokmBuyerThreshold: 81,
   /** الصن: إذا جاب المشتري أقل من النص يخسر وتذهب كل النقاط للخصم */
   sunBuyerCanFail: true,
@@ -100,10 +100,11 @@ export function scoreHand(input: HandScoreInput): HandScore {
   } else {
     let success: boolean;
     if (mode === 'hokm') {
-      const t = RULES.hokmBuyerThreshold;
-      success = total[buyerTeam] > t;
+      // المشتري لازم يجيب أكثر من الخصم: أوراقه + مشاريعه مقابل أوراق الخصم + مشاريعه
+      // (بدون مشاريع = أكثر من 81 من 162، ومع المشاريع يتغير النص — مو 81 ثابت)
+      success = total[buyerTeam] > total[opp];
       // تعادل بعد الدبل: الخسارة على طالب الدبل
-      if (total[buyerTeam] === t && doublerTeam === opp) success = true;
+      if (total[buyerTeam] === total[opp] && doublerTeam === opp) success = true;
     } else if (RULES.sunBuyerCanFail) {
       // يخسر فقط إن جاب أقل من النص (أوراقه + مشاريعه مقابل الخصم)؛ النص بالضبط لا يُعد خسارة
       success = total[buyerTeam] >= total[opp];
