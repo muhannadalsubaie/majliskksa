@@ -13,7 +13,7 @@ import {
 } from './jackaroo/engine';
 import { jackarooBotAction } from './jackaroo/bot';
 import { moveAnnouncement as jackarooMoveText } from './jackaroo/labels';
-import { type LudoAction, type LudoState, DEFAULT_RULES as LUDO_SOLO, TEAM_RULES as LUDO_TEAMS, applyLudo, movableTokens, newGame as newLudo } from './ludo/engine';
+import { type LudoAction, type LudoState, DEFAULT_RULES as LUDO_SOLO, TEAM_RULES as LUDO_TEAMS, applyLudo, moveOptions, poolOf, newGame as newLudo } from './ludo/engine';
 import { ludoBotAction } from './ludo/bot';
 import { COLOR_NAMES, moveAnnouncement as ludoMoveText, rollName } from './ludo/labels';
 
@@ -111,18 +111,22 @@ export function parseJackaroo(raw: unknown, seat: number): JackarooAction | null
 
 /** حركة لودو: رمي النرد، أو تحريك حجر برقمه */
 export function parseLudo(raw: unknown, seat: number): LudoAction | null {
-  const a = raw as { type?: unknown; token?: unknown } | null;
+  const a = raw as { type?: unknown; token?: unknown; die?: unknown } | null;
   if (!a) return null;
   if (a.type === 'roll') return { type: 'roll', seat };
-  if (a.type === 'move' && Number.isInteger(a.token)) return { type: 'move', seat, token: a.token as number };
+  if (a.type === 'move' && Number.isInteger(a.token)) {
+    return { type: 'move', seat, token: a.token as number, ...(Number.isInteger(a.die) ? { die: a.die as number } : {}) };
+  }
   return null;
 }
 
 function applyLudoEvents(t: TableData, action: LudoAction, rng: Rng): { table: TableData; events: string[] } {
   const after = applyLudo(t.ludo!, action, rng);
   // رمية تنتظر اختيار الحجر: نعلن الرمية وحدها (والحركة تُعلن بعدها بلا تكرار الرمية)
+  // الأرقام المتجمعة (مثلاً ستة وثلاثة) بانتظار الاختيار
+  const pool = poolOf(after).map(rollName).join(' و');
   const events = action.type === 'roll' && after.phase === 'move'
-    ? [`⟦v|${action.seat}|رميت ${rollName(after.dice!)}|%n رمى ${rollName(after.dice!)}⟧`]
+    ? [`⟦v|${action.seat}|رميت ${pool}|%n رمى ${pool}⟧`]
     : ludoMoveText(after, names(t), -1, action.type === 'roll');
   // سجل اللودو: كل رمية وحركة بالترتيب (آخر 150)
   const ludoLog = [...(t.ludoLog ?? []), ...events.filter(Boolean)].slice(-150);
@@ -219,10 +223,10 @@ export function otherAutoDelay(t: TableData, rng: Rng): number | null {
   if (t.ludo && t.ludo.phase !== 'over') {
     if (autoSeat(t, t.ludo.turn)) {
       if (t.ludo.phase === 'roll') return human(rng, 1300, 2500);
-      return movableTokens(t.ludo, t.ludo.turn).length > 1 ? human(rng, 1500, 2900) : human(rng, 1000, 1700);
+      return moveOptions(t.ludo, t.ludo.turn).length > 1 ? human(rng, 1500, 2900) : human(rng, 1000, 1700);
     }
-    // حجر واحد فقط يمكن تحريكه: يتحرك تلقائياً للاعب أيضاً
-    if (movableTokens(t.ludo, t.ludo.turn).length === 1) return 900;
+    // حركة وحدة بس ممكنة (حجر واحد برقم واحد): يتحرك تلقائياً للاعب أيضاً
+    if (moveOptions(t.ludo, t.ludo.turn).length === 1) return 900;
   }
   return null;
 }
@@ -239,8 +243,8 @@ export function runOtherAuto(t: TableData, rng: Rng): { table: TableData; events
   }
   if (t.ludo) {
     const s = t.ludo;
-    const only = movableTokens(s, s.turn);
-    const a = autoSeat(t, s.turn) ? ludoBotAction(s, s.turn) : only.length === 1 ? { type: 'move' as const, seat: s.turn, token: only[0] } : null;
+    const only = moveOptions(s, s.turn);
+    const a = autoSeat(t, s.turn) ? ludoBotAction(s, s.turn) : only.length === 1 ? { type: 'move' as const, seat: s.turn, token: only[0].token, die: only[0].die } : null;
     return a ? applyOther(t, a, rng) : { table: t, events: [] };
   }
   const a = t.jackaroo ? jackarooBotAction(t.jackaroo, t.jackaroo.turn) : null;

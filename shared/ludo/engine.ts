@@ -6,7 +6,9 @@
 //  • المسار 52 خانة، يدور فيه الحجر دورة كاملة (51 خطوة) ثم يدخل ممره الملوّن (5 خانات) ثم الوسط.
 //  • الوصول للوسط بالعدد المضبوط فقط (لا يُسمح بتجاوزه).
 //  • الوقوف على خانة فيها حجر خصم يأكله ويرجعه لبيته — إلا في الخانات الآمنة (خانات البداية والنجوم).
-//  • رمية إضافية عند: رمي ستة، أكل حجر، أو إدخال حجر للوسط.
+//  • الستة: يرمي مرة ثانية فوراً (قبل ما يحرك)، والأرقام تتجمع (مثلاً 6 و3)، وبعدها يختار لكل رقم الحجر اللي يمشيه:
+//    يطلّع حجر بالستة، أو يمشي حجر 6 وحجر 3، أو نفس الحجر 6 ثم 3.
+//  • رمية إضافية بعد الحركة عند: أكل حجر، أو إدخال حجر للوسط.
 //  • ثلاث ستات متتالية: يضيع الدور بلا حركة.
 //  • لا حركة ممكنة بعد الرمي: ينتقل الدور تلقائياً.
 //  • الفوز: أول من يُدخل أحجاره الأربعة للوسط. في لعب الفرق (4 لاعبين، كل اثنين متقابلين شركاء)
@@ -50,6 +52,8 @@ export interface MoveRecord {
   finished: boolean;
   threeSixes: boolean;
   extraTurn: boolean;
+  /** رمى ستة: يرمي مرة ثانية قبل ما يحرك */
+  rollAgain?: boolean;
 }
 
 export interface LudoState {
@@ -60,8 +64,12 @@ export interface LudoState {
   tokens: Progress[][];
   turn: number;
   phase: 'roll' | 'move' | 'over';
-  /** آخر رمية بانتظار الحركة */
+  /** أول رقم بانتظار الحركة (للتوافق: نفس pool[0]) */
   dice: number | null;
+  /** كل الأرقام اللي رماها في هذا الدور وما استخدمها بعد (الستات تتجمع مع اللي بعدها) */
+  pool?: number[];
+  /** أكل أو وصّل حجر للمنزل في هذا الدور: يرمي مرة ثانية بعد ما يخلص أرقامه */
+  bonus?: boolean;
   /** عدد الستات المتتالية في هذا الدور */
   sixes: number;
   lastMove: MoveRecord | null;
@@ -71,7 +79,9 @@ export interface LudoState {
   finishedOrder: number[];
 }
 
-export type LudoAction = { type: 'roll'; seat: number } | { type: 'move'; seat: number; token: number };
+/** die: أي رقم من الأرقام المتجمعة يستخدم (بدونه: أول رقم يقدر يحرك هالحجر) */
+export type LudoAction = { type: 'roll'; seat: number } | { type: 'move'; seat: number; token: number; die?: number };
+export interface MoveOption { token: number; die: number }
 
 export class LudoError extends Error {}
 const fail = (m: string): never => { throw new LudoError(m); };
@@ -117,11 +127,21 @@ export function canMove(s: LudoState, owner: number, index: number, roll: number
   return p + roll <= FINISH;
 }
 
-/** أرقام الأحجار التي يمكن تحريكها بالرمية الحالية */
-export function movableTokens(s: LudoState, seat: number): number[] {
-  if (s.phase !== 'move' || s.turn !== seat || s.dice === null) return [];
+/** الأرقام المتجمعة اللي تنتظر الحركة */
+export const poolOf = (s: LudoState): number[] => s.pool ?? (s.dice !== null ? [s.dice] : []);
+
+/** كل حركة ممكنة الحين: (الحجر، الرقم) — رقم مكرر يُحسب مرة وحدة */
+export function moveOptions(s: LudoState, seat: number): MoveOption[] {
+  if (s.phase !== 'move' || s.turn !== seat) return [];
   const owner = controlledOwner(s, seat);
-  return [0, 1, 2, 3].filter((i) => canMove(s, owner, i, s.dice!));
+  const out: MoveOption[] = [];
+  for (const die of [...new Set(poolOf(s))]) for (const token of [0, 1, 2, 3]) if (canMove(s, owner, token, die)) out.push({ token, die });
+  return out;
+}
+
+/** أرقام الأحجار التي يمكن تحريكها بأي رقم من الأرقام المتجمعة */
+export function movableTokens(s: LudoState, seat: number): number[] {
+  return [...new Set(moveOptions(s, seat).map((o) => o.token))];
 }
 
 /** هل الحجر (لمالكه) في مكان آمن من الأكل الآن؟ */
@@ -156,29 +176,36 @@ export function rollDice(rng: Rng): number {
 export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
   if (s.phase === 'over') fail('انتهت اللعبة');
   if (a.seat !== s.turn) fail('ليس دورك');
+  const endTurn = (st: LudoState, again: boolean, lastMove: MoveRecord): LudoState => ({
+    ...st, phase: 'roll', dice: null, pool: [], bonus: false, sixes: 0, turn: again ? a.seat : nextSeat(st, a.seat), lastMove,
+  });
   if (a.type === 'roll') {
     if (s.phase !== 'roll') fail('حرّك حجراً أولاً');
     const roll = rollDice(rng);
-    const sixes = roll === 6 ? s.sixes + 1 : 0;
+    const sixes = roll === 6 ? s.sixes + 1 : s.sixes;
     const blank = (extra: Partial<MoveRecord>): MoveRecord => ({
       seat: a.seat, roll, token: null, from: null, to: null, captured: [], finished: false, threeSixes: false, extraTurn: false, ...extra,
     });
-    if (s.rules.threeSixes && sixes === 3) {
-      return { ...s, phase: 'roll', dice: null, sixes: 0, turn: nextSeat(s, a.seat), lastMove: blank({ threeSixes: true }) };
-    }
-    const next = { ...s, phase: 'move' as const, dice: roll, sixes };
-    if (movableTokens(next, a.seat).length === 0) {
-      // لا حركة: ستة تعطي رمية أخرى، وغيرها ينقل الدور
-      const again = roll === 6;
-      return { ...s, phase: 'roll', dice: null, sixes: again ? sixes : 0, turn: again ? a.seat : nextSeat(s, a.seat), lastMove: blank({ extraTurn: again }) };
+    // ثلاث ستات ورا بعض: يضيع الدور وكل أرقامه
+    if (s.rules.threeSixes && roll === 6 && sixes === 3) return endTurn(s, false, blank({ threeSixes: true }));
+    const pool = [...(s.pool ?? []), roll];
+    // ستة: يرمي مرة ثانية قبل ما يحرك، والرقم يبقى معه
+    if (roll === 6) return { ...s, phase: 'roll', dice: null, pool, sixes, lastMove: blank({ rollAgain: true }) };
+    const next: LudoState = { ...s, phase: 'move', pool, dice: pool[0], sixes };
+    if (moveOptions(next, a.seat).length === 0) {
+      // ما فيه حركة بأي رقم: ينتقل الدور (أو يرمي مرة ثانية لو عنده رمية إضافية من أكل)
+      return endTurn(s, s.bonus === true, blank({ extraTurn: s.bonus === true }));
     }
     return { ...next, lastMove: s.lastMove };
   }
-  if (s.phase !== 'move' || s.dice === null) fail('ارمِ النرد أولاً');
-  const roll = s.dice!;
+  if (s.phase !== 'move') fail('ارمِ النرد أولاً');
+  const pool = poolOf(s);
   const owner = controlledOwner(s, a.seat);
   if (!Number.isInteger(a.token) || a.token < 0 || a.token >= TOKENS) fail('حجر غير صالح');
-  if (!canMove(s, owner, a.token, roll)) fail('هذا الحجر لا يتحرك بهذه الرمية');
+  const die = a.die ?? pool.find((d) => canMove(s, owner, a.token, d));
+  if (die === undefined || !pool.includes(die)) fail('ما عندك هالرقم');
+  if (!canMove(s, owner, a.token, die!)) fail('هذا الحجر لا يتحرك بهذه الرمية');
+  const roll = die!;
   const from = s.tokens[owner][a.token];
   const to = from === -1 ? 0 : from + roll;
   const captured = capturesAt(s, owner, to);
@@ -186,21 +213,18 @@ export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
   tokens[owner][a.token] = to;
   for (const c of captured) tokens[c.owner][c.index] = -1;
   const finished = to === FINISH;
-  let after: LudoState = { ...s, tokens };
-  // من أنهى أحجاره
   const finishedOrder = [...s.finishedOrder];
   if (finished && tokens[owner].every((p) => p === FINISH) && !finishedOrder.includes(owner)) finishedOrder.push(owner);
-  after = { ...after, finishedOrder };
+  const after: LudoState = { ...s, tokens, finishedOrder };
   const winner = winnerOf(after);
-  const extraTurn = winner === null && (roll === 6 || captured.length > 0 || finished);
-  const record: MoveRecord = { seat: a.seat, roll, token: { owner, index: a.token }, from, to, captured, finished, threeSixes: false, extraTurn };
-  if (winner !== null) return { ...after, phase: 'over', dice: null, winner, lastMove: record };
-  return {
-    ...after, phase: 'roll', dice: null,
-    sixes: extraTurn && roll === 6 ? s.sixes : 0,
-    turn: extraTurn ? a.seat : nextSeat(after, a.seat),
-    lastMove: record,
-  };
+  const bonus = s.bonus === true || captured.length > 0 || finished;
+  const rest = [...pool]; rest.splice(rest.indexOf(roll), 1);
+  const record = (extraTurn: boolean): MoveRecord => ({ seat: a.seat, roll, token: { owner, index: a.token }, from, to, captured, finished, threeSixes: false, extraTurn });
+  if (winner !== null) return { ...after, phase: 'over', dice: null, pool: [], winner, lastMove: record(false) };
+  // باقي أرقام وتقدر تتحرك فيها: يكمل يختار
+  const cont: LudoState = { ...after, phase: 'move', pool: rest, dice: rest[0] ?? null, bonus };
+  if (rest.length && moveOptions(cont, a.seat).length) return { ...cont, lastMove: record(false) };
+  return endTurn(after, bonus, record(bonus));
 }
 
 function winnerOf(s: LudoState): number | null {

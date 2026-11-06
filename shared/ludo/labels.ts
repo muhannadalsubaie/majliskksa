@@ -78,10 +78,10 @@ export function placeText(owner: number, p: Progress, s?: LudoState): string {
 }
 
 /** نص خيار تحريك حجر (زر لقارئ الشاشة): أين يصل وماذا يحدث */
-export function optionText(s: LudoState, seat: number, index: number, names: string[]): string {
+export function optionText(s: LudoState, seat: number, index: number, names: string[], die?: number): string {
   const owner = controlledOwner(s, seat);
   const from = s.tokens[owner][index];
-  const roll = s.dice ?? 0;
+  const roll = die ?? s.dice ?? 0;
   const to = from === -1 ? 0 : from + roll;
   const who = owner === seat ? `حجرك ${index + 1}` : `حجر ${names[owner]} ${index + 1}`;
   const parts = [from === -1 ? `${who}: يطلع من البيت` : `${who}: يتقدم ${rollName(roll)}، من ${spotText(owner, from, seat)} إلى ${spotText(owner, to, seat)}`];
@@ -114,6 +114,7 @@ export function moveAnnouncement(s: LudoState, _names: string[], _me: number, wi
   const who = (meText: string, otherText: string) => `⟦v|${seat}|${meText}|${otherText}⟧`;
   const roll = rollName(r.roll);
   if (r.threeSixes) return [who('رميت ستة ثالثة، ضاع دورك', '%n رمى ستة ثالثة، ضاع الدور')];
+  if (r.rollAgain) return [who('رميت ستة، ارمِ مرة ثانية', '%n رمى ستة، ويرمي مرة ثانية')];
   if (!r.token) {
     return [who(`رميت ${roll}، ما عندك حركة`, `%n رمى ${roll}، لا حركة`) + (r.extraTurn ? who('، وترمي مرة أخرى', '، ويرمي مرة أخرى') : '')];
   }

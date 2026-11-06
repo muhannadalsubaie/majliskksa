@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from '../baloot/testing';
 import { ludoBotAction } from './bot';
-import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, newGame } from './engine';
+import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, moveOptions, newGame } from './engine';
 import { moveAnnouncement, optionText, personalize, squareText } from './labels';
 
 /** نرد مضبوط: يرجع القيم بالترتيب */
@@ -12,19 +12,45 @@ function base(over: Partial<LudoState> = {}): LudoState {
 }
 
 describe('ludo', () => {
-  it('needs a six to leave home; six gives another roll', () => {
+  it('needs a six to leave home; a six rolls again first, then the player picks a die per move', () => {
     let s = base();
     s = applyLudo(s, { type: 'roll', seat: 0 }, dice(4));
     expect(s.turn).toBe(1); // لا حركة
     expect(s.lastMove?.token).toBeNull();
     s = base();
-    s = applyLudo(s, { type: 'roll', seat: 0 }, dice(6));
-    expect(s.phase).toBe('move');
-    expect(movableTokens(s, 0)).toEqual([0, 1, 2, 3]);
-    s = applyLudo(s, { type: 'move', seat: 0, token: 2 }, dice(1));
-    expect(s.tokens[0][2]).toBe(0);
-    expect(s.turn).toBe(0);
+    const r = dice(6, 3);
+    s = applyLudo(s, { type: 'roll', seat: 0 }, r);
+    // ستة: يرمي مرة ثانية قبل ما يحرك
     expect(s.phase).toBe('roll');
+    expect(s.turn).toBe(0);
+    expect(s.lastMove?.rollAgain).toBe(true);
+    s = applyLudo(s, { type: 'roll', seat: 0 }, r);
+    expect(s.phase).toBe('move');
+    expect(s.pool).toEqual([6, 3]);
+    // بالستة يطلع أي حجر، والثلاثة ما تطلّع من البيت
+    expect(moveOptions(s, 0)).toEqual([0, 1, 2, 3].map((token) => ({ token, die: 6 })));
+    s = applyLudo(s, { type: 'move', seat: 0, token: 2, die: 6 }, r);
+    expect(s.tokens[0][2]).toBe(0);
+    // باقي الثلاثة: نفس الحجر يكمل
+    expect(s.phase).toBe('move');
+    expect(moveOptions(s, 0)).toEqual([{ token: 2, die: 3 }]);
+    s = applyLudo(s, { type: 'move', seat: 0, token: 2, die: 3 }, r);
+    expect(s.tokens[0][2]).toBe(3);
+    expect(s.turn).toBe(1);
+    expect(s.phase).toBe('roll');
+  });
+
+  it('a six and another number can move two different tokens', () => {
+    let s = base({ tokens: [[10, 20, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    const r = dice(6, 2);
+    s = applyLudo(s, { type: 'roll', seat: 0 }, r);
+    s = applyLudo(s, { type: 'roll', seat: 0 }, r);
+    s = applyLudo(s, { type: 'move', seat: 0, token: 0, die: 2 }, r);
+    expect(s.tokens[0][0]).toBe(12);
+    s = applyLudo(s, { type: 'move', seat: 0, token: 1, die: 6 }, r);
+    expect(s.tokens[0][1]).toBe(26);
+    expect(s.turn).toBe(1);
+    expect(() => applyLudo(base({ phase: 'move', pool: [3], dice: 3, tokens: [[10, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] }), { type: 'move', seat: 0, token: 0, die: 5 }, r)).toThrow();
   });
 
   it('exact roll to finish; finishing gives another roll', () => {
@@ -78,17 +104,16 @@ describe('ludo', () => {
     expect(squareText(s, 0, 8, 0)).toBe('في الخانة 9، منطقة أمان');
   });
 
-  it('three sixes in a row lose the turn', () => {
+  it('three sixes in a row lose the turn (and all its numbers)', () => {
     let s = base({ tokens: [[5, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     const r = dice(6, 6, 6);
     s = applyLudo(s, { type: 'roll', seat: 0 }, r);
-    s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, r);
     s = applyLudo(s, { type: 'roll', seat: 0 }, r);
-    s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, r);
     s = applyLudo(s, { type: 'roll', seat: 0 }, r);
     expect(s.lastMove?.threeSixes).toBe(true);
     expect(s.turn).toBe(1);
-    expect(s.tokens[0][0]).toBe(17);
+    expect(s.pool).toEqual([]);
+    expect(s.tokens[0][0]).toBe(5);
   });
 
   it('teams: partners are not captured; a finished player moves the partner', () => {

@@ -5,7 +5,7 @@ import { type DominoState, type Tile, canDraw, canPass, ends, fits, playable, sa
 import { endsLabel, handTileLabel, lineLabel, sideName as dominoSideName } from './domino/labels';
 import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn } from './jackaroo/engine';
 import { boardSummary as jkBoard, cardHint, cardName, marblePlace, moveText } from './jackaroo/labels';
-import { type LudoState, controlledOwner as ludoOwner, movableTokens } from './ludo/engine';
+import { type LudoState, controlledOwner as ludoOwner, moveOptions, poolOf } from './ludo/engine';
 import { boardSummary as ludoBoard, optionText, rollName, squareText } from './ludo/labels';
 
 export interface DominoUi {
@@ -46,7 +46,10 @@ export interface LudoUi {
   diceText: string;
   /** تقدر ترمي النرد الحين */
   canRoll: boolean;
-  options: { token: number; text: string }[];
+  /** كل حركة ممكنة: الحجر، والرقم اللي يمشيه، ونصها لقارئ الشاشة */
+  options: { token: number; die: number; text: string }[];
+  /** الأرقام المتجمعة بانتظار الحركة (الستة ومعها اللي بعدها) */
+  pool: number[];
   /** الأحجار اللي تتحرك الآن (للتمييز على اللوحة) */
   movableOwner: number;
   boardText: string;
@@ -107,7 +110,11 @@ export function jackarooUi(s: JackarooState, mySeat: number | null, names: strin
 export function ludoUi(s: LudoState, mySeat: number | null, names: string[]): LudoUi {
   const me = mySeat ?? -1;
   const myTurn = mySeat !== null && s.phase !== 'over' && s.turn === mySeat;
-  const options = mySeat === null ? [] : movableTokens(s, mySeat);
+  const options = mySeat === null ? [] : moveOptions(s, mySeat);
+  const pool = poolOf(s);
+  const poolText = pool.map(rollName).join(' و');
+  // أكثر من رقم مختلف: كل خيار يقول بأي رقم
+  const multi = new Set(options.map((o) => o.die)).size > 1;
   let mineText = ludoBoard(s, names, me);
   if (mySeat !== null) {
     const owner = ludoOwner(s, mySeat);
@@ -118,16 +125,17 @@ export function ludoUi(s: LudoState, mySeat: number | null, names: string[]): Lu
     : s.turn === me ? (s.phase === 'roll' ? 'دورك، ارمِ النرد' : 'دورك، اختر الحجر')
     : `دور ${names[s.turn]}${s.phase === 'move' ? '، يختار الحجر' : ''}`;
   const last = s.lastMove;
-  const diceText = s.phase === 'move' && s.dice !== null
-    ? `${s.turn === me ? 'رميت' : `${names[s.turn]} رمى`} ${rollName(s.dice)}`
+  const diceText = (s.phase === 'move' || pool.length) && pool.length
+    ? `${s.turn === me ? 'رميت' : `${names[s.turn]} رمى`} ${poolText}${s.phase === 'roll' ? '، ويرمي مرة ثانية' : ''}`
     : last ? `آخر رمية: ${last.seat === me ? 'رميت' : `${names[last.seat]} رمى`} ${rollName(last.roll)}` : 'ما رمى أحد بعد';
   return {
     myTurn,
     positions: s.seats.map((o) => ({ name: who(o), color: o, tokens: s.tokens[o].map((p, i) => `حجر ${i + 1}: ${squareText(s, o, p, me)}`) })),
     turnText, diceText, canRoll: myTurn && s.phase === 'roll',
-    options: options.map((token) => ({ token, text: optionText(s, me, token, names) })),
+    options: options.map(({ token, die }) => ({ token, die, text: `${multi ? `بالـ${rollName(die)}: ` : ''}${optionText(s, me, token, names, die)}` })),
+    pool,
     movableOwner: mySeat === null ? -1 : ludoOwner(s, mySeat),
     boardText: ludoBoard(s, names, me), mineText,
-    prompt: !myTurn ? '' : s.phase === 'roll' ? 'دورك، ارمِ النرد' : options.length > 1 ? `رميت ${rollName(s.dice ?? 0)}: اختر الحجر` : '',
+    prompt: !myTurn ? '' : s.phase === 'roll' ? (pool.length ? 'رميت ستة، ارمِ مرة ثانية' : 'دورك، ارمِ النرد') : options.length > 1 ? `رميت ${poolText}: اختر الحجر` : '',
   };
 }
