@@ -239,8 +239,8 @@ function botName(t: TableData, rng: () => number): string {
 /** طلب الانضمام المتجاهَل يبقى معلّقاً 5 دقائق، والمرفوض يمنعه نصف ساعة (من وقت الطلب) */
 export const JOIN_REQUEST_HOLD_MS = 5 * 60_000;
 export const JOIN_REJECT_BLOCK_MS = 30 * 60_000;
-/** موافقة المالك على طلب الانضمام صالحة 10 دقائق من الطلب، ومرة وحدة (الموافقات القديمة ما تنفع) */
-export const JOIN_APPROVAL_MS = 10 * 60_000;
+/** موافقة المالك على طلب الانضمام صالحة 3 دقائق من الطلب، ومرة وحدة (الموافقات القديمة ما تنفع) */
+export const JOIN_APPROVAL_MS = 3 * 60_000;
 export function isJoinApproved(t: TableData, uid: string, now = Date.now()): boolean {
   const r = t.joinRequests?.[uid];
   return !!t.approved?.includes(uid) && r?.status === 'accepted' && now - r.at < JOIN_APPROVAL_MS;
