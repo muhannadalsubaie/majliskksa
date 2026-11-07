@@ -239,6 +239,12 @@ function botName(t: TableData, rng: () => number): string {
 /** طلب الانضمام المتجاهَل يبقى معلّقاً 5 دقائق، والمرفوض يمنعه نصف ساعة (من وقت الطلب) */
 export const JOIN_REQUEST_HOLD_MS = 5 * 60_000;
 export const JOIN_REJECT_BLOCK_MS = 30 * 60_000;
+/** موافقة المالك على طلب الانضمام صالحة 10 دقائق من الطلب، ومرة وحدة (الموافقات القديمة ما تنفع) */
+export const JOIN_APPROVAL_MS = 10 * 60_000;
+export function isJoinApproved(t: TableData, uid: string, now = Date.now()): boolean {
+  const r = t.joinRequests?.[uid];
+  return !!t.approved?.includes(uid) && r?.status === 'accepted' && now - r.at < JOIN_APPROVAL_MS;
+}
 export function isJoinRejected(t: TableData, uid: string, now = Date.now()): boolean {
   const r = t.joinRequests?.[uid];
   return r?.status === 'rejected' && now - r.at < JOIN_REJECT_BLOCK_MS;
@@ -255,9 +261,12 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   // رفض المالك طلبه: ما يدخل الطاولة الخاصة إلا بدعوة أو بعد نصف ساعة من طلبه (والعامة يدخلها عادي)
   if (t.isPrivate && !invited && isJoinRejected(t, user.uid, now)) throw new TableError('join-rejected');
   // الطاولة الخاصة: بدعوة، أو موافقة المالك على طلب انضمام (مرة وحدة)، أو صاحبها — حتى اللي دخلها قبل يطلب من جديد
-  if (t.isPrivate && !invited && user.uid !== t.ownerUid && !t.approved?.includes(user.uid)) throw new TableError('private');
+  if (t.isPrivate && !invited && user.uid !== t.ownerUid && !isJoinApproved(t, user.uid, now)) throw new TableError('private');
   // الموافقة تنستخدم مرة وحدة: لو طلع ورجع يطلب مرة ثانية
-  if (t.approved?.includes(user.uid)) t = { ...t, approved: t.approved.filter((u) => u !== user.uid) };
+  if (t.approved?.includes(user.uid)) {
+    const { [user.uid]: _used, ...rest } = t.joinRequests ?? {};
+    t = { ...t, approved: t.approved.filter((u) => u !== user.uid), joinRequests: rest };
+  }
   // عملة مع كل دخول (حتى لو رجع بعد ما غادر أو طار بانقطاع الاتصال) — صاحب الطاولة والمدعو مجاناً
   const charge = !invited && user.uid !== t.ownerUid;
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];

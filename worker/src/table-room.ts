@@ -7,7 +7,7 @@ import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
-  JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS,
+  JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
@@ -353,7 +353,7 @@ export class TableRoom extends DurableObject<Env> {
       const t = await this.load();
       if (!t) return { error: 'not-found' };
       if (inTable(t, user.uid)) return { ok: true, status: 'accepted' };
-      if (!t.isPrivate || user.uid === t.ownerUid || t.approved?.includes(user.uid)) return { ok: true, status: 'accepted' };
+      if (!t.isPrivate || user.uid === t.ownerUid || isJoinApproved(t, user.uid)) return { ok: true, status: 'accepted' };
       if (t.banned?.includes(user.uid)) return { error: 'banned' };
       const prev = t.joinRequests?.[user.uid];
       const now = Date.now();
@@ -363,7 +363,7 @@ export class TableRoom extends DurableObject<Env> {
       // طلبه السابق لسا معلّق (ينتظر أو تجاهله المالك): ما يرسل طلب ثاني لين تخلص الخمس دقائق
       if ((prev?.status === 'pending' || prev?.status === 'ignored') && now - prev.at < JOIN_REQUEST_HOLD_MS) return { ok: true, status: 'waiting', minutes: minutesLeft(JOIN_REQUEST_HOLD_MS) };
       const requests = Object.fromEntries(Object.entries(t.joinRequests ?? {}).filter(([, r]) => now - r.at < JOIN_REJECT_BLOCK_MS + 5 * 60_000));
-      await this.save({ ...t, joinRequests: { ...requests, [user.uid]: { name: user.username, at: now, status: 'pending' } } });
+      await this.save({ ...t, approved: (t.approved ?? []).filter((u) => u !== user.uid), joinRequests: { ...requests, [user.uid]: { name: user.username, at: now, status: 'pending' } } });
       const out = JSON.stringify({ type: 'joinRequest', uid: user.uid, name: user.username });
       for (const w of this.ctx.getWebSockets()) {
         if (w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === t.ownerUid) { try { w.send(out); } catch { /* closed */ } }
@@ -375,7 +375,7 @@ export class TableRoom extends DurableObject<Env> {
   async joinRequestStatus(uid: string): Promise<{ status: string; minutes?: number }> {
     const t = await this.load();
     if (!t) return { status: 'gone' };
-    if (inTable(t, uid) || uid === t.ownerUid || t.approved?.includes(uid) || !t.isPrivate) return { status: 'accepted' };
+    if (inTable(t, uid) || uid === t.ownerUid || isJoinApproved(t, uid) || !t.isPrivate) return { status: 'accepted' };
     const r = t.joinRequests?.[uid];
     if (!r) return { status: 'none' };
     const now = Date.now();
