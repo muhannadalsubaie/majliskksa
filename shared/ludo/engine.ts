@@ -74,6 +74,8 @@ export interface LudoState {
   /** عدد الستات المتتالية في هذا الدور */
   sixes: number;
   lastMove: MoveRecord | null;
+  /** آخر رمية نرد (مين رماها وكم) ومعها عدّاد يزيد مع كل رمية — الواجهة تعرض النرد الجديد على طول منه */
+  lastRolled?: { seat: number; roll: number; seq: number };
   /** الفائز: مقعد (فردي) أو رقم الفريق 0/1 (فرق) */
   winner: number | null;
   /** من أنهى أحجاره بالترتيب */
@@ -184,6 +186,7 @@ export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
     if (s.phase !== 'roll') fail('حرّك حجراً أولاً');
     const roll = rollDice(rng);
     const sixes = roll === 6 ? s.sixes + 1 : s.sixes;
+    s = { ...s, lastRolled: { seat: a.seat, roll, seq: (s.lastRolled?.seq ?? 0) + 1 } };
     const blank = (extra: Partial<MoveRecord>): MoveRecord => ({
       seat: a.seat, roll, token: null, from: null, to: null, captured: [], finished: false, threeSixes: false, extraTurn: false, ...extra,
     });

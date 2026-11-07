@@ -153,3 +153,24 @@ describe('ludo', () => {
     }
   });
 });
+
+describe('lastRolled', () => {
+  it('records every roll (including sixes) with an increasing counter', () => {
+    let s = newGame(seededRng(1), DEFAULT_RULES);
+    const seen: number[] = [];
+    for (let i = 0; i < 20 && s.phase !== 'over'; i++) {
+      const seat = s.turn;
+      if (s.phase === 'roll') {
+        const before = s.lastRolled?.seq ?? 0;
+        s = applyLudo(s, { type: 'roll', seat }, seededRng(i + 7));
+        expect(s.lastRolled?.seq).toBe(before + 1);
+        expect(s.lastRolled?.seat).toBe(seat);
+        seen.push(s.lastRolled!.roll);
+      } else {
+        const o = moveOptions(s, seat)[0];
+        s = applyLudo(s, { type: 'move', seat, token: o.token, die: o.die }, seededRng(i));
+      }
+    }
+    expect(seen.length).toBeGreaterThan(0);
+  });
+});
