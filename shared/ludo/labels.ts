@@ -35,7 +35,7 @@ export function squareNumber(owner: number, p: Progress, _me: number): number {
 export function squareText(_s: LudoState, owner: number, p: Progress, me: number): string {
   if (p === -1) return 'في البيت';
   if (p === FINISH) return 'وصل المنزل';
-  if (p > LAST_TRACK) return `في ${owner === me ? 'ممر المنزل' : 'ممر منزله'}، الخانة ${p - LAST_TRACK} من 6`;
+  if (p > LAST_TRACK) return `في ${owner === me ? 'ممر المنزل' : 'ممر منزله'}، الخانة ${p - LAST_TRACK} من 5`;
   return `في الخانة ${squareNumber(owner, p, me)}${SAFE.has(absPos(owner, p)) ? '، منطقة أمان' : ''}`;
 }
 

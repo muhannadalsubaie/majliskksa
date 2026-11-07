@@ -40,6 +40,17 @@ describe('ludo', () => {
     expect(s.phase).toBe('roll');
   });
 
+  it('home lane is 5 squares and the 6th is home; red enters the lane right after board square 51', () => {
+    // الأحمر على 50 (الخانة 51 على اللوحة): بواحد يدخل الخانة 1 داخل المنزل، وبستة يوصل الوسط
+    let s = base({ tokens: [[50, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    s = applyLudo(s, { type: 'roll', seat: 0 }, dice(1));
+    s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(1));
+    expect(s.tokens[0][0]).toBe(51);
+    expect(squareText(s, 0, 51, 0)).toBe('في ممر المنزل، الخانة 1 من 5');
+    expect(squareText(s, 0, 50, 0)).toBe('في الخانة 51');
+    expect(FINISH - 50).toBe(6);
+  });
+
   it('a six and another number can move two different tokens', () => {
     let s = base({ tokens: [[10, 20, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     const r = dice(6, 2);
@@ -54,10 +65,10 @@ describe('ludo', () => {
   });
 
   it('exact roll to finish; finishing gives another roll', () => {
-    let s = base({ tokens: [[56, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    let s = base({ tokens: [[54, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     s = applyLudo(s, { type: 'roll', seat: 0 }, dice(3));
-    expect(s.turn).toBe(1); // 56+3 يتجاوز المنزل
-    s = base({ tokens: [[56, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
+    expect(s.turn).toBe(1); // 54+3 يتجاوز المنزل
+    s = base({ tokens: [[54, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] });
     s = applyLudo(s, { type: 'roll', seat: 0 }, dice(2));
     s = applyLudo(s, { type: 'move', seat: 0, token: 0 }, dice(1));
     expect(s.tokens[0][0]).toBe(FINISH);
