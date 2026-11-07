@@ -26,7 +26,7 @@ export function cardHint(c: Card, kingThirteen: boolean, complex = false): strin
     case 'J': return complex && red ? 'ولد أحمر: تتقدم 11' : 'تبدّل حجرك بحجر لاعب آخر';
     case '10': return 'تتقدم 10، أو تجبر التالي يحرق ورقة ويضيع دوره';
     case '7': return 'تتقدم 7، أو تقسمها بين حجرين';
-    case '5': return 'تحرك أي حجر على اللوحة 5 للأمام';
+    case '5': return 'تحرك أي حجر على اللوحة 5 للأمام، إلا اللي لسا على قاعدته';
     case '4': return 'ترجع 4 للخلف';
     default: return `تتقدم ${c.rank}`;
   }

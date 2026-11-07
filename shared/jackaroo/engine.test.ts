@@ -188,3 +188,21 @@ describe('jackaroo complex', () => {
     }
   });
 });
+
+describe('five', () => {
+  it('cannot move a marble sitting on its own base (even yours), but can move one that left it', () => {
+    const s0 = newGame(seededRng(3));
+    const L = trackLen(s0.rules);
+    const five = { rank: '5' as const, suit: 'S' as const };
+    // أحجاري وأحجار سالم توها نازلة على القاعدة
+    let s = { ...s0, turn: 0, forcedBurn: null, hands: s0.hands.map((h, i) => (i === 0 ? [five] : h)) };
+    s = { ...s, marbles: s.marbles.map((row, o) => (o === 0 || o === 1 ? row.map((m, i) => (i === 0 ? { zone: 'track' as const, pos: startOf(s.rules, o) } : m)) : row)) };
+    expect(movesForCard(s, 0, five)).toEqual([]);
+    expect(mustBurn(s, 0)).toBe(true);
+    // يوسف (مقعد 2) عنده حجر تحرك عن قاعدته: الخمسة تمشيه
+    s = { ...s, marbles: s.marbles.map((row, o) => (o === 2 ? row.map((m, i) => (i === 0 ? { zone: 'track' as const, pos: (startOf(s.rules, 2) + 3) % L } : m)) : row)) };
+    const moves = movesForCard(s, 0, five);
+    expect(moves.length).toBeGreaterThan(0);
+    expect(moves.every((m) => m.kind === 'forward' && m.marble.owner === 2)).toBe(true);
+  });
+});
