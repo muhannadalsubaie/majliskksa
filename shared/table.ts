@@ -33,6 +33,8 @@ export interface TableData {
   botCount: number;
   /** دعوات صالحة (لمرة واحدة) — مدفوعة مسبقاً من المالك، وقد تحجز مقعداً محدداً */
   invites?: (string | { code: string; seat?: Seat })[];
+  /** طلبات الانضمام للطاولة الخاصة (من قائمة الأصدقاء): المالك يوافق أو يتجاهل */
+  joinRequests?: Record<string, { name: string; at: number; status: 'pending' | 'accepted' | 'ignored' }>;
   /** المحادثة الصوتية: من انضم (جلسة Cloudflare Realtime الخاصة به) وهل ميكروفونه مكتوم */
   voice?: Record<string, VoiceMember>;
   /** آخر لحظة حُسب فيها استهلاك الصوت (للسقف الشهري) */

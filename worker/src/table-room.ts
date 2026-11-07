@@ -41,6 +41,8 @@ type ClientMessage =
   | { type: 'ban'; uid: string }
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
   | { type: 'setPrivate'; isPrivate: boolean }
+  /** المالك يرد على طلب انضمام لطاولته الخاصة */
+  | { type: 'joinAnswer'; uid: string; accept: boolean }
   | { type: 'setOwner'; uid: string }
   /** الدردشة الكتابية: رسالة، أو اختيار هذا الاتصال (off = ما توصله الرسائل ولا يرسل) */
   | { type: 'chat'; text: string }
@@ -340,6 +342,35 @@ export class TableRoom extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(Date.now() + this.grace());
     }
     return true;
+  }
+
+  /** طلب انضمام لطاولة خاصة: يوصل للمالك تنبيه «فلان يريد الانضمام» (موافق / تجاهل) */
+  async requestJoin(user: { uid: string; username: string }): Promise<{ ok: true; status: string } | { error: string }> {
+    return this.serial(async () => {
+      const t = await this.load();
+      if (!t) return { error: 'not-found' };
+      if (inTable(t, user.uid)) return { ok: true, status: 'accepted' };
+      if (!t.isPrivate || t.paid.includes(user.uid)) return { ok: true, status: 'accepted' };
+      if (t.banned?.includes(user.uid)) return { error: 'banned' };
+      const prev = t.joinRequests?.[user.uid];
+      const now = Date.now();
+      // ما نكرر التنبيه للمالك لو الطلب نفسه لسا ينتظر (أقل من دقيقة)
+      if (prev?.status === 'pending' && now - prev.at < 60_000) return { ok: true, status: 'pending' };
+      const requests = Object.fromEntries(Object.entries(t.joinRequests ?? {}).filter(([, r]) => now - r.at < 10 * 60_000));
+      await this.save({ ...t, joinRequests: { ...requests, [user.uid]: { name: user.username, at: now, status: 'pending' } } });
+      const out = JSON.stringify({ type: 'joinRequest', uid: user.uid, name: user.username });
+      for (const w of this.ctx.getWebSockets()) {
+        if (w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === t.ownerUid) { try { w.send(out); } catch { /* closed */ } }
+      }
+      return { ok: true, status: 'pending' };
+    });
+  }
+
+  async joinRequestStatus(uid: string): Promise<{ status: string }> {
+    const t = await this.load();
+    if (!t) return { status: 'gone' };
+    if (inTable(t, uid) || t.paid.includes(uid) || !t.isPrivate) return { status: 'accepted' };
+    return { status: t.joinRequests?.[uid]?.status ?? 'none' };
   }
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
@@ -732,6 +763,20 @@ export class TableRoom extends DurableObject<Env> {
         await this.save(next);
         this.broadcast([`أصبح ${name} مالك الطاولة`]);
         await this.publish(next);
+        break;
+      }
+      case 'joinAnswer': {
+        // موافق: يقدر يدخل الطاولة الخاصة (مجاناً مثل المدعو)؛ تجاهل: ينقال له إن المالك تجاهل طلبه
+        if (!isOwner) throw new Error('not-owner');
+        const req = typeof msg.uid === 'string' ? t.joinRequests?.[msg.uid] : undefined;
+        if (!req) break;
+        const accept = msg.accept === true;
+        const next: TableData = {
+          ...t,
+          joinRequests: { ...t.joinRequests, [msg.uid]: { ...req, status: accept ? 'accepted' : 'ignored' } },
+          ...(accept && !t.paid.includes(msg.uid) ? { paid: [...t.paid, msg.uid] } : {}),
+        };
+        await this.save(next);
         break;
       }
       case 'setPrivate': {

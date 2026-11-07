@@ -218,6 +218,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
     }
 
+    // طلب انضمام لطاولة خاصة (من قائمة الأصدقاء)، وحالته (ينتظر/وافق/تجاهل)
+    const reqMatch = pathname.match(/^\/tables\/([0-9a-f]{64})\/join-request(\/status)?$/);
+    if (reqMatch && request.method === 'POST') {
+      const room = env.TABLES.get(env.TABLES.idFromString(reqMatch[1]));
+      if (reqMatch[2]) return json(await room.joinRequestStatus(user.uid));
+      const username = await usernameOf(user.uid);
+      if (!username) return json({ error: 'no-username' }, 400);
+      const r = await room.requestJoin({ uid: user.uid, username });
+      return 'error' in r ? json(r, 400) : json(r);
+    }
+
     // ينشئ ملف اللاعب مع الرصيد الترحيبي مرة واحدة فقط (آمن ضد التكرار)
     if (pathname === '/profile/ensure' && request.method === 'POST') {
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
