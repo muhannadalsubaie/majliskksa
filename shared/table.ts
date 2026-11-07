@@ -623,7 +623,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       } else {
         events.push(`${who} ${bidText(action.bid, before.bidRound)}`);
       }
-      if (needsRedeal(after)) { events.push('الكل مرّ مرتين — صنكة، إعادة توزيع'); voices.push('paper'); }
+      if (needsRedeal(after)) { events.push('الكل مرّ مرتين — صكة، إعادة توزيع'); voices.push('paper'); }
       // الكل قال بس في اللفة الأولى: تبدأ اللفة الثانية
       else if (before.bidRound === 1 && after.bidRound === 2 && after.phase === 'bidding') voices.push('second');
       break;

@@ -299,11 +299,11 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   // قال الجميع بس على الحكم: يرجع الدور للمشتري ليؤكد الحكم أو يحوّل صن
   if (next.hokmBid) return { ...next, hokmConfirm: true, turn: next.hokmBid.seat };
   if (s.bidRound === 1) return { ...next, bidRound: 2, bidsInRound: 0, turn: nextSeat(s.dealer) };
-  // صنكة: الجميع مرّ مرتين — إعادة توزيع
+  // صكة: الجميع مرّ مرتين — إعادة توزيع
   return { ...next, phase: 'bidding', qaba: null, outcome: { status: 'ongoing' } };
 }
 
-/** هل انتهت المزايدة بصنكة وتحتاج إعادة توزيع؟ */
+/** هل انتهت المزايدة بصكة وتحتاج إعادة توزيع؟ */
 export const needsRedeal = (s: GameState) => s.phase === 'bidding' && s.qaba === null;
 
 export function redeal(s: GameState, rng: Rng): GameState {

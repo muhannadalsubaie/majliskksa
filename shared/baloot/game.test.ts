@@ -20,7 +20,7 @@ function playHand(s: GameState, rng: () => number): GameState {
       : s.turn;
     if (s.phase === 'bidding') {
       const bids = availableBids(s, seat);
-      // نميل للمرور حتى تُختبر الجولة الثانية والصنكة أيضاً
+      // نميل للمرور حتى تُختبر الجولة الثانية والصكة أيضاً
       s = applyAction(s, { type: 'bid', seat, bid: rng() < 0.7 ? bids[0] : pick(bids, rng) });
     } else if (s.phase === 'doubling' && isLockChoiceTurn(s, seat)) {
       s = applyAction(s, { type: 'doubleLock', seat, locked: rng() < 0.5 });
