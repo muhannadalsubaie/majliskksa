@@ -28,6 +28,11 @@ describe('table', () => {
     // المشاهد يغادر ويعود: تنخصم عملة مرة ثانية
     t = leave(t, 'u5').table;
     expect(join(t, { uid: 'u5', username: 'سعد' }).charge).toBe(true);
+    // المالك السابق (بعد ما انتقلت الملكية وغادر) يدفع لما يرجع، 
+    t = join(t, { uid: 'u5', username: 'سعد' }).table;
+    const handed = { ...t, ownerUid: 'u2' };
+    const gone = leave(handed, owner.uid).table;
+    expect(join(gone, owner).charge).toBe(true);
   });
 
   it('bots get distinct random Arabic names', () => {
