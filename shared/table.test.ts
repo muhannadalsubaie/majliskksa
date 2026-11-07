@@ -14,7 +14,7 @@ function botsTable(seed: number): TableData {
 }
 
 describe('table', () => {
-  it('join: seats first, then spectators; charged once', () => {
+  it('join: seats first, then spectators; charged on every entry', () => {
     let t = newTable('t1', owner, false, 0);
     const r1 = join(t, { uid: 'u2', username: 'أحمد' });
     expect(r1.charge).toBe(true);
@@ -25,9 +25,9 @@ describe('table', () => {
     t = start(t, seededRng(1));
     t = join(t, { uid: 'u5', username: 'سعد' }).table;
     expect(t.spectators.map((m) => m.username)).toEqual(['سعد']);
-    // المشاهد يغادر ويعود: لا يُخصم مرة أخرى
+    // المشاهد يغادر ويعود: تنخصم عملة مرة ثانية
     t = leave(t, 'u5').table;
-    expect(join(t, { uid: 'u5', username: 'سعد' }).charge).toBe(false);
+    expect(join(t, { uid: 'u5', username: 'سعد' }).charge).toBe(true);
   });
 
   it('bots get distinct random Arabic names', () => {

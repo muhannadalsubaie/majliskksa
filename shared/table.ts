@@ -245,7 +245,8 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   const inv = invite ? invites.find((i) => i.code === invite) : undefined;
   const invited = !!inv;
   if (t.isPrivate && !invited && !t.paid.includes(user.uid) && !t.approved?.includes(user.uid)) throw new TableError('private');
-  const charge = !invited && !t.paid.includes(user.uid);
+  // عملة مع كل دخول (حتى لو رجع بعد ما غادر أو طار بانقطاع الاتصال) — صاحب الطاولة والمدعو مجاناً
+  const charge = !invited && user.uid !== t.ownerUid;
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
   if (invited) t = { ...t, invites: invites.filter((i) => i.code !== invite) };
   // المقعد المحجوز في الدعوة أولاً، ثم أول مقعد فارغ (قبل بدء اللعب فقط)
