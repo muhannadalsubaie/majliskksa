@@ -124,6 +124,16 @@ export class Firestore {
    * يضيف/يخصم عملات بأمان ضد السباق (قراءة ثم كتابة مشروطة بوقت آخر تعديل).
    * يرمي 'not-enough-coins' إن كان الرصيد لا يكفي.
    */
+  /** عنده عملات تكفي (أو حساب المطوّر بلا حد)؟ بدون خصم */
+  async canPay(uid: string, amount: number): Promise<boolean> {
+    const res = await fetch(`${this.base()}/users/${encodeURIComponent(uid)}`, {
+      headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
+    });
+    if (!res.ok) return false;
+    const doc = (await res.json()) as { fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean } } };
+    return doc.fields?.unlimited?.booleanValue === true || Number(doc.fields?.coins?.integerValue ?? 0) >= amount;
+  }
+
   async adjustCoins(uid: string, delta: number): Promise<number> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const res = await fetch(`${this.base()}/users/${encodeURIComponent(uid)}`, {

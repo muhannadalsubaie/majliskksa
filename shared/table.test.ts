@@ -51,6 +51,15 @@ describe('table', () => {
     expect(() => join(r.table, { uid: 'u3', username: 'سعد' }, 'abc')).toThrow(TableError);
   });
 
+  it('invite coin is charged to the inviter only when the guest actually joins', () => {
+    let t = newTable('t1', owner, true, 0);
+    t = addInvite(t, 'inv', undefined, owner.uid);
+    expect(join(t, { uid: 'u2', username: 'أحمد' }, 'inv').invitedBy).toBe(owner.uid);
+    expect(join(t, { uid: owner.uid, username: owner.username }, 'inv').invitedBy).toBeUndefined();
+    const pub = newTable('t2', owner, false, 0);
+    expect(join(pub, { uid: 'u2', username: 'أحمد' }).invitedBy).toBeUndefined();
+  });
+
   it('owner replaces a bot with a spectator mid-game; replaced human becomes a spectator', () => {
     let t = newTable('t1', owner, false, 0);
     t = join(t, { uid: 'u2', username: 'أحمد' }).table;

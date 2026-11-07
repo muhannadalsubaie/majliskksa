@@ -32,7 +32,10 @@ export interface TableData {
   game: GameState | null;
   botCount: number;
   /** دعوات صالحة (لمرة واحدة) — مدفوعة مسبقاً من المالك، وقد تحجز مقعداً محدداً */
-  invites?: (string | { code: string; seat?: Seat })[];
+  /** by: صاحب الدعوة — تنخصم منه عملة الدعوة بس لما يدخل المدعو */
+  invites?: (string | { code: string; seat?: Seat; by?: string })[];
+  /** وافق المالك على طلب انضمامهم للطاولة الخاصة (يدخلون بعملة الدخول العادية) */
+  approved?: string[];
   /** طلبات الانضمام للطاولة الخاصة (من قائمة الأصدقاء): المالك يوافق أو يتجاهل */
   joinRequests?: Record<string, { name: string; at: number; status: 'pending' | 'accepted' | 'ignored' }>;
   /** المحادثة الصوتية: من انضم (جلسة Cloudflare Realtime الخاصة به) وهل ميكروفونه مكتوم */
@@ -233,7 +236,7 @@ function botName(t: TableData, rng: () => number): string {
  * ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول.
  * بدعوة صالحة: لا رسوم (دفعها المالك)، ويمكن دخول الطاولة الخاصة. الدعوة تُستهلك.
  */
-export function join(t: TableData, user: { uid: string; username: string }, invite?: string, now = Date.now()): { table: TableData; charge: boolean } {
+export function join(t: TableData, user: { uid: string; username: string }, invite?: string, now = Date.now()): { table: TableData; charge: boolean; invitedBy?: string } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (t.banned?.includes(user.uid)) throw new TableError('banned');
   if ((t.kicked?.[user.uid] ?? 0) > now) throw new TableError('kicked');
@@ -241,7 +244,7 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
   const inv = invite ? invites.find((i) => i.code === invite) : undefined;
   const invited = !!inv;
-  if (t.isPrivate && !invited && !t.paid.includes(user.uid)) throw new TableError('private');
+  if (t.isPrivate && !invited && !t.paid.includes(user.uid) && !t.approved?.includes(user.uid)) throw new TableError('private');
   const charge = !invited && !t.paid.includes(user.uid);
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
   if (invited) t = { ...t, invites: invites.filter((i) => i.code !== invite) };
@@ -249,12 +252,14 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   const reserved = inv?.seat !== undefined && !hasGame(t) && t.seats[inv.seat] === null ? inv.seat : -1;
   const free = hasGame(t) ? -1 : reserved >= 0 ? reserved : t.seats.findIndex((m) => m === null);
   const member: Member = { uid: user.uid, username: user.username, isBot: false };
+  // الدعوة: عملتها تنخصم من صاحبها الحين (لما يدخل المدعو فعلاً)، والمدعو يدخل مجاناً
+  const invitedBy = inv?.by && inv.by !== user.uid ? inv.by : undefined;
   if (free >= 0) {
     const seats = [...t.seats];
     seats[free] = member;
-    return { table: { ...t, seats, paid }, charge };
+    return { table: { ...t, seats, paid }, charge, invitedBy };
   }
-  return { table: { ...t, spectators: [...t.spectators, member], paid }, charge };
+  return { table: { ...t, spectators: [...t.spectators, member], paid }, charge, invitedBy };
 }
 
 /** المالك يُخرج حاضراً (ويحظره إن طلب): أثناء اللعب يحل روبوت مكانه */
@@ -311,8 +316,8 @@ export function leave(t0: TableData, uid: string, rng: () => number = Math.rando
 }
 
 /** دعوة جديدة (يدفعها المالك)، ويمكن أن تحجز مقعداً */
-export function addInvite(t: TableData, code: string, seat?: Seat): TableData {
-  return { ...t, invites: [...(t.invites ?? []), { code, seat }].slice(-30) };
+export function addInvite(t: TableData, code: string, seat?: Seat, by?: string): TableData {
+  return { ...t, invites: [...(t.invites ?? []), { code, seat, ...(by ? { by } : {}) }].slice(-30) };
 }
 
 const inLobby = (t: TableData) => !gameActive(t);

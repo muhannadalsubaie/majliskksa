@@ -204,7 +204,7 @@ export class TableRoom extends DurableObject<Env> {
   private db() {
     if (this.env.DEV_AUTH === '1') {
       // تطوير محلي: بدون Firestore
-      return { adjustCoins: async () => 99, set: async () => {}, remove: async () => {} } as unknown as Firestore;
+      return { adjustCoins: async () => 99, canPay: async () => true, set: async () => {}, remove: async () => {} } as unknown as Firestore;
     }
     return new Firestore(this.env.FIREBASE_PROJECT_ID, this.env.FIREBASE_SERVICE_ACCOUNT);
   }
@@ -313,6 +313,8 @@ export class TableRoom extends DurableObject<Env> {
       const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
       if (offline[user.uid] !== undefined) { delete offline[user.uid]; await this.ctx.storage.put('offline', offline); }
       if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable);
+      // جاء المدعو: الحين تنخصم عملة الدعوة من صاحبها (لو ما عنده، المدعو يدخل عادي)
+      if (r.invitedBy) await this.db().adjustCoins(r.invitedBy, -COINS.inviteFriend).catch((e) => console.log('invite charge', (e as Error).message));
       await this.save(r.table);
       this.broadcast([`انضم ${user.username}`]);
       await this.publish(r.table);
@@ -350,7 +352,7 @@ export class TableRoom extends DurableObject<Env> {
       const t = await this.load();
       if (!t) return { error: 'not-found' };
       if (inTable(t, user.uid)) return { ok: true, status: 'accepted' };
-      if (!t.isPrivate || t.paid.includes(user.uid)) return { ok: true, status: 'accepted' };
+      if (!t.isPrivate || t.paid.includes(user.uid) || t.approved?.includes(user.uid)) return { ok: true, status: 'accepted' };
       if (t.banned?.includes(user.uid)) return { error: 'banned' };
       const prev = t.joinRequests?.[user.uid];
       const now = Date.now();
@@ -369,7 +371,7 @@ export class TableRoom extends DurableObject<Env> {
   async joinRequestStatus(uid: string): Promise<{ status: string }> {
     const t = await this.load();
     if (!t) return { status: 'gone' };
-    if (inTable(t, uid) || t.paid.includes(uid) || !t.isPrivate) return { status: 'accepted' };
+    if (inTable(t, uid) || t.paid.includes(uid) || t.approved?.includes(uid) || !t.isPrivate) return { status: 'accepted' };
     return { status: t.joinRequests?.[uid]?.status ?? 'none' };
   }
 
@@ -382,14 +384,11 @@ export class TableRoom extends DurableObject<Env> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     if (t.ownerUid !== uid) return { error: 'not-owner' };
-    try {
-      await this.db().adjustCoins(uid, -COINS.inviteFriend);
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
+    // ما تنخصم العملة الحين: تنخصم لما يدخل المدعو فعلاً. بس لازم يكون عنده عملة تكفي
+    if (!(await this.db().canPay(uid, COINS.inviteFriend))) return { error: 'not-enough-coins' };
     const bytes = crypto.getRandomValues(new Uint8Array(6));
     const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
-    await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined));
+    await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined, uid));
     return { code };
   }
 
@@ -766,7 +765,7 @@ export class TableRoom extends DurableObject<Env> {
         break;
       }
       case 'joinAnswer': {
-        // موافق: يقدر يدخل الطاولة الخاصة (مجاناً مثل المدعو)؛ تجاهل: ينقال له إن المالك تجاهل طلبه
+        // موافق: يقدر يدخل الطاولة الخاصة؛ تجاهل: ينقال له إن المالك تجاهل طلبه
         if (!isOwner) throw new Error('not-owner');
         const req = typeof msg.uid === 'string' ? t.joinRequests?.[msg.uid] : undefined;
         if (!req) break;
@@ -774,7 +773,8 @@ export class TableRoom extends DurableObject<Env> {
         const next: TableData = {
           ...t,
           joinRequests: { ...t.joinRequests, [msg.uid]: { ...req, status: accept ? 'accepted' : 'ignored' } },
-          ...(accept && !t.paid.includes(msg.uid) ? { paid: [...t.paid, msg.uid] } : {}),
+          // موافق: يقدر يدخل الطاولة الخاصة (بعملة الدخول العادية)
+          ...(accept && !t.approved?.includes(msg.uid) ? { approved: [...(t.approved ?? []), msg.uid] } : {}),
         };
         await this.save(next);
         break;
