@@ -7,6 +7,7 @@ import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
+  JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS,
 } from '../../shared/table';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
@@ -42,7 +43,7 @@ type ClientMessage =
   | { type: 'voiceBlock'; uid: string; blocked: boolean }
   | { type: 'setPrivate'; isPrivate: boolean }
   /** المالك يرد على طلب انضمام لطاولته الخاصة */
-  | { type: 'joinAnswer'; uid: string; accept: boolean }
+  | { type: 'joinAnswer'; uid: string; accept?: boolean; answer?: 'accept' | 'ignore' | 'reject' }
   | { type: 'setOwner'; uid: string }
   /** الدردشة الكتابية: رسالة، أو اختيار هذا الاتصال (off = ما توصله الرسائل ولا يرسل) */
   | { type: 'chat'; text: string }
@@ -347,7 +348,7 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** طلب انضمام لطاولة خاصة: يوصل للمالك تنبيه «فلان يريد الانضمام» (موافق / تجاهل) */
-  async requestJoin(user: { uid: string; username: string }): Promise<{ ok: true; status: string } | { error: string }> {
+  async requestJoin(user: { uid: string; username: string }): Promise<{ ok: true; status: string; minutes?: number } | { error: string }> {
     return this.serial(async () => {
       const t = await this.load();
       if (!t) return { error: 'not-found' };
@@ -356,9 +357,12 @@ export class TableRoom extends DurableObject<Env> {
       if (t.banned?.includes(user.uid)) return { error: 'banned' };
       const prev = t.joinRequests?.[user.uid];
       const now = Date.now();
-      // ما نكرر التنبيه للمالك لو الطلب نفسه لسا ينتظر (أقل من دقيقة)
-      if (prev?.status === 'pending' && now - prev.at < 60_000) return { ok: true, status: 'pending' };
-      const requests = Object.fromEntries(Object.entries(t.joinRequests ?? {}).filter(([, r]) => now - r.at < 10 * 60_000));
+      const minutesLeft = (ms: number) => Math.max(1, Math.ceil((prev!.at + ms - now) / 60_000));
+      // مرفوض: ما يرسل طلب جديد إلا بعد نصف ساعة من طلبه
+      if (prev?.status === 'rejected' && now - prev.at < JOIN_REJECT_BLOCK_MS) return { ok: true, status: 'rejected', minutes: minutesLeft(JOIN_REJECT_BLOCK_MS) };
+      // طلبه السابق لسا معلّق (ينتظر أو تجاهله المالك): ما يرسل طلب ثاني لين تخلص الخمس دقائق
+      if ((prev?.status === 'pending' || prev?.status === 'ignored') && now - prev.at < JOIN_REQUEST_HOLD_MS) return { ok: true, status: 'waiting', minutes: minutesLeft(JOIN_REQUEST_HOLD_MS) };
+      const requests = Object.fromEntries(Object.entries(t.joinRequests ?? {}).filter(([, r]) => now - r.at < JOIN_REJECT_BLOCK_MS + 5 * 60_000));
       await this.save({ ...t, joinRequests: { ...requests, [user.uid]: { name: user.username, at: now, status: 'pending' } } });
       const out = JSON.stringify({ type: 'joinRequest', uid: user.uid, name: user.username });
       for (const w of this.ctx.getWebSockets()) {
@@ -368,11 +372,17 @@ export class TableRoom extends DurableObject<Env> {
     });
   }
 
-  async joinRequestStatus(uid: string): Promise<{ status: string }> {
+  async joinRequestStatus(uid: string): Promise<{ status: string; minutes?: number }> {
     const t = await this.load();
     if (!t) return { status: 'gone' };
     if (inTable(t, uid) || t.paid.includes(uid) || t.approved?.includes(uid) || !t.isPrivate) return { status: 'accepted' };
-    return { status: t.joinRequests?.[uid]?.status ?? 'none' };
+    const r = t.joinRequests?.[uid];
+    if (!r) return { status: 'none' };
+    const now = Date.now();
+    if (r.status === 'rejected') return now - r.at < JOIN_REJECT_BLOCK_MS ? { status: 'rejected', minutes: Math.max(1, Math.ceil((r.at + JOIN_REJECT_BLOCK_MS - now) / 60_000)) } : { status: 'none' };
+    // تجاهل: يبقى الطلب معلّقاً عند صاحبه خمس دقائق، بعدها ينتهي
+    if (r.status === 'pending' || r.status === 'ignored') return now - r.at < JOIN_REQUEST_HOLD_MS ? { status: 'pending' } : { status: 'expired' };
+    return { status: r.status };
   }
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
@@ -564,10 +574,10 @@ export class TableRoom extends DurableObject<Env> {
     pair[1].serializeAttachment({ uid });
     const t = await this.load();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
-    // المالك رجع (أو فتح الطاولة): يوصله أي طلب انضمام لسا ينتظر رده (آخر 10 دقائق)
+    // المالك رجع (أو فتح الطاولة): يوصله أي طلب انضمام لسا ينتظر رده (آخر 5 دقائق)
     if (t && uid === t.ownerUid) {
       for (const [rid, r] of Object.entries(t.joinRequests ?? {})) {
-        if (r.status === 'pending' && Date.now() - r.at < 10 * 60_000) pair[1].send(JSON.stringify({ type: 'joinRequest', uid: rid, name: r.name }));
+        if (r.status === 'pending' && Date.now() - r.at < JOIN_REQUEST_HOLD_MS) pair[1].send(JSON.stringify({ type: 'joinRequest', uid: rid, name: r.name }));
       }
     }
     // عاد لاعب منقطع قبل انتهاء المهلة: يستعيد مقعده
@@ -771,16 +781,18 @@ export class TableRoom extends DurableObject<Env> {
         break;
       }
       case 'joinAnswer': {
-        // موافق: يقدر يدخل الطاولة الخاصة؛ تجاهل: ينقال له إن المالك تجاهل طلبه
+        // قبول: يدخل على طول (بعملة الدخول)؛ تجاهل: يبقى طلبه معلّقاً 5 دقائق؛ رفض: ممنوع نصف ساعة
         if (!isOwner) throw new Error('not-owner');
         const req = typeof msg.uid === 'string' ? t.joinRequests?.[msg.uid] : undefined;
         if (!req) break;
-        const accept = msg.accept === true;
+        const answer = msg.answer === 'accept' || msg.answer === 'reject' || msg.answer === 'ignore' ? msg.answer : msg.accept === true ? 'accept' : 'ignore';
+        const accept = answer === 'accept';
         const next: TableData = {
           ...t,
-          joinRequests: { ...t.joinRequests, [msg.uid]: { ...req, status: accept ? 'accepted' : 'ignored' } },
-          // موافق: يقدر يدخل الطاولة الخاصة (بعملة الدخول العادية)
+          joinRequests: { ...t.joinRequests, [msg.uid]: { ...req, status: accept ? 'accepted' : answer === 'reject' ? 'rejected' : 'ignored' } },
           ...(accept && !t.approved?.includes(msg.uid) ? { approved: [...(t.approved ?? []), msg.uid] } : {}),
+          // رفض: نشيل موافقة قديمة إن وجدت
+          ...(answer === 'reject' ? { approved: (t.approved ?? []).filter((u) => u !== msg.uid) } : {}),
         };
         await this.save(next);
         break;

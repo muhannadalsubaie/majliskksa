@@ -65,6 +65,14 @@ describe('table', () => {
     expect(join(pub, { uid: 'u2', username: 'أحمد' }).invitedBy).toBeUndefined();
   });
 
+  it('rejected join request blocks entry (even with an invite) for half an hour', () => {
+    let t = newTable('t1', owner, true, 0);
+    t = addInvite(t, 'inv');
+    t = { ...t, joinRequests: { u2: { name: 'أحمد', at: 1000, status: 'rejected' } } };
+    expect(() => join(t, { uid: 'u2', username: 'أحمد' }, 'inv', 1000 + 29 * 60_000)).toThrow(TableError);
+    expect(join(t, { uid: 'u2', username: 'أحمد' }, 'inv', 1000 + 31 * 60_000).table.seats[1]?.uid).toBe('u2');
+  });
+
   it('owner replaces a bot with a spectator mid-game; replaced human becomes a spectator', () => {
     let t = newTable('t1', owner, false, 0);
     t = join(t, { uid: 'u2', username: 'أحمد' }).table;

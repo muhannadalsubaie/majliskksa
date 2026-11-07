@@ -37,7 +37,7 @@ export interface TableData {
   /** وافق المالك على طلب انضمامهم للطاولة الخاصة (يدخلون بعملة الدخول العادية) */
   approved?: string[];
   /** طلبات الانضمام للطاولة الخاصة (من قائمة الأصدقاء): المالك يوافق أو يتجاهل */
-  joinRequests?: Record<string, { name: string; at: number; status: 'pending' | 'accepted' | 'ignored' }>;
+  joinRequests?: Record<string, { name: string; at: number; status: 'pending' | 'accepted' | 'ignored' | 'rejected' }>;
   /** المحادثة الصوتية: من انضم (جلسة Cloudflare Realtime الخاصة به) وهل ميكروفونه مكتوم */
   voice?: Record<string, VoiceMember>;
   /** آخر لحظة حُسب فيها استهلاك الصوت (للسقف الشهري) */
@@ -236,9 +236,19 @@ function botName(t: TableData, rng: () => number): string {
  * ينضم مستخدم: مقعد فارغ إن وُجد وإلا مشاهد. يرجع هل يجب خصم رسوم الدخول.
  * بدعوة صالحة: لا رسوم (دفعها المالك)، ويمكن دخول الطاولة الخاصة. الدعوة تُستهلك.
  */
+/** طلب الانضمام المتجاهَل يبقى معلّقاً 5 دقائق، والمرفوض يمنعه نصف ساعة (من وقت الطلب) */
+export const JOIN_REQUEST_HOLD_MS = 5 * 60_000;
+export const JOIN_REJECT_BLOCK_MS = 30 * 60_000;
+export function isJoinRejected(t: TableData, uid: string, now = Date.now()): boolean {
+  const r = t.joinRequests?.[uid];
+  return r?.status === 'rejected' && now - r.at < JOIN_REJECT_BLOCK_MS;
+}
+
 export function join(t: TableData, user: { uid: string; username: string }, invite?: string, now = Date.now()): { table: TableData; charge: boolean; invitedBy?: string } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (t.banned?.includes(user.uid)) throw new TableError('banned');
+  // رفض المالك طلبه: ما يدخل (ولا بدعوة) إلا بعد نصف ساعة من طلبه
+  if (isJoinRejected(t, user.uid, now)) throw new TableError('join-rejected');
   if ((t.kicked?.[user.uid] ?? 0) > now) throw new TableError('kicked');
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
   const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
