@@ -65,12 +65,14 @@ describe('table', () => {
     expect(join(pub, { uid: 'u2', username: 'أحمد' }).invitedBy).toBeUndefined();
   });
 
-  it('rejected join request blocks entry (even with an invite) for half an hour', () => {
+  it('rejected join request: no entry to the private table for half an hour, unless invited or the table is public', () => {
     let t = newTable('t1', owner, true, 0);
-    t = addInvite(t, 'inv');
-    t = { ...t, joinRequests: { u2: { name: 'أحمد', at: 1000, status: 'rejected' } } };
-    expect(() => join(t, { uid: 'u2', username: 'أحمد' }, 'inv', 1000 + 29 * 60_000)).toThrow(TableError);
-    expect(join(t, { uid: 'u2', username: 'أحمد' }, 'inv', 1000 + 31 * 60_000).table.seats[1]?.uid).toBe('u2');
+    t = { ...t, paid: [...t.paid, 'u2'], joinRequests: { u2: { name: 'أحمد', at: 1000, status: 'rejected' } } };
+    const u2 = { uid: 'u2', username: 'أحمد' };
+    expect(() => join(t, u2, undefined, 1000 + 29 * 60_000)).toThrow('join-rejected');
+    expect(join(addInvite(t, 'inv'), u2, 'inv', 1000 + 60_000).table.seats[1]?.uid).toBe('u2');
+    expect(join({ ...t, isPrivate: false }, u2, undefined, 1000 + 60_000).table.seats[1]?.uid).toBe('u2');
+    expect(join(t, u2, undefined, 1000 + 31 * 60_000).table.seats[1]?.uid).toBe('u2');
   });
 
   it('owner replaces a bot with a spectator mid-game; replaced human becomes a spectator', () => {
