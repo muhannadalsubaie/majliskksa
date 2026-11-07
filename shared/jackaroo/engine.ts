@@ -2,6 +2,7 @@
 //
 // القوانين (حسب قوانين جواكر الكلاسيكية، والفروقات بين المجالس خيارات في JackarooRules):
 //  • 4 لاعبين، فريقان: كل لاعب وشريكه متقابلان (0 و2 ضد 1 و3). لكل لاعب 4 أحجار.
+//    أو لاعبين / ثلاثة: كل واحد لنفسه (seats = المقاعد اللي تلعب)، وأول من يدخل أحجاره الأربعة يفوز.
 //  • ورقة لعب واحدة 52 ورقة بلا جوكر. التوزيع 4 ثم 4 ثم 5 أوراق لكل لاعب (= 52)، ثم تُخلط من جديد.
 //  • كل دور: تلعب ورقة واحدة. إن كان عندك لعب صالح يجب أن تلعب؛ وإن لم يكن "تحرق" ورقة.
 //  • الأحجار: في "البيت" ← تنزل لـ"القاعدة" (أول خانة لك على المسار) ← تلف المسار ← تدخل
@@ -89,6 +90,12 @@ export interface JackarooState {
   phase: 'playing' | 'over';
   winnerTeam: number | null;
   lastMove: MoveRecord | null;
+  /** المقاعد اللي تلعب (بالترتيب). بدونها = الأربعة */
+  seats?: number[];
+  /** فريقين (4 لاعبين). لاعبين أو ثلاثة: كل واحد لنفسه */
+  teams?: boolean;
+  /** الفائز في اللعب الفردي (رقم المقعد) */
+  winner?: number | null;
   /** لاعبون ما عندهم أي لعب صالح بكل أوراقهم: انحرقت أوراقهم تلقائياً وتجاوزهم الدور لين التوزيعة الجاية */
   autoBurned?: number[] | null;
 }
@@ -106,6 +113,17 @@ export type Rng = () => number;
 export const teamOf = (seat: number) => seat % 2;
 export const partnerOf = (seat: number) => (seat + 2) % PLAYERS;
 export const nextSeat = (seat: number) => (seat + 1) % PLAYERS;
+/** المقاعد اللي تلعب */
+export const activeSeats = (s: JackarooState) => s.seats ?? [0, 1, 2, 3];
+export const isTeams = (s: JackarooState) => s.teams !== false && activeSeats(s).length === 4;
+/** اللاعب التالي اللي يلعب (يتخطى المقاعد الفاضية) */
+export function nextPlayer(s: JackarooState, seat: number): number {
+  const act = activeSeats(s);
+  for (let k = 1; k <= PLAYERS; k++) { const n = (seat + k) % PLAYERS; if (act.includes(n)) return n; }
+  return seat;
+}
+/** الجهة: الفريق (4 لاعبين) أو اللاعب نفسه (فردي) */
+export const sideOf = (s: JackarooState, seat: number) => (isTeams(s) ? teamOf(seat) : seat);
 export const trackLen = (r: JackarooRules) => r.segment * PLAYERS;
 export const startOf = (r: JackarooRules, owner: number) => owner * r.segment;
 export const sameCard = (a: Card, b: Card) => a.rank === b.rank && a.suit === b.suit;
@@ -134,24 +152,31 @@ function deal(s: JackarooState, rng: Rng): JackarooState {
   let pile = s.pile;
   let dealer = s.dealer;
   let dealNo = s.dealNo;
-  if (dealNo >= DEAL_SIZES.length || deck.length < DEAL_SIZES[dealNo] * PLAYERS) {
+  const act = activeSeats(s);
+  if (dealNo >= DEAL_SIZES.length || deck.length < DEAL_SIZES[dealNo] * act.length) {
     // ورقة جديدة: نخلط كل الأوراق، وينتقل التوزيع للاعب التالي
     deck = shuffle(fullDeck(), rng);
     pile = [];
     dealNo = 0;
-    dealer = nextSeat(dealer);
+    dealer = nextPlayer(s, dealer);
   }
   const n = DEAL_SIZES[dealNo];
-  const hands = Array.from({ length: PLAYERS }, (_, i) => deck.slice(i * n, i * n + n));
-  return { ...s, hands, deck: deck.slice(n * PLAYERS), pile, dealer, dealNo: dealNo + 1, turn: nextSeat(dealer), forcedBurn: null };
+  // المقاعد الفاضية ما ياخذون أوراق
+  const hands = Array.from({ length: PLAYERS }, (_, i) => {
+    const k = act.indexOf(i);
+    return k < 0 ? [] : deck.slice(k * n, k * n + n);
+  });
+  return { ...s, hands, deck: deck.slice(n * act.length), pile, dealer, dealNo: dealNo + 1, turn: nextPlayer(s, dealer), forcedBurn: null };
 }
 
-export function newGame(rng: Rng, rules: JackarooRules = DEFAULT_RULES): JackarooState {
+export function newGame(rng: Rng, rules: JackarooRules = DEFAULT_RULES, seats: number[] = [0, 1, 2, 3]): JackarooState {
+  const act = [...seats].sort((a, b) => a - b);
   const s: JackarooState = {
     rules,
     marbles: Array.from({ length: PLAYERS }, () => Array.from({ length: 4 }, () => ({ zone: 'home' }) as Marble)),
-    hands: [], deck: [], pile: [], dealer: PLAYERS - 1, dealNo: DEAL_SIZES.length,
-    turn: 0, forcedBurn: null, phase: 'playing', winnerTeam: null, lastMove: null,
+    hands: [], deck: [], pile: [], dealer: act[act.length - 1], dealNo: DEAL_SIZES.length,
+    turn: act[0], forcedBurn: null, phase: 'playing', winnerTeam: null, lastMove: null,
+    ...(act.length < 4 ? { seats: act, teams: false, winner: null } : {}),
   };
   return burnStuck(deal(s, rng), rng, []);
 }
@@ -165,10 +190,10 @@ function burnStuck(s: JackarooState, rng: Rng, burned: number[]): JackarooState 
   for (let guard = 0; guard < PLAYERS * 2 && next.phase === 'playing'; guard++) {
     const t = next.turn;
     if (next.hands[t].length === 0 || next.forcedBurn === t || legalMoves(next, t).length > 0) break;
-    next = { ...next, pile: [...next.pile, ...next.hands[t]], hands: next.hands.map((h, i) => (i === t ? [] : h)), turn: nextSeat(t) };
+    next = { ...next, pile: [...next.pile, ...next.hands[t]], hands: next.hands.map((h, i) => (i === t ? [] : h)), turn: nextPlayer(next, t) };
     burned.push(t);
     if (next.hands.every((h) => h.length === 0)) { next = deal(next, rng); continue; }
-    while (next.hands[next.turn].length === 0) next.turn = nextSeat(next.turn);
+    while (next.hands[next.turn].length === 0) next.turn = nextPlayer(next, next.turn);
   }
   return burned.length ? { ...next, autoBurned: burned } : next;
 }
@@ -194,7 +219,7 @@ export const isFinished = (s: JackarooState, owner: number) => s.marbles[owner].
 
 /** الأحجار التي يحرّكها هذا اللاعب: أحجاره، وإن أنهاها كلها فأحجار شريكه */
 export function controlledOwner(s: JackarooState, seat: number): number {
-  return isFinished(s, seat) ? partnerOf(seat) : seat;
+  return isTeams(s) && isFinished(s, seat) ? partnerOf(seat) : seat;
 }
 
 const marble = (s: JackarooState, r: MarbleRef) => s.marbles[r.owner][r.index];
@@ -314,7 +339,7 @@ export function movesForCard(s: JackarooState, seat: number, card: Card): MoveSp
   if (complex && card.rank === 'J' && isRed(card)) forward(11);
   if (complex && card.rank === 'Q' && !isRed(card)) {
     // البنت السوداء: تختار ورقة من أوراق التالي المقلوبة
-    const n = s.hands[nextSeat(seat)]?.length ?? 0;
+    const n = s.hands[nextPlayer(s, seat)]?.length ?? 0;
     for (let index = 0; index < n; index++) out.push({ kind: 'discardNext', index });
   } else {
     for (const n of FORWARD[card.rank] ?? []) forward(n);
@@ -423,10 +448,10 @@ export function applyJackaroo(s: JackarooState, a: JackarooAction, rng: Rng): Ja
     next = { ...r.state, hands, pile: [...s.pile, a.card] };
     record = { seat: a.seat, card: a.card, move: a.move, captured: r.captured, enteredSafe: r.enteredSafe };
     // العشرة: اللاعب التالي يحرق ورقة ويضيع دوره
-    if (a.move.kind === 'skipNext' && hands[nextSeat(a.seat)].length > 0) next.forcedBurn = nextSeat(a.seat);
+    if (a.move.kind === 'skipNext' && hands[nextPlayer(s, a.seat)].length > 0) next.forcedBurn = nextPlayer(s, a.seat);
     // البنت السوداء (كمبلكس): الورقة المختارة من أوراق التالي تُحرق (دوره لا يضيع)
     if (a.move.kind === 'discardNext') {
-      const victim = nextSeat(a.seat);
+      const victim = nextPlayer(s, a.seat);
       const lost = next.hands[victim][a.move.index];
       if (lost) {
         next.hands = next.hands.map((h, i) => (i === victim ? h.filter((_, j) => j !== (a.move as { index: number }).index) : h));
@@ -438,13 +463,18 @@ export function applyJackaroo(s: JackarooState, a: JackarooAction, rng: Rng): Ja
   next.lastMove = record;
   next.autoBurned = null;
   // فاز فريق بإدخال أحجاره الثمانية
-  for (const team of [0, 1]) {
-    if (isFinished(next, team) && isFinished(next, team + 2)) return { ...next, phase: 'over', winnerTeam: team };
+  if (isTeams(next)) {
+    for (const team of [0, 1]) {
+      if (isFinished(next, team) && isFinished(next, team + 2)) return { ...next, phase: 'over', winnerTeam: team };
+    }
+  } else if (isFinished(next, a.seat)) {
+    // فردي: أول من يدخل أحجاره الأربعة يفوز
+    return { ...next, phase: 'over', winner: a.seat };
   }
-  next.turn = nextSeat(a.seat);
+  next.turn = nextPlayer(next, a.seat);
   // انتهت أوراق الجميع: توزيعة جديدة
   if (next.hands.every((h) => h.length === 0)) return burnStuck(deal(next, rng), rng, []);
   // من لم تبق معه أوراق (أحرقتها البنت السوداء) يتخطاه الدور
-  while (next.hands[next.turn].length === 0) next.turn = nextSeat(next.turn);
+  while (next.hands[next.turn].length === 0) next.turn = nextPlayer(next, next.turn);
   return burnStuck(next, rng, []);
 }

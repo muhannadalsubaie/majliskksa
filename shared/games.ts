@@ -69,10 +69,12 @@ export function startOther(t: TableData, rng: Rng): { table: TableData; events: 
       ],
     };
   }
-  const jackaroo = newJackaroo(rng, t.variant === 'complex' ? COMPLEX_RULES : JACKAROO_CLASSIC);
+  // لاعبين أو ثلاثة: كل واحد لنفسه؛ أربعة: فريقين
+  const seats = t.seats.map((m, i) => (m ? i : -1)).filter((i) => i >= 0);
+  const jackaroo = newJackaroo(rng, t.variant === 'complex' ? COMPLEX_RULES : JACKAROO_CLASSIC, seats);
   return {
     table: { ...t, jackaroo, domino: null, ludo: null, game: null },
-    events: [`بدأت الجاكارو${t.variant === 'complex' ? ' كمبلكس' : ''}. وُزّعت ${jackaroo.hands[0].length} أوراق، يبدأ ${names(t)[jackaroo.turn]}`],
+    events: [`بدأت الجاكارو${t.variant === 'complex' ? ' كمبلكس' : ''}${seats.length < 4 ? ` بين ${seats.length} لاعبين، كل واحد لنفسه` : ''}. وُزّعت ${jackaroo.hands[jackaroo.turn].length} أوراق، يبدأ ${names(t)[jackaroo.turn]}`],
   };
 }
 
@@ -189,7 +191,8 @@ function applyOtherMove(t: TableData, action: DominoAction | JackarooAction | Lu
   // الإعلان للجميع بالأسماء (بلا "أنت")، ونهاية اللعبة باسم الفريق الفائز
   const events = jackarooMoveText(after, names(t), -1).filter((e) => !e.startsWith('فاز'));
   if (after.phase === 'over' && after.winnerTeam !== null) events.push(`انتهت اللعبة — فاز ${teamName(t, after.winnerTeam)}`);
-  if (after.dealNo !== before.dealNo && after.phase === 'playing') events.push(`توزيع جديد: ${after.hands[0].length} أوراق، يبدأ ${names(t)[after.turn]}`);
+  if (after.phase === 'over' && after.winner != null) events.push(`انتهت اللعبة — فاز ${names(t)[after.winner]}`);
+  if (after.dealNo !== before.dealNo && after.phase === 'playing') events.push(`توزيع جديد: ${after.hands[after.turn].length} أوراق، يبدأ ${names(t)[after.turn]}`);
   return { table: { ...t, jackaroo: after }, events };
 }
 

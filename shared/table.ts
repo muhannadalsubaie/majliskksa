@@ -424,12 +424,14 @@ export function start(t: TableData, rng: Rng): TableData {
   return { ...t, game: newMatch(rng, 0), matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} };
 }
 
-/** عدد اللاعبين المسموح لكل لعبة: البلوت والجاكارو 4، الدومينو 2 أو 4، اللودو 2 أو 3 أو 4 (الفرق 4) */
+/** عدد اللاعبين المسموح لكل لعبة: البلوت 4، الدومينو والجاكارو 2 أو 3 أو 4، اللودو 2 أو 3 أو 4 (الفرق 4) */
 export function allowedPlayers(t: TableData): number[] {
   const kind = t.kind ?? 'baloot';
   // الدومينو: لاعبين أو ثلاثة (كل واحد لنفسه، مع السحب من البنك) أو أربعة (فريقين)
   if (kind === 'domino') return [2, 3, 4];
   if (kind === 'ludo') return t.variant === 'teams' ? [4] : [2, 3, 4];
+  // الجاكارو: لاعبين أو ثلاثة (كل واحد لنفسه) أو أربعة (فريقين)
+  if (kind === 'jackaroo') return [2, 3, 4];
   return [4];
 }
 export const seatedCount = (t: TableData) => t.seats.filter(Boolean).length;
@@ -440,7 +442,8 @@ function compactSeats(t: TableData): TableData {
   const n = seatedCount(t);
   if (n === 4) return t;
   const members = t.seats.filter((m): m is Member => m !== null);
-  const targets = (t.kind === 'ludo' ? (n === 2 ? [0, 2] : [0, 1, 2]) : [0, 1, 2, 3].slice(0, n));
+  // اللودو والجاكارو: لاعبين متقابلين أو ثلاثة متتالية
+  const targets = (t.kind === 'ludo' || t.kind === 'jackaroo' ? (n === 2 ? [0, 2] : [0, 1, 2]) : [0, 1, 2, 3].slice(0, n));
   const seats: (Member | null)[] = [null, null, null, null];
   members.forEach((m, i) => { seats[targets[i]] = m; });
   return { ...t, seats };
@@ -452,7 +455,7 @@ export function startAny(t: TableData, rng: Rng): { table: TableData; events: st
     const table = withDealHold(start(t, rng));
     return { table, events: ['بدأت المباراة', dealAnnouncement(table)], voices: ['first'] };
   }
-  if (!canStart(t)) throw new TableError(t.kind === 'jackaroo' ? 'not-full' : 'bad-count');
+  if (!canStart(t)) throw new TableError('bad-count');
   if (gameActive(t)) throw new TableError('game-started');
   const r = startOther(compactSeats({ ...t, matchNo: (t.matchNo ?? 0) + 1, history: [], lobbyAway: {} }), rng);
   return r;

@@ -3,7 +3,7 @@
 // فلا تحتاج التطبيقات تعيد كتابة قوانين الألعاب — ترسم اللوحة وتعرض الأزرار وترسل الحركة كما هي.
 import { type DominoState, type Tile, canDraw, canPass, ends, fits, playable, sameTile, sideOf } from './domino/engine';
 import { endsLabel, handTileLabel, lineLabel, sideName as dominoSideName } from './domino/labels';
-import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn } from './jackaroo/engine';
+import { type JackarooState, controlledOwner as jkOwner, movesForCard, mustBurn, nextPlayer as jkNext } from './jackaroo/engine';
 import { boardSummary as jkBoard, cardHint, cardName, marblePlace, moveText } from './jackaroo/labels';
 import { type LudoState, controlledOwner as ludoOwner, moveOptions, poolOf } from './ludo/engine';
 import { boardSummary as ludoBoard, optionText, rollName, squareText } from './ludo/labels';
@@ -92,7 +92,7 @@ export function jackarooUi(s: JackarooState, mySeat: number | null, names: strin
     return {
       label: `${cardName(c)}، ${burning ? 'حرق' : cardHint(c, s.rules.kingThirteen, s.rules.complex)}`,
       usable: myTurn && (burning || moves.length > 0),
-      moves: moves.map((m) => ({ move: m, text: moveText(m, names, me) })),
+      moves: moves.map((m) => ({ move: m, text: moveText(m, names, me, me, jkNext(s, me)) })),
     };
   });
   let mineText = jkBoard(s, names, me);

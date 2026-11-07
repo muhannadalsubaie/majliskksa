@@ -2,7 +2,7 @@
 import { RANK_NAMES as BALOOT_RANKS, SUIT_NAMES as SUIT } from '../baloot/cards';
 import {
   type Card, type JackarooState, type MarbleRef, type MoveSpec,
-  SAFE_SIZE, progressOf, teamOf, trackLen,
+  SAFE_SIZE, activeSeats, isTeams, nextPlayer, progressOf, teamOf, trackLen,
 } from './engine';
 
 // نفس أسماء البلوت (أكة، شايب، بنت، ولد، والأرقام)
@@ -59,7 +59,8 @@ function movedMarbles(move: MoveSpec): MarbleRef[] {
 }
 
 /** نص الحركة. actor = من لعبها (لمعرفة اللاعب التالي له) */
-export function moveText(move: MoveSpec, names: string[], me: number, actor = me): string {
+/** next = اللاعب اللي بعد اللي لعب (يتخطى المقاعد الفاضية في اللعب بلاعبين أو ثلاثة) */
+export function moveText(move: MoveSpec, names: string[], me: number, actor = me, next = (actor + 1) % 4): string {
   const n = (r: MarbleRef) => marbleName(r, names, me);
   switch (move.kind) {
     case 'out': return `إنزال ${n(move.marble)}`;
@@ -67,9 +68,9 @@ export function moveText(move: MoveSpec, names: string[], me: number, actor = me
     case 'back': return `${n(move.marble)} يرجع ${move.steps} للخلف`;
     case 'swap': return `تبديل ${n(move.mine)} مع ${n(move.other)}`;
     case 'split': return move.parts.map((p) => `${n(p.marble)} ${p.steps}`).join('، و');
-    case 'skipNext': return `${names[(actor + 1) % 4]} يحرق ورقة ويضيع دوره`;
+    case 'skipNext': return `${names[next]} يحرق ورقة ويضيع دوره`;
     case 'kingRun': return `${n(move.marble)} يتقدم ${move.steps} ويأكل كل حجر يمر عليه`;
-    case 'discardNext': return `حرق الورقة رقم ${move.index + 1} من أوراق ${names[(actor + 1) % 4]}`;
+    case 'discardNext': return `حرق الورقة رقم ${move.index + 1} من أوراق ${names[next]}`;
   }
 }
 
@@ -84,23 +85,26 @@ export function moveAnnouncement(s: JackarooState, names: string[], me: number):
   if (!r) return [];
   const who = r.seat === me ? 'أنت' : names[r.seat];
   if (!r.move) return [`${who} حرق ${cardName(r.card)}`, ...autoBurnText(s, names, me)];
-  const out = [`${who} لعب ${cardName(r.card)}: ${moveText(r.move, names, me, r.seat)}`];
+  const out = [`${who} لعب ${cardName(r.card)}: ${moveText(r.move, names, me, r.seat, nextPlayer(s, r.seat))}`];
   // وين وقف كل حجر تحرك (رقم الخانة نفسه للجميع)
   const where = movedMarbles(r.move).filter((m) => !r.captured.some((c) => c.owner === m.owner && c.index === m.index))
     .map((m) => `${marbleName(m, names, me)} ${marblePlace(s, m)}`);
   if (where.length) out.push(where.join('، و'));
   for (const c of r.captured) out.push(`أكل ${marbleName(c, names, me)}، ورجع للبيت`);
   for (const e of r.enteredSafe) out.push(`دخل ${marbleName(e, names, me)} منطقة الأمان`);
-  if (r.discarded) out.push(`حُرقت ${cardName(r.discarded)} من أوراق ${names[(r.seat + 1) % 4]}`);
+  if (r.discarded) out.push(`حُرقت ${cardName(r.discarded)} من أوراق ${names[nextPlayer(s, r.seat)]}`);
   if (s.forcedBurn !== null && r.move.kind === 'skipNext') out.push(`${names[s.forcedBurn]} يحرق ورقة ويضيع دوره`);
-  if (s.phase === 'over') out.push(s.winnerTeam === teamOf(me) ? 'فاز فريقك!' : 'فاز الفريق الآخر');
+  if (s.phase === 'over') {
+    if (isTeams(s)) out.push(s.winnerTeam === teamOf(me) ? 'فاز فريقك!' : 'فاز الفريق الآخر');
+    else if (s.winner != null) out.push(s.winner === me ? 'فزت!' : `فاز ${names[s.winner]}`);
+  }
   out.push(...autoBurnText(s, names, me));
   return out;
 }
 
 /** ملخص اللوحة: أحجار كل لاعب وأماكنها */
 export function boardSummary(s: JackarooState, names: string[], me: number): string {
-  return [0, 1, 2, 3].map((owner) => {
+  return activeSeats(s).map((owner) => {
     const who = owner === me ? 'أحجارك' : `أحجار ${names[owner]}`;
     const parts = s.marbles[owner].map((_, index) => `${index + 1} ${marblePlace(s, { owner, index })}`);
     return `${who}: ${parts.join('، ')}`;
