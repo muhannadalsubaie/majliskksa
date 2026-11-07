@@ -353,7 +353,7 @@ export class TableRoom extends DurableObject<Env> {
       const t = await this.load();
       if (!t) return { error: 'not-found' };
       if (inTable(t, user.uid)) return { ok: true, status: 'accepted' };
-      if (!t.isPrivate || t.paid.includes(user.uid) || t.approved?.includes(user.uid)) return { ok: true, status: 'accepted' };
+      if (!t.isPrivate || user.uid === t.ownerUid || t.approved?.includes(user.uid)) return { ok: true, status: 'accepted' };
       if (t.banned?.includes(user.uid)) return { error: 'banned' };
       const prev = t.joinRequests?.[user.uid];
       const now = Date.now();
@@ -375,7 +375,7 @@ export class TableRoom extends DurableObject<Env> {
   async joinRequestStatus(uid: string): Promise<{ status: string; minutes?: number }> {
     const t = await this.load();
     if (!t) return { status: 'gone' };
-    if (inTable(t, uid) || t.paid.includes(uid) || t.approved?.includes(uid) || !t.isPrivate) return { status: 'accepted' };
+    if (inTable(t, uid) || uid === t.ownerUid || t.approved?.includes(uid) || !t.isPrivate) return { status: 'accepted' };
     const r = t.joinRequests?.[uid];
     if (!r) return { status: 'none' };
     const now = Date.now();

@@ -254,7 +254,10 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
   const invited = !!inv;
   // رفض المالك طلبه: ما يدخل الطاولة الخاصة إلا بدعوة أو بعد نصف ساعة من طلبه (والعامة يدخلها عادي)
   if (t.isPrivate && !invited && isJoinRejected(t, user.uid, now)) throw new TableError('join-rejected');
-  if (t.isPrivate && !invited && !t.paid.includes(user.uid) && !t.approved?.includes(user.uid)) throw new TableError('private');
+  // الطاولة الخاصة: بدعوة، أو موافقة المالك على طلب انضمام (مرة وحدة)، أو صاحبها — حتى اللي دخلها قبل يطلب من جديد
+  if (t.isPrivate && !invited && user.uid !== t.ownerUid && !t.approved?.includes(user.uid)) throw new TableError('private');
+  // الموافقة تنستخدم مرة وحدة: لو طلع ورجع يطلب مرة ثانية
+  if (t.approved?.includes(user.uid)) t = { ...t, approved: t.approved.filter((u) => u !== user.uid) };
   // عملة مع كل دخول (حتى لو رجع بعد ما غادر أو طار بانقطاع الاتصال) — صاحب الطاولة والمدعو مجاناً
   const charge = !invited && user.uid !== t.ownerUid;
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
