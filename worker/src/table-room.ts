@@ -564,6 +564,12 @@ export class TableRoom extends DurableObject<Env> {
     pair[1].serializeAttachment({ uid });
     const t = await this.load();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
+    // المالك رجع (أو فتح الطاولة): يوصله أي طلب انضمام لسا ينتظر رده (آخر 10 دقائق)
+    if (t && uid === t.ownerUid) {
+      for (const [rid, r] of Object.entries(t.joinRequests ?? {})) {
+        if (r.status === 'pending' && Date.now() - r.at < 10 * 60_000) pair[1].send(JSON.stringify({ type: 'joinRequest', uid: rid, name: r.name }));
+      }
+    }
     // عاد لاعب منقطع قبل انتهاء المهلة: يستعيد مقعده
     if (t?.away?.[uid] !== undefined) await this.save(markBack(t, uid));
     // رجع خلال مهلة الانقطاع القصير: ولا كأنه انقطع (ما أُعلن شي، فما نعلن رجوعه)
