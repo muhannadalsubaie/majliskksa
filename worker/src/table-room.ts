@@ -264,7 +264,8 @@ export class TableRoom extends DurableObject<Env> {
         people: peopleCount(t),
         // قائمة الموجودين (ضغطة مطولة على الطاولة في قائمة الانضمام): اللاعبين بالترتيب ثم المشاهدين
         // (نص JSON: [{name, role: player|bot|spectator}])
-        members: JSON.stringify([
+        // الطاولة الخاصة ما تنشر أسماء الموجودين (ما تظهر في القائمة أصلاً)
+        members: t.isPrivate ? '[]' : JSON.stringify([
           ...t.seats.filter((m): m is NonNullable<typeof m> => !!m).map((m) => ({ name: m.username, role: m.isBot ? 'bot' : 'player' })),
           ...t.spectators.map((m) => ({ name: m.username, role: 'spectator' })),
         ]),
