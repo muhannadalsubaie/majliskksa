@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from './baloot/testing';
-import { applyOther, gameTitle, parseDomino, parseJackaroo, parseLudo } from './games';
+import { applyOther, gameTitle, parseDomino, parseJackaroo, parseLudo, scoreSummary } from './games';
 import { addBot, leave, newTable, nextAutoStep, runAutoStep, startAny, stopGame, viewFor, type TableData } from './table';
 import { playable } from './domino/engine';
 import { legalMoves } from './jackaroo/engine';
@@ -204,5 +204,19 @@ describe('مهلة مشي الحجر', () => {
     const ui = viewFor(moved!, 'u1').ui as { myTurn: boolean; canRoll: boolean };
     expect(ui.myTurn).toBe(false);
     expect(ui.canRoll).toBe(false);
+  });
+});
+
+describe('scoreSummary', () => {
+  it('shows the running score for baloot and ludo, empty when no game', () => {
+    let t = newTable('t', { uid: 'u1', username: 'مهند' }, false, 0);
+    expect(scoreSummary(t)).toBe('');
+    for (const s of [1, 2, 3]) t = addBot(t, s, seededRng(s));
+    t = startAny(t, seededRng(9)).table;
+    expect(scoreSummary(t)).toMatch(/^النتيجة: مهند و.+ 0، .+ 0$/);
+    let l = newTable('l', { uid: 'u1', username: 'مهند' }, false, 0, 'ludo');
+    l = addBot(l, 2, seededRng(4));
+    l = startAny(l, seededRng(5)).table;
+    expect(scoreSummary(l)).toContain('مهند وصل 0 من 4');
   });
 });

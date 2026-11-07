@@ -9,7 +9,7 @@ import {
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
   JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
-import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo } from '../../shared/games';
+import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo, scoreSummary } from '../../shared/games';
 import { LudoError } from '../../shared/ludo/engine';
 import { personalize as personalizeLudo } from '../../shared/ludo/labels';
 import { DominoError } from '../../shared/domino/engine';
@@ -246,9 +246,14 @@ export class TableRoom extends DurableObject<Env> {
     return this.table;
   }
 
+  private publishedScore?: string;
   private async save(t: TableData) {
     this.table = t;
     await this.ctx.storage.put('table', t);
+    // النتيجة تغيّرت (انتهت صكة أو جولة): نحدّث الملخص العام في الخلفية، عشان تطلع في قائمة الطاولات
+    const score = t.isPrivate ? '' : scoreSummary(t);
+    if (this.publishedScore !== undefined && score !== this.publishedScore) void this.publishNow(t);
+    else this.publishedScore = score;
   }
 
   /** ملخص عام في Firestore لقائمة الطاولات (أفضل جهد — لا يوقف اللعب إن فشل). */
@@ -268,6 +273,8 @@ export class TableRoom extends DurableObject<Env> {
         // قائمة الموجودين (ضغطة مطولة على الطاولة في قائمة الانضمام): اللاعبين بالترتيب ثم المشاهدين
         // (نص JSON: [{name, role: player|bot|spectator}])
         // الطاولة الخاصة ما تنشر أسماء الموجودين (ما تظهر في القائمة أصلاً)
+        // نتيجة اللعب الجاري (للطاولة العامة بس)
+        score: (this.publishedScore = t.isPrivate ? '' : scoreSummary(t)),
         members: t.isPrivate ? '[]' : JSON.stringify([
           ...t.seats.filter((m): m is NonNullable<typeof m> => !!m).map((m) => ({ name: m.username, role: m.isBot ? 'bot' : 'player' })),
           ...t.spectators.map((m) => ({ name: m.username, role: 'spectator' })),

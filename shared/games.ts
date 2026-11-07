@@ -281,3 +281,24 @@ export function otherStatus(t: TableData): 'waiting' | 'playing' | 'finished' {
 }
 
 export { teamOf as jackarooTeamOf };
+
+/** نتيجة اللعب الجاري لقائمة الطاولات (ضغطة مطولة على الطاولة العامة)؛ فاضي إذا ما فيه لعب */
+export function scoreSummary(t: TableData): string {
+  const n = names(t);
+  const team = (a: number, b: number) => `${n[a]} و${n[b]}`;
+  if (t.game && t.game.phase !== 'matchOver') {
+    const [a, b] = t.game.scores;
+    return `النتيجة: ${team(0, 2)} ${a}، ${team(1, 3)} ${b}`;
+  }
+  if (t.domino && t.domino.phase !== 'matchOver') {
+    const d = t.domino;
+    const sides = d.scores.map((s, i) => (d.scores.length === 2 && d.rules.players === 4 ? `${team(i, i + 2)} ${s}` : `${n[i]} ${s}`));
+    return `النتيجة: ${sides.join('، ')} — اللعب إلى ${d.rules.target}`;
+  }
+  if (t.ludo && t.ludo.phase !== 'over') {
+    const l = t.ludo;
+    const home = (o: number) => l.tokens[o].filter((p) => p === 56).length;
+    return `النتيجة: ${l.seats.map((o) => `${n[o]} وصل ${home(o)} من 4`).join('، ')}`;
+  }
+  return '';
+}
