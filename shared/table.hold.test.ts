@@ -86,6 +86,8 @@ describe('سوا', () => {
           expect(shown.table.game!.lastHand).toBeNull();
           expect(shown.events.some((e) => e.includes('سوا'))).toBe(true);
           expect(holding(shown.table)).toBe(true);
+          // بعد مهلة الكشف: المهلة تنتهي (ما تعلّق المنبه) والخطوة التلقائية تحسب الصكة
+          expect(holding(shown.table, Date.now() + 2500)).toBe(false);
           // بعدها الخطوة التلقائية تحسب الصكة
           const step = nextAutoStep(shown.table, rng)!;
           expect(step.kind).toBe('bot');

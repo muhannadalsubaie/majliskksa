@@ -163,8 +163,8 @@ export class TableRoom extends DurableObject<Env> {
    */
   private chain: Promise<unknown> = Promise.resolve();
   private serial<T>(fn: () => Promise<T>): Promise<T> {
-    // لو علّق طلب قبله (خدمة برا ما ردّت) ما ننتظره للأبد: بعد 8 ثواني نكمل
-    const prev = Promise.race([this.chain, new Promise((r) => setTimeout(r, 8000))]);
+    // لو علّق طلب قبله (خدمة برا ما ردّت) ما ننتظره للأبد: بعد 20 ثانية نكمل
+    const prev = Promise.race([this.chain, new Promise((r) => setTimeout(r, 20000))]);
     const run = prev.then(fn, fn);
     this.chain = run.catch(() => {});
     return run;
@@ -249,7 +249,13 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** ملخص عام في Firestore لقائمة الطاولات (أفضل جهد — لا يوقف اللعب إن فشل). */
-  private async publish(t: TableData) {
+  /** الملخص العام يتحدث في الخلفية: ما ننتظر Firestore (الانتظار كان يأخر حركات اللعب اللي بعده) */
+  private publish(t: TableData): Promise<void> {
+    void this.publishNow(t);
+    return Promise.resolve();
+  }
+
+  private async publishNow(t: TableData) {
     try {
       await this.db().set('tables', t.id, {
         ownerName: memberName(t, t.ownerUid) ?? t.seats.find((m) => m && !m.isBot)?.username ?? '',
@@ -383,17 +389,30 @@ export class TableRoom extends DurableObject<Env> {
    * يضيف استهلاك الصوت منذ آخر تغيير للعدّاد الشهري العام، ويعيد الطاولة بوقت محدّث.
    * يُستدعى قبل أي تغيير في المنضمين (لأن عدد من يسمع من يتغير).
    */
-  private async accountVoice(t: TableData): Promise<TableData> {
+  private accountVoice(t: TableData): TableData {
     const now = Date.now();
     const members = Object.values(t.voice ?? {});
     const n = members.length;
     const mics = members.filter((m) => m.mic !== false).length;
     const listening = mics * (n - 1);
     const since = t.voiceSince ?? now;
+    // العدّاد الشهري في الخلفية: ما ننتظره (الانتظار كان يوقف الطاولة)
     if (listening > 0 && now > since) {
-      await this.usage().addVoiceUsage(((now - since) / 1000) * listening).catch((e) => console.error('voice usage', e));
+      void this.usage().addVoiceUsage(((now - since) / 1000) * listening).catch((e) => console.error('voice usage', e));
     }
     return { ...t, voiceSince: now };
+  }
+
+  /**
+   * تغيير المحادثة الصوتية على أحدث نسخة من الطاولة (بعد ما ترد خدمة الصوت): ما نحفظ نسخة قديمة
+   * من اللعب فوق ورقة انلعبت وقت الانتظار — فطلبات الصوت ما تحتاج توقف اللعب ولا تنتظر دوره
+   */
+  private async patchVoice(fn: (cur: TableData) => TableData): Promise<TableData> {
+    const cur = await this.load();
+    if (!cur) throw new Error('not-found');
+    const next = fn(cur);
+    await this.save(next);
+    return next;
   }
 
   /**
@@ -401,7 +420,8 @@ export class TableRoom extends DurableObject<Env> {
    * فلا يستطيع أحد سحب صوت طاولة ليس فيها أو التحكم بجلسة غيره.
    */
   async voice(uid: string, req: VoiceRequest): Promise<unknown> {
-    return this.serial(() => this.voiceInner(uid, req));
+    // طلبات الصوت ما تمشي في طابور اللعب: تنتظر خدمة الصوت (أحياناً ثواني) فكانت توقف اللعب، وحفظها آمن (patchVoice)
+    return this.voiceInner(uid, req);
   }
 
   private async voiceInner(uid: string, req: VoiceRequest): Promise<unknown> {
@@ -420,7 +440,6 @@ export class TableRoom extends DurableObject<Env> {
     switch (req.op) {
       case 'session': {
         // الانضمام (تلقائياً عند دخول الطاولة): استماع فقط بلا ميكروفون، ويُعلن للبقية
-        const acc = await this.accountVoice(t);
         if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
         // التطبيقات الجديدة ترسل عرضاً فتتصل الجلسة فوراً (وإلا جلسة فارغة كالسابق)
         // لو رفضت الخدمة العرض: جلسة فارغة كالسابق (التطبيق يتراجع عن عرضه ويكمل)، بدل ما يفشل الانضمام كله
@@ -428,7 +447,7 @@ export class TableRoom extends DurableObject<Env> {
           ? await rt.connectedSession(req.offer).catch((e) => { console.error('voice session offer', (e as Error).message); return undefined; })
           : undefined;
         const sessionId = connected?.sessionId ?? await rt.newSession();
-        await this.save({ ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } });
+        await this.patchVoice((cur) => { const acc = this.accountVoice(cur); return { ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } }; });
         // إعادة اتصال صامتة (كان في المحادثة): لا نعلن "انضم" مرة أخرى
         this.broadcast(mine ? [] : [`${name} انضم للمحادثة الصوتية`], uid);
         const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
@@ -449,8 +468,7 @@ export class TableRoom extends DurableObject<Env> {
           if (!isStaleSession(e)) throw e;
           ({ sessionId, answer } = await rt.publish(offer, mid, VOICE_TRACK));
         }
-        const acc = await this.accountVoice(t);
-        await this.save({ ...acc, voice: { ...acc.voice, [uid]: { sessionId, muted: false, mic: true } } });
+        await this.patchVoice((cur) => { const acc = this.accountVoice(cur); return { ...acc, voice: { ...acc.voice, [uid]: { sessionId, muted: false, mic: true } } }; });
         this.broadcast([]);
         return { answer, sessionId };
       }
@@ -469,7 +487,7 @@ export class TableRoom extends DurableObject<Env> {
           // جلسة المستمع انتهت لخمولها (لم يكن أحد يتكلم): جلسة جديدة له ثم نسحب الصوت إليها
           if (!isStaleSession(e) || mine!.mic) throw e;
           const fresh = await rt.newSession();
-          await this.save({ ...t, voice: { ...t.voice, [uid]: { ...mine!, sessionId: fresh } } });
+          await this.patchVoice((cur) => ({ ...cur, voice: { ...cur.voice, [uid]: { ...(cur.voice?.[uid] ?? mine!), sessionId: fresh } } }));
           this.broadcast([]);
           return { ...(await rt.pull(fresh, remote.sessionId, VOICE_TRACK)), sessionId: fresh };
         }
@@ -486,14 +504,13 @@ export class TableRoom extends DurableObject<Env> {
       case 'mute': {
         own(req.sessionId);
         if (req.muted !== true && isVoiceBlocked(t, uid)) throw new Error('voice-blocked');
-        const next = { ...t, voice: { ...t.voice, [uid]: { ...mine!, muted: req.muted === true } } };
-        await this.save(next);
+        await this.patchVoice((cur) => ({ ...cur, voice: { ...cur.voice, [uid]: { ...(cur.voice?.[uid] ?? mine!), muted: req.muted === true } } }));
         this.broadcast([]);
         return { ok: true };
       }
       case 'leave': {
         if (!mine) return { ok: true };
-        await this.save(withoutVoice(await this.accountVoice(t), uid));
+        await this.patchVoice((cur) => withoutVoice(this.accountVoice(cur), uid));
         this.broadcast([`${name} غادر المحادثة الصوتية`], uid);
         return { ok: true };
       }
@@ -609,8 +626,8 @@ export class TableRoom extends DurableObject<Env> {
         if (seat === null || !t.game) throw new Error('not-a-player');
         const action = parseAction(msg.action, seat);
         if (!action) throw new Error('bad-action');
-        // خلال المهلة بين قرار اللاعب السابق وانتقال الدور لا يُقبل قرار جديد
-        if (holding(t)) break;
+        // خلال المهلة بين قرار اللاعب السابق وانتقال الدور (أو كشف أوراق «سوا») لا يُقبل قرار جديد
+        if (holding(t) || t.sawa) break;
         const r = applyWithEvents(t, action, rng);
         await this.save(r.table);
         this.broadcast(r.events, undefined, r.voices);

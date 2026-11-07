@@ -557,7 +557,7 @@ export function withDealHold(t: TableData, now = Date.now()): TableData {
   return t.game ? { ...t, hold: { until: now + DEAL_GAP_MS, seat: t.game.turn, deal: true } } : t;
 }
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
-export const holding = (t: TableData, now = Date.now()) => (!!t.hold && now < t.hold.until) || !!t.sawa;
+export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
 
 /** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة */
 export const SAWA_SHOW_MS = 2000;
