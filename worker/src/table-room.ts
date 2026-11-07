@@ -140,8 +140,12 @@ const BOTS_ALONE_GRACE_MS = 60_000;
  * التطبيق ينبض كل 3 ثوانٍ ("ping"): من انقطعت نبضته أكثر من هذا نعتبره انقطع (انقطع نته بلا إغلاق للاتصال)
  * فيُعلن انقطاعه فوراً بدل انتظار النظام دقائق ليكتشف ذلك. النسخ القديمة اللي ما تنبض ما تتأثر.
  */
-const STALE_AFTER_MS = 12_000;
-const STALE_CHECK_MS = 3_000;
+const STALE_AFTER_MS = 25_000;
+/**
+ * فحص النبضات ما يكون كل كم ثانية: المنبه المتكرر يمنع الطاولة من النوم (السبات) فتُحسب مدة تشغيلها طول الوقت.
+ * نضبط المنبه على أقدم نبضة + المهلة فقط، فتنام الطاولة بين الفحوص.
+ */
+const STALE_CHECK_MS = 1_000;
 /**
  * انقطاع قصير (شبكة الجوال تتقطع ثواني، أو التطبيق يعيد الاتصال) ما يُعلن ولا يحجز المقعد:
  * ننتظر هذي المهلة، وإن رجع خلالها ما نقول شي (لا "انقطع" ولا "عاد")، ولا يلعب الروبوت عنه.
@@ -181,6 +185,17 @@ export class TableRoom extends DurableObject<Env> {
       const beat = this.ctx.getWebSocketAutoResponseTimestamp(w)?.getTime();
       return beat !== undefined && now - beat > STALE_AFTER_MS;
     });
+  }
+
+  /** موعد الفحص القادم: أقدم نبضة + المهلة (null لو ما فيه اتصالات تنبض) */
+  private nextStaleCheck(): number | null {
+    let oldest = Infinity;
+    for (const w of this.ctx.getWebSockets()) {
+      if (w.readyState !== WebSocket.OPEN) continue;
+      const beat = this.ctx.getWebSocketAutoResponseTimestamp(w)?.getTime();
+      if (beat !== undefined && beat < oldest) oldest = beat;
+    }
+    return Number.isFinite(oldest) ? Math.max(oldest + STALE_AFTER_MS + STALE_CHECK_MS, Date.now() + STALE_CHECK_MS) : null;
   }
 
   /** نغلق الاتصالات الميتة ونعاملها كانقطاع (إعلان "انقطع اتصال فلان" ونغمته، وحجز المقعد...) */
@@ -1044,8 +1059,7 @@ export class TableRoom extends DurableObject<Env> {
     const lobbyAt = t ? nextLobbyDeadline(t) : null;
     const voiceAt = await this.nextVoiceDrop();
     // فحص النبضات ما دام فيه اتصالات تنبض
-    const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
-    const staleAt = beating ? Date.now() + STALE_CHECK_MS : null;
+    const staleAt = this.nextStaleCheck();
     const pendingAt = await this.nextPendingOffline();
     const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
@@ -1121,9 +1135,8 @@ export class TableRoom extends DurableObject<Env> {
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else {
-      const beating = this.ctx.getWebSockets().some((w) => w.readyState === WebSocket.OPEN && this.ctx.getWebSocketAutoResponseTimestamp(w));
       await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity,
-        beating ? Date.now() + STALE_CHECK_MS : Infinity));
+        this.nextStaleCheck() ?? Infinity));
     }
   }
 
