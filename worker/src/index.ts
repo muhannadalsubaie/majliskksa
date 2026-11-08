@@ -99,6 +99,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // آخر سبب رفض لتحقق شراء (بدون أي بيانات شخصية) — للتشخيص
+    // تجربة التعادل: هل انطبقت، وآخر سبب لو ما انطبقت
+    if (pathname === '/tables/tie-status') {
+      return json({ used: await env.HUBS.get(env.HUBS.idFromName('__rig_tie__')).getNote(), last: await env.HUBS.get(env.HUBS.idFromName('__rig_tie_dbg__')).getNote() });
+    }
+
     // تشخيص: آخر طلبات أخّرت حركات اللعب (بدون بيانات شخصية)
     if (pathname === '/tables/slow') {
       // الأحدث أول

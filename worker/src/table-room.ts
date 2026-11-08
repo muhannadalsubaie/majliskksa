@@ -247,9 +247,12 @@ export class TableRoom extends DurableObject<Env> {
     // توزيع جديد: أي تجربة سابقة في هالطاولة خلصت
     if (t.tieRig) { const { tieRig: _r, ...rest } = t; void _r; t = rest as TableData; }
     const keys = t.seats.map((m) => (m && !m.isBot ? usernameKey(m.username) : ''));
-    if (!TIE_RIG_USERS.every((k) => keys.includes(k))) return t;
+    const dbg = (why: string) => void this.env.HUBS.get(this.env.HUBS.idFromName('__rig_tie_dbg__')).setNote(`${new Date().toISOString()} ${why} seats=${keys.join('|')}`).catch(() => {});
+    if (!TIE_RIG_USERS.every((k) => keys.includes(k))) { if (TIE_RIG_USERS.some((k) => keys.includes(k))) dbg('names-mismatch'); return t; }
     const hub = this.env.HUBS.get(this.env.HUBS.idFromName('__rig_tie__'));
-    if ((await hub.getNote().catch(() => 'err')) !== '') return t; // انلعبت قبل (مرة وحدة بس)
+    const used = await hub.getNote().catch(() => 'err');
+    if (used !== '') { dbg(`already-used: ${used}`); return t; } // انلعبت قبل (مرة وحدة بس)
+    dbg('applied');
     await hub.setNote(`used ${new Date().toISOString()}`);
     console.log('tie rig applied');
     return { ...t, tieRig: true, game: rigTieDeal(g) };
