@@ -4,7 +4,8 @@ import { type GameMode, type Team, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTea
  * قواعد قابلة للتعديل.
  * - المشاريع لا تتضاعف أبداً: لا بمضاعفة الصن ولا بالدبل/ثري/فور.
  * - الدبل (دبل/ثري/فور) في الحكم والصن لا ينقسم: نقاط الصكة كاملة مضاعفة للفريق الفائز.
- * - البلوت نقطتان ثابتتان لصاحبه دائماً.
+ * - البلوت مشروع مثل السرا (20 بنط = نقطتان): يدخل في حسبة نجاح المشتري، ويروح للفائز بالصكة.
+ *   ما يلغيه مشروع أقوى عند الخصم، ولا يتضاعف بالدبل.
  */
 export const RULES = {
   /** الحكم بدون مشاريع: ينجح المشتري إذا تجاوزت أبناطه هذا الحد (مع المشاريع: لازم يتجاوز الخصم) */
@@ -19,8 +20,9 @@ export const RULES = {
 /** القسمة على 10 مع جبر الكسر من 5 فما فوق (للمشاريع). */
 export const abnatToPoints = (abnat: number) => Math.floor((abnat + 5) / 10);
 
-/** البلوت: نقطتان ثابتتان */
+/** البلوت: 20 بنط (نقطتان) مثل السرا */
 export const BALOOT_POINTS = 2;
+export const BALOOT_ABNAT = 20;
 
 /**
  * الحكم: نقاط المشتري = أبناطه ÷ 10، الكسر من 6 فما فوق يُجبر للأعلى، و5 فما دون يرجع للنقطة قبلها.
@@ -69,7 +71,10 @@ export interface HandScore {
 }
 
 export function scoreHand(input: HandScoreInput): HandScore {
-  const { mode, buyerTeam, tricksWon, projectAbnat, multiplier, gahwa, doublerTeam } = input;
+  const { mode, buyerTeam, tricksWon, multiplier, gahwa, doublerTeam } = input;
+  // البلوت (حكم فقط): يُضاف لمشاريع صاحبه كأنه سرا — يدخل في المقارنة ويروح لمن يفوز بالصكة
+  const projectAbnat: [number, number] = [...input.projectAbnat];
+  if (mode === 'hokm' && input.balootTeam !== null) projectAbnat[input.balootTeam] += BALOOT_ABNAT;
   const opp = otherTeam(buyerTeam);
   const factor = mode === 'sun' ? SUN_ABNAT_MULTIPLIER : 1;
   // للمقارنة فقط (نجاح المشتري): أوراق الصن مضاعفة لتكون بمقياس أبناط المشاريع
@@ -133,12 +138,6 @@ export function scoreHand(input: HandScoreInput): HandScore {
       credited[opp] = allProjectPoints;
       handWinner = opp;
     }
-  }
-
-  // البلوت: نقطتان ثابتتان لصاحبها، لا تُضاعف ولا تُسحب
-  if (mode === 'hokm' && input.balootTeam !== null) {
-    points[input.balootTeam] += BALOOT_POINTS;
-    credited[input.balootTeam] += BALOOT_POINTS;
   }
 
   return {

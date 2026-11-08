@@ -44,10 +44,17 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ cardAbnat: [81, 81] })).buyerFailed).toBe(true);
     expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 1 })).buyerFailed).toBe(false);
   });
-  it('baloot: +2 to its owner, never multiplied, kept even on failure', () => {
+  it('baloot: a project like sira (20 abnat = 2 points), never multiplied, goes to the hand winner', () => {
     expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
-    expect(scoreHand(hokm({ balootTeam: 1, multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 2]);
-    expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([2, 16]);
+    // الدبل لا ينقسم: الفائز ياخذ كل المشاريع ومعها بلوت الخصم
+    expect(scoreHand(hokm({ balootTeam: 1, multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
+    // خسر المشتري: بلوته تروح للخصم مثل السرا
+    expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0 })).points).toEqual([0, 18]);
+    // سؤال المستخدم: المشتري 60 + سرا + بلوت = 100 مقابل 102 → يخسر، والخصم ياخذ 16 + 2 + 2
+    expect(scoreHand(hokm({ cardAbnat: [60, 102], balootTeam: 0, projectAbnat: [20, 0] })).points).toEqual([0, 20]);
+    // البلوت تدخل في المقارنة: 70 + بلوت = 90 مقابل 92 خسارة، و72 + بلوت = 92 مقابل 90 نجاح
+    expect(scoreHand(hokm({ cardAbnat: [72, 90], balootTeam: 0 })).buyerFailed).toBe(false);
+    expect(scoreHand(hokm({ cardAbnat: [72, 90], balootTeam: 0 })).points).toEqual([9, 9]);
   });
   it('projects are never multiplied by the double', () => {
     expect(scoreHand(hokm({ projectAbnat: [20, 0], multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
@@ -60,7 +67,8 @@ describe('scoreHand — hokm', () => {
   it('kaboot = 25 (not doubled), projects added on top', () => {
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0] })).points).toEqual([25, 0]);
     expect(scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], multiplier: 2, doublerTeam: 1, projectAbnat: [50, 0] })).points).toEqual([30, 0]);
-    expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([2, 25]);
+    // الكبوت: ياخذ مشاريعه هو بس — بلوت الخصم ما تنحسب له ولا لصاحبها
+    expect(scoreHand(hokm({ cardAbnat: [0, 162], tricksWon: [0, 8], balootTeam: 0 })).points).toEqual([0, 25]);
   });
   it('kaboot does not take the opponents\' projects (hokm and sun)', () => {
     const h = scoreHand(hokm({ cardAbnat: [162, 0], tricksWon: [8, 0], projectAbnat: [0, 50] }));
