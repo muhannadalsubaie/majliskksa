@@ -125,6 +125,8 @@ const STALE_AFTER_MS = 25_000;
  * نضبط المنبه على أقدم نبضة + المهلة فقط، فتنام الطاولة بين الفحوص.
  */
 const STALE_CHECK_MS = 1_000;
+/** سجل متابعة الاتصال والتأخير (/tables/slow): مقفل الحين */
+const DIAG_LOG = false;
 /**
  * انقطاع قصير (شبكة الجوال تتقطع ثواني، أو التطبيق يعيد الاتصال) ما يُعلن ولا يحجز المقعد:
  * ننتظر هذي المهلة، وإن رجع خلالها ما نقول شي (لا "انقطع" ولا "عاد")، ولا يلعب الروبوت عنه.
@@ -173,6 +175,8 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   private noteSlow(line: string) {
+    // سجل المتابعة مقفل (انحلت المشكلة). للتشغيل مرة ثانية: DIAG_LOG = true
+    if (!DIAG_LOG) return;
     console.log('slow', line);
     void this.env.HUBS.get(this.env.HUBS.idFromName('__slow__')).appendNote(`${new Date().toISOString()} ${line}`).catch(() => {});
   }
