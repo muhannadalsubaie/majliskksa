@@ -4,10 +4,27 @@ interface ServiceAccount { client_email: string; private_key: string; project_id
 
 
 /**
+ * يرتب المفتاح الخاص بصيغة PEM صحيحة مهما انلصق (أسطر حقيقية، "\\n" حرفية، مسافات بدل الأسطر):
+ * ناخذ النص بين البداية والنهاية، نشيل كل الفراغات، ونقسمه أسطر 64 حرف.
+ */
+export function normalizePem(key: string): string {
+  const k = key.replace(/\\n/g, '\n').trim();
+  const m = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(k);
+  if (!m) return k;
+  const body = m[2].replace(/[^A-Za-z0-9+/=]/g, '');
+  return `-----BEGIN ${m[1]}-----\n${body.match(/.{1,64}/g)!.join('\n')}\n-----END ${m[1]}-----\n`;
+}
+
+/**
  * يقرأ ملف حساب الخدمة حتى لو حُوّلت رموز \n داخل النصوص إلى أسطر حقيقية
- * (يحدث عند نسخ الملف ولصقه من الجوال).
+ * (يحدث عند نسخ الملف ولصقه من الجوال)، ويرتب المفتاح الخاص.
  */
 export function parseServiceAccount(raw: string): ServiceAccount {
+  const sa = parseServiceAccountRaw(raw.trim());
+  return { ...sa, private_key: normalizePem(sa.private_key ?? '') };
+}
+
+function parseServiceAccountRaw(raw: string): ServiceAccount {
   try {
     return JSON.parse(raw) as ServiceAccount;
   } catch {
@@ -39,7 +56,8 @@ const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/datastore https://www.goo
 
 export async function accessToken(serviceAccountJson: string, scope = DEFAULT_SCOPE): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const cached = tokenCache.get(scope);
+  const cacheKey = `${scope} ${serviceAccountJson.length}:${serviceAccountJson.slice(-40)}`;
+  const cached = tokenCache.get(cacheKey);
   if (cached && cached.exp - 60 > now) return cached.token;
   const sa = parseServiceAccount(serviceAccountJson);
   const key = await importPKCS8(sa.private_key, 'RS256');
@@ -57,7 +75,7 @@ export async function accessToken(serviceAccountJson: string, scope = DEFAULT_SC
   });
   if (!res.ok) throw new Error(`oauth ${res.status}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  tokenCache.set(scope, { token: data.access_token, exp: now + data.expires_in });
+  tokenCache.set(cacheKey, { token: data.access_token, exp: now + data.expires_in });
   return data.access_token;
 }
 
