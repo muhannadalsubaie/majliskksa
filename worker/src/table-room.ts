@@ -165,6 +165,13 @@ export class TableRoom extends DurableObject<Env> {
     return run;
   }
 
+  /** وصف الاتصال للسجل بدون بيانات شخصية: رقم المقعد (أو مشاهد) ونوع الجهاز ورمز الطاولة */
+  private who(ws: WebSocket): string {
+    const a = ws.deserializeAttachment() as { uid: string; plat?: string; at?: number };
+    const seat = this.table ? seatOf(this.table, a.uid) : null;
+    return `t=${this.ctx.id.toString().slice(0, 4)} ${seat === null ? 'مشاهد' : `مقعد${seat + 1}`} ${a.plat ?? '?'}`;
+  }
+
   private noteSlow(line: string) {
     console.log('slow', line);
     void this.env.HUBS.get(this.env.HUBS.idFromName('__slow__')).appendNote(`${new Date().toISOString()} ${line}`).catch(() => {});
@@ -194,6 +201,8 @@ export class TableRoom extends DurableObject<Env> {
   /** نغلق الاتصالات الميتة ونعاملها كانقطاع (إعلان "انقطع اتصال فلان" ونغمته، وحجز المقعد...) */
   private async dropStale() {
     for (const ws of this.staleSockets()) {
+      const beat = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime();
+      this.noteSlow(`الخادم قطع اتصال (ما نبض) ${this.who(ws)} آخر_نبضة=${beat ? Date.now() - beat : '?'}ms`);
       try { ws.close(4000, 'stale'); } catch { /* already closed */ }
       await this.webSocketCloseInner(ws);
     }
@@ -519,7 +528,9 @@ export class TableRoom extends DurableObject<Env> {
     if (!uid || request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ uid });
+    const ua = request.headers.get('User-Agent') ?? '';
+    const plat = /okhttp|android/i.test(ua) ? 'أندرويد' : /cfnetwork|darwin|iphone|ios/i.test(ua) ? 'آيفون' : 'آخر';
+    pair[1].serializeAttachment({ uid, plat, at: Date.now() });
     const t = await this.load();
     await this.loadVoice();
     if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(this.withVoice(t), uid) }));
@@ -534,6 +545,7 @@ export class TableRoom extends DurableObject<Env> {
     // رجع خلال مهلة الانقطاع القصير: ولا كأنه انقطع (ما أُعلن شي، فما نعلن رجوعه)
     const pending = (await this.ctx.storage.get<Record<string, number>>('pendingOffline')) ?? {};
     if (pending[uid] !== undefined) {
+      this.noteSlow(`رجع الاتصال ${this.who(pair[1])} بعد=${((Date.now() - pending[uid]) / 1000).toFixed(1)}s`);
       delete pending[uid];
       await this.ctx.storage.put('pendingOffline', pending);
     }
@@ -832,8 +844,16 @@ export class TableRoom extends DurableObject<Env> {
     await this.schedule();
   }
 
-  async webSocketClose(ws: WebSocket) {
+  async webSocketClose(ws: WebSocket, code?: number, reason?: string, wasClean?: boolean) {
+    // سجل المتابعة: مين قطع الاتصال (1000/1001 = التطبيق قفله، 1006 = انقطع فجأة: نت أو التطبيق ألغاه، 4000 = الخادم)
+    const a = ws.deserializeAttachment() as { at?: number };
+    const kind = code === 4000 ? 'الخادم' : code === 1000 || code === 1001 ? 'التطبيق' : code === 1006 ? 'انقطاع مفاجئ' : 'غير معروف';
+    if (code !== 4000 && code !== 4001) this.noteSlow(`انقطع اتصال (${kind}) ${this.who(ws)} code=${code ?? '?'} clean=${wasClean ?? '?'} مدة_الاتصال=${a.at ? Math.round((Date.now() - a.at) / 1000) : '?'}s${reason ? ` reason=${reason.slice(0, 30)}` : ''}`);
     return this.serial(() => this.webSocketCloseInner(ws), 'disconnect');
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown) {
+    this.noteSlow(`خطأ اتصال ${this.who(ws)} ${String((error as Error)?.message ?? error).slice(0, 60)}`);
   }
 
   private async webSocketCloseInner(ws: WebSocket) {

@@ -101,7 +101,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // آخر سبب رفض لتحقق شراء (بدون أي بيانات شخصية) — للتشخيص
     // تشخيص: آخر طلبات أخّرت حركات اللعب (بدون بيانات شخصية)
     if (pathname === '/tables/slow') {
-      return json({ slow: (await env.HUBS.get(env.HUBS.idFromName('__slow__')).getNote()).split('\n').filter(Boolean) });
+      // الأحدث أول
+      return json({ log: (await env.HUBS.get(env.HUBS.idFromName('__slow__')).getNote()).split('\n').filter(Boolean).reverse() });
     }
 
     if (pathname === '/purchases/status') {

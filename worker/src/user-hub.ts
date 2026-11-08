@@ -259,11 +259,11 @@ export class UserHub extends DurableObject<Env> {
 
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
-  /** سجل تشخيص: آخر 30 سطر */
+  /** سجل تشخيص: آخر 80 سطر */
   async appendNote(line: string): Promise<void> {
     const lines = ((await this.ctx.storage.get<string>('note')) ?? '').split('\n').filter(Boolean);
     lines.push(line.slice(0, 200));
-    await this.ctx.storage.put('note', lines.slice(-30).join('\n'));
+    await this.ctx.storage.put('note', lines.slice(-80).join('\n'));
   }
 
   /** حذف الحساب: يمسح كل بيانات اللاعب هنا ويغلق اتصالاته، ويرجع قائمة أصدقائه لإزالته عندهم */
