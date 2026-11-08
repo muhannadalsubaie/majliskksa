@@ -4,6 +4,8 @@ import type { UserHub } from './user-hub';
 export interface Env {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_SERVICE_ACCOUNT: string;
+  /** اختياري: حساب خدمة Play Console للتحقق من مشتريات أندرويد (وإلا حساب Firebase) */
+  PLAY_SERVICE_ACCOUNT?: string;
   /** بصمات SHA-256 (مفصولة بفواصل) لإيميلات المطوّرين أصحاب العملات اللا محدودة */
   UNLIMITED_EMAIL_SHA256?: string;
   TABLES: DurableObjectNamespace<TableRoom>;

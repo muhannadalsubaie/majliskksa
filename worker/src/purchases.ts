@@ -10,6 +10,8 @@ import { accessToken } from './firestore';
 
 const PACKAGE = 'com.majlisk.app';
 const PLAY_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
+/** حساب الخدمة المربوط بـ Play Console (نفسه اللي يرفع التطبيق)، وإلا حساب Firebase */
+const playAccount = (env: Env) => env.PLAY_SERVICE_ACCOUNT || env.FIREBASE_SERVICE_ACCOUNT;
 
 export interface VerifiedPurchase { id: string; productId: string; coins: number; accountToken: string }
 
@@ -18,10 +20,10 @@ export const packCoins = (productId: string) => COIN_PACKS.find((p) => p.id === 
 /** يتحقق من شراء Google Play ويرجع بياناته، أو يرمي سبب الرفض */
 export async function verifyGoogle(env: Env, productId: string, purchaseToken: string): Promise<VerifiedPurchase> {
   if (!packCoins(productId)) throw new Error('unknown-product');
-  const token = await accessToken(env.FIREBASE_SERVICE_ACCOUNT, PLAY_SCOPE);
+  const token = await accessToken(playAccount(env), PLAY_SCOPE);
   const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`play-${res.status}`);
+  if (!res.ok) throw new Error(`play-${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
   const p = (await res.json()) as { purchaseState?: number; orderId?: string; obfuscatedExternalAccountId?: string };
   if (p.purchaseState !== 0) throw new Error('not-purchased'); // 0 = مدفوع، 1 = ملغى، 2 = معلّق
   return { id: `play:${p.orderId ?? purchaseToken.slice(0, 80)}`, productId, coins: packCoins(productId), accountToken: p.obfuscatedExternalAccountId ?? '' };
@@ -29,7 +31,7 @@ export async function verifyGoogle(env: Env, productId: string, purchaseToken: s
 
 /** بعد إضافة العملات: استهلاك الشراء في Google Play (يؤكده ويسمح بشراء الباقة مجدداً) */
 export async function consumeGoogle(env: Env, productId: string, purchaseToken: string): Promise<void> {
-  const token = await accessToken(env.FIREBASE_SERVICE_ACCOUNT, PLAY_SCOPE);
+  const token = await accessToken(playAccount(env), PLAY_SCOPE);
   const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}:consume`;
   const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok && res.status !== 400) throw new Error(`play-consume-${res.status}`); // 400 = مستهلك مسبقاً

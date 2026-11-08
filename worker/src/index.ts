@@ -97,6 +97,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ lastError: await env.HUBS.get(env.HUBS.idFromName('__voice__')).getNote() });
     }
 
+    // آخر سبب رفض لتحقق شراء (بدون أي بيانات شخصية) — للتشخيص
+    if (pathname === '/purchases/status') {
+      return json({ lastError: await env.HUBS.get(env.HUBS.idFromName('__purchase__')).getNote() });
+    }
+
     if (pathname === '/ads/ssv-status') {
       return json({ lastRejection: await env.HUBS.get(env.HUBS.idFromName('__ssv__')).getNote() });
     }
@@ -466,6 +471,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
         else return json({ error: 'bad-request' }, 400);
       } catch (e) {
         console.error('purchase verify', (e as Error).message);
+        await env.HUBS.get(env.HUBS.idFromName('__purchase__')).setNote(`${new Date().toISOString()} ${platform} ${(e as Error).message}`).catch(() => {});
         return json({ error: 'not-verified' }, 400);
       }
       if (v.accountToken && v.accountToken !== (await accountTokenFor(user.uid))) return json({ error: 'other-account' }, 403);
