@@ -6,12 +6,14 @@
 import { SignJWT, decodeJwt, importPKCS8 } from 'jose';
 import { COIN_PACKS } from '../../shared/economy';
 import type { Env } from './env';
-import { accessToken, describeServiceAccount } from './firestore';
+import { accessToken, describeServiceAccount, parseServiceAccount } from './firestore';
 
 const PACKAGE = 'com.majlisk.app';
 const PLAY_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
 /** حساب الخدمة المربوط بـ Play Console (نفسه اللي يرفع التطبيق)، وإلا حساب Firebase */
-const playAccount = (env: Env) => env.PLAY_SERVICE_ACCOUNT || env.FIREBASE_SERVICE_ACCOUNT;
+const playOk = (env: Env) => !!env.PLAY_SERVICE_ACCOUNT && env.PLAY_SERVICE_ACCOUNT.includes('PRIVATE KEY') && env.PLAY_SERVICE_ACCOUNT.includes('client_email');
+const accountDomain = (raw: string) => { try { return (parseServiceAccount(raw).client_email ?? '').replace(/^[^@]*/, '…'); } catch { return '?'; } };
+const playAccount = (env: Env) => (playOk(env) ? env.PLAY_SERVICE_ACCOUNT! : env.FIREBASE_SERVICE_ACCOUNT);
 
 export interface VerifiedPurchase { id: string; productId: string; coins: number; accountToken: string }
 
@@ -21,11 +23,11 @@ export const packCoins = (productId: string) => COIN_PACKS.find((p) => p.id === 
 export async function verifyGoogle(env: Env, productId: string, purchaseToken: string): Promise<VerifiedPurchase> {
   if (!packCoins(productId)) throw new Error('unknown-product');
   const token = await accessToken(playAccount(env), PLAY_SCOPE).catch((e: Error) => {
-    throw new Error(`${e.message} [${env.PLAY_SERVICE_ACCOUNT ? 'play' : 'firebase'} ${describeServiceAccount(playAccount(env))}]`);
+    throw new Error(`${e.message} [${playOk(env) ? 'play' : 'firebase'} ${describeServiceAccount(playAccount(env))}]`);
   });
   const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`play-${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`play-${res.status} (${playOk(env) ? 'play' : 'firebase'} ${accountDomain(playAccount(env))}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
   const p = (await res.json()) as { purchaseState?: number; orderId?: string; obfuscatedExternalAccountId?: string };
   if (p.purchaseState !== 0) throw new Error('not-purchased'); // 0 = مدفوع، 1 = ملغى، 2 = معلّق
   return { id: `play:${p.orderId ?? purchaseToken.slice(0, 80)}`, productId, coins: packCoins(productId), accountToken: p.obfuscatedExternalAccountId ?? '' };
