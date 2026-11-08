@@ -125,6 +125,8 @@ const STALE_AFTER_MS = 25_000;
  * نضبط المنبه على أقدم نبضة + المهلة فقط، فتنام الطاولة بين الفحوص.
  */
 const STALE_CHECK_MS = 1_000;
+/** أثناء اللعب نصحّي الطاولة قبل ما تنام (تنام بعد ~10 ثواني بلا نشاط) */
+const KEEP_AWAKE_MS = 8_000;
 /**
  * انقطاع قصير (شبكة الجوال تتقطع ثواني، أو التطبيق يعيد الاتصال) ما يُعلن ولا يحجز المقعد:
  * ننتظر هذي المهلة، وإن رجع خلالها ما نقول شي (لا "انقطع" ولا "عاد")، ولا يلعب الروبوت عنه.
@@ -188,7 +190,18 @@ export class TableRoom extends DurableObject<Env> {
       const beat = this.ctx.getWebSocketAutoResponseTimestamp(w)?.getTime();
       if (beat !== undefined && beat < oldest) oldest = beat;
     }
-    return Number.isFinite(oldest) ? Math.max(oldest + STALE_AFTER_MS + STALE_CHECK_MS, Date.now() + STALE_CHECK_MS) : null;
+    if (!Number.isFinite(oldest)) return null;
+    const check = Math.max(oldest + STALE_AFTER_MS + STALE_CHECK_MS, Date.now() + STALE_CHECK_MS);
+    // أثناء اللعب: الطاولة تبقى صاحية (تنام بعد ~10 ثواني بلا نشاط، وصحوتها تأخر أول ورقة بعدها ثواني).
+    // النوم يبقى للطاولات اللي ما فيها لعب جاري (الانتظار والدردشة) — هذي اللي كانت تاكل الاستهلاك
+    return this.gameRunning() ? Math.min(check, Date.now() + KEEP_AWAKE_MS) : check;
+  }
+
+  /** فيه لعب جاري (بلوت أو غيرها) */
+  private gameRunning(): boolean {
+    const t = this.table;
+    if (!t) return false;
+    return (!!t.game && t.game.phase !== 'matchOver') || otherActive(t);
   }
 
   /** نغلق الاتصالات الميتة ونعاملها كانقطاع (إعلان "انقطع اتصال فلان" ونغمته، وحجز المقعد...) */
