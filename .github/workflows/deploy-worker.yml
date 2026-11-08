@@ -89,6 +89,11 @@ jobs:
         working-directory: worker
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT" ]; then echo "Play service account not set (using Firebase account)"; exit 0; fi
+          # نتأكد إن اللي انلصق فعلاً ملف حساب خدمة (فيه client_email و private_key) قبل ما نحطه
+          if ! printf '%s' "$PLAY_SERVICE_ACCOUNT" | grep -q '"client_email"' || ! printf '%s' "$PLAY_SERVICE_ACCOUNT" | grep -q 'PRIVATE KEY'; then
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON is not a service-account JSON file (length ${#PLAY_SERVICE_ACCOUNT}). Skipped; re-add it with the full file content."
+            exit 0
+          fi
           printf '%s' "$PLAY_SERVICE_ACCOUNT" | npx wrangler secret put PLAY_SERVICE_ACCOUNT
       - name: App Store purchase secrets
         env:
