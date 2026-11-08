@@ -40,10 +40,19 @@ describe('scoreHand — hokm', () => {
     expect(scoreHand(hokm({ multiplier: 3, doublerTeam: 1 })).points).toEqual([48, 0]);
     expect(scoreHand(hokm({ cardAbnat: [60, 102], multiplier: 3, doublerTeam: 1 })).points).toEqual([0, 48]);
   });
-  it('exactly 81 fails normally, but succeeds when opponents doubled', () => {
-    expect(scoreHand(hokm({ cardAbnat: [81, 81] })).buyerFailed).toBe(true);
-    expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 1 })).buyerFailed).toBe(false);
+  it('tie without double: recorded as a tie (each team keeps its own points)', () => {
+    const r = scoreHand(hokm({ cardAbnat: [81, 81] }));
+    expect(r.buyerFailed).toBe(false);
+    expect(r.points).toEqual([8, 8]);
+    // تعادل مع مشاريع: كل فريق ياخذ مشاريعه
+    expect(scoreHand(hokm({ cardAbnat: [71, 91], projectAbnat: [20, 0] })).points).toEqual([9, 9]);
   });
+
+  it('tie with double: the old rule (buyer loses, unless the opponent doubled)', () => {
+    expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 0 })).points).toEqual([0, 32]);
+    expect(scoreHand(hokm({ cardAbnat: [81, 81], multiplier: 2, doublerTeam: 1 })).points).toEqual([32, 0]);
+  });
+
   it('baloot: a project like sira (20 abnat = 2 points), never multiplied, goes to the hand winner', () => {
     expect(scoreHand(hokm({ balootTeam: 0, multiplier: 2, doublerTeam: 1 })).points).toEqual([34, 0]);
     // الدبل لا ينقسم: الفائز ياخذ كل المشاريع ومعها بلوت الخصم

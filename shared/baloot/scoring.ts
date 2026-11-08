@@ -8,7 +8,8 @@ import { type GameMode, type Team, SUN_ABNAT_MULTIPLIER, WINNING_SCORE, otherTea
  *   ما يلغيه مشروع أقوى عند الخصم، ولا يتضاعف بالدبل.
  */
 export const RULES = {
-  /** الحكم بدون مشاريع: ينجح المشتري إذا تجاوزت أبناطه هذا الحد (مع المشاريع: لازم يتجاوز الخصم) */
+  /** الحكم بدون مشاريع: ينجح المشتري إذا تجاوزت أبناطه هذا الحد (مع المشاريع: لازم يتجاوز الخصم).
+   *  التعادل بدون دبل يتسجل تعادل (كل فريق ياخذ نقاطه)، ومع الدبل الخسارة على طالب الدبل */
   hokmBuyerThreshold: 81,
   /** الصن: إذا جاب المشتري أقل من النص يخسر وتذهب كل النقاط للخصم */
   sunBuyerCanFail: true,
@@ -108,6 +109,8 @@ export function scoreHand(input: HandScoreInput): HandScore {
       // المشتري لازم يجيب أكثر من الخصم: أوراقه + مشاريعه مقابل أوراق الخصم + مشاريعه
       // (بدون مشاريع = أكثر من 81 من 162، ومع المشاريع يتغير النص — مو 81 ثابت)
       success = total[buyerTeam] > total[opp];
+      // تعادل بدون دبل: يتسجل تعادل — كل فريق ياخذ نقاط أوراقه ومشاريعه (81 و81 ← 8 و8)
+      if (total[buyerTeam] === total[opp] && multiplier === 1) success = true;
       // تعادل بعد الدبل: الخسارة على طالب الدبل
       if (total[buyerTeam] === total[opp] && doublerTeam === opp) success = true;
     } else if (RULES.sunBuyerCanFail) {
