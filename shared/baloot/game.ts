@@ -195,6 +195,9 @@ function nextQablak(s: GameState, from: Seat, holder: Seat): Seat | null {
   return null;
 }
 
+/** «قبلك» على الصن أو الأشكل: دائماً في اللفة الأولى، وفي الثانية بس لو ورقة الأرض إكة */
+const qablakAllowed = (s: GameState) => s.bidRound === 1 || s.qaba?.rank === 'A';
+
 const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' || a.suit === (b as typeof a).suit);
 
 /**
@@ -261,7 +264,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
 
   if (bid.type === 'sun') {
     // إن تكلّم أحد قبله في هذه اللفة: يُعطى من قبله (بعكس سريان الدور) فرصة "قبلك"
-    if (!s.secondHokm && s.bidsInRound > 0) {
+    // (في اللفة الثانية: ما فيه «قبلك» لللي قالوا ولا، إلا إذا كانت ورقة الأرض إكة)
+    if (!s.secondHokm && s.bidsInRound > 0 && qablakAllowed(s)) {
       const challenger = nextQablak(s, seat, seat);
       if (challenger !== null) return { ...s, sunClaim: { caller: seat, challenger }, turn: challenger };
     }
@@ -269,7 +273,7 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   }
   if (bid.type === 'ashkal') {
     // نفس قاعدة "قبلك" في الصن: من تكلّم قبله (بعكس سريان الدور) يقدر يأخذه صناً له
-    if (!s.secondHokm && s.bidsInRound > 0) {
+    if (!s.secondHokm && s.bidsInRound > 0 && qablakAllowed(s)) {
       const challenger = nextQablak(s, seat, seat);
       if (challenger !== null) return { ...s, sunClaim: { caller: seat, challenger, ashkal: true }, turn: challenger };
     }
@@ -277,7 +281,11 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
   }
 
   // ───── حكم ثاني ─────
-  if (bid.type === 'secondHokm') return { ...s, secondHokm: { seat, remaining: 3 }, turn: nextSeat(seat) };
+  // الحكم الثاني: اللي قالوا «ولا» قبله ما ينسألون مرة ثانية — يُسأل بس اللي بعده (لين الموزع)
+  if (bid.type === 'secondHokm') {
+    const remaining = 3 - s.bidsInRound;
+    return { ...s, secondHokm: { seat, remaining }, turn: remaining === 0 ? seat : nextSeat(seat) };
+  }
   if (s.secondHokm) {
     const owner = s.secondHokm.seat;
     if (s.secondHokm.remaining === 0 && bid.type === 'confirmHokm') return { ...s, secondHokm: { ...s.secondHokm, confirmed: true } };

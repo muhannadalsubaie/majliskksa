@@ -102,10 +102,50 @@ describe('game flow', () => {
     s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
     expect(availableBids(s, 3).map((b) => b.type)).toEqual(['pass', 'sun', 'secondHokm', 'ashkal']);
     s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'pass' } });
-    s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'ashkal' } });
-    // "قبلك" على الخصوم اللي تكلموا قبله (3 ثم 1)، وكلهم بس: يبقى أشكل والقبلة لشريكه
-    for (const seat of [3, 1] as Seat[]) { expect(s.turn).toBe(seat); s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } }); }
-    expect(s.contract).toMatchObject({ mode: 'sun', buyer: 0, qabaTo: 2 });
+    // ورقة الأرض إكة: «قبلك» على الخصوم اللي قالوا ولا قبله (3 ثم 1)، وكلهم بس: يبقى أشكل والقبلة لشريكه
+    const ace = applyAction({ ...s, qaba: { ...s.qaba!, rank: 'A' } }, { type: 'bid', seat: 0, bid: { type: 'ashkal' } });
+    let t = ace;
+    for (const seat of [3, 1] as Seat[]) { expect(t.turn).toBe(seat); t = applyAction(t, { type: 'bid', seat, bid: { type: 'pass' } }); }
+    expect(t.contract).toMatchObject({ mode: 'sun', buyer: 0, qabaTo: 2 });
+    // ورقة الأرض مو إكة: ما فيه «قبلك» في اللفة الثانية — الأشكل يتم على طول
+    const plain = applyAction({ ...s, qaba: { ...s.qaba!, rank: '9' } }, { type: 'bid', seat: 0, bid: { type: 'ashkal' } });
+    expect(plain.contract).toMatchObject({ mode: 'sun', buyer: 0, qabaTo: 2 });
+  });
+
+  it('round 2 sun: no qablak for those who said wala, unless the ground card is an ace', () => {
+    let s = newMatch(seededRng(2), 0);
+    for (const seat of [1, 2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
+    const plain = applyAction({ ...s, qaba: { ...s.qaba!, rank: 'K' } }, { type: 'bid', seat: 3, bid: { type: 'sun' } });
+    expect(plain.contract).toMatchObject({ mode: 'sun', buyer: 3 });
+    const ace = applyAction({ ...s, qaba: { ...s.qaba!, rank: 'A' } }, { type: 'bid', seat: 3, bid: { type: 'sun' } });
+    expect(ace.contract).toBeNull();
+    expect(ace.sunClaim).toBeTruthy();
+  });
+
+  it('round 2 second hokm: only the players after the buyer are asked', () => {
+    let s = newMatch(seededRng(2), 0);
+    for (const seat of [1, 2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 2, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 3, bid: { type: 'secondHokm' } });
+    // 1 و2 قالوا ولا: ما ينسألون. بس 0 (الموزع، بعد المشتري) يختار بس أو صن أو أشكل
+    expect(s.turn).toBe(0);
+    expect(availableBids(s, 0).map((b) => b.type)).toEqual(expect.arrayContaining(['pass', 'sun', 'ashkal']));
+    s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'pass' } });
+    // رجع للمشتري يأكّد
+    expect(s.turn).toBe(3);
+    expect(availableBids(s, 3).map((b) => b.type)).toEqual(['confirmHokm', 'sun']);
+  });
+
+  it('round 2 second hokm by the dealer: nobody after him — straight to confirm', () => {
+    let s = newMatch(seededRng(2), 0);
+    for (const seat of [1, 2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    for (const seat of [1, 2, 3] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+    s = applyAction(s, { type: 'bid', seat: 0, bid: { type: 'secondHokm' } });
+    expect(s.turn).toBe(0);
+    expect(availableBids(s, 0).map((b) => b.type)).toEqual(['confirmHokm', 'sun']);
   });
 
   it('ashkal can be taken with qablak: it becomes sun for the taker, who gets the ground card', () => {
