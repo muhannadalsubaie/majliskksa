@@ -20,3 +20,9 @@ describe('normalizePem', () => {
     await importPKCS8(parseServiceAccount(raw).private_key, 'RS256');
   });
 });
+
+describe('normalizePem lenient', () => {
+  it('fixes em dashes from phone keyboards', async () => {
+    await importPKCS8(normalizePem(pem.replace(/-----/g, '—-—')), 'RS256');
+  });
+});

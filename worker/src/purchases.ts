@@ -6,7 +6,7 @@
 import { SignJWT, decodeJwt, importPKCS8 } from 'jose';
 import { COIN_PACKS } from '../../shared/economy';
 import type { Env } from './env';
-import { accessToken } from './firestore';
+import { accessToken, describeServiceAccount } from './firestore';
 
 const PACKAGE = 'com.majlisk.app';
 const PLAY_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
@@ -20,7 +20,9 @@ export const packCoins = (productId: string) => COIN_PACKS.find((p) => p.id === 
 /** يتحقق من شراء Google Play ويرجع بياناته، أو يرمي سبب الرفض */
 export async function verifyGoogle(env: Env, productId: string, purchaseToken: string): Promise<VerifiedPurchase> {
   if (!packCoins(productId)) throw new Error('unknown-product');
-  const token = await accessToken(playAccount(env), PLAY_SCOPE);
+  const token = await accessToken(playAccount(env), PLAY_SCOPE).catch((e: Error) => {
+    throw new Error(`${e.message} [${env.PLAY_SERVICE_ACCOUNT ? 'play' : 'firebase'} ${describeServiceAccount(playAccount(env))}]`);
+  });
   const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`play-${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);

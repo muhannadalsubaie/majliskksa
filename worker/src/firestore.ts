@@ -8,11 +8,30 @@ interface ServiceAccount { client_email: string; private_key: string; project_id
  * ناخذ النص بين البداية والنهاية، نشيل كل الفراغات، ونقسمه أسطر 64 حرف.
  */
 export function normalizePem(key: string): string {
-  const k = key.replace(/\\n/g, '\n').trim();
-  const m = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(k);
+  const k = key.replace(/\\n/g, '\n').replace(/\\r/g, '').trim();
+  // متسامح: شرطات عادية أو طويلة (لوحة مفاتيح الجوال تحوّل -- إلى —)، ومسافات زايدة
+  const m = /BEGIN\s*(RSA\s*)?PRIVATE\s*KEY[\s\-—–]*([\s\S]*?)[\s\-—–]*END\s*(RSA\s*)?PRIVATE\s*KEY/i.exec(k);
   if (!m) return k;
   const body = m[2].replace(/[^A-Za-z0-9+/=]/g, '');
-  return `-----BEGIN ${m[1]}-----\n${body.match(/.{1,64}/g)!.join('\n')}\n-----END ${m[1]}-----\n`;
+  if (!body) return k;
+  const kind = m[1] ? 'RSA PRIVATE KEY' : 'PRIVATE KEY';
+  return `-----BEGIN ${kind}-----\n${body.match(/.{1,64}/g)!.join('\n')}\n-----END ${kind}-----\n`;
+}
+
+/** وصف شكل ملف حساب الخدمة بدون كشف أي سر (للتشخيص فقط) */
+export function describeServiceAccount(raw: string): string {
+  let sa: Partial<ServiceAccount> & Record<string, unknown> = {};
+  let parsed = 'ok';
+  try { sa = parseServiceAccountRaw(raw.trim()) as typeof sa; } catch { parsed = 'bad-json'; }
+  const pk = typeof sa.private_key === 'string' ? sa.private_key : '';
+  const body = pk.replace(/-----[A-Z ]+-----/g, '').replace(/[^A-Za-z0-9+/=]/g, '');
+  return [
+    `len=${raw.length}`, `json=${parsed}`, `first=${JSON.stringify(raw.trim().slice(0, 1))}`,
+    `fields=${Object.keys(sa).join('|')}`,
+    `email=${typeof sa.client_email === 'string' ? sa.client_email.replace(/^[^@]*/, '…') : 'none'}`,
+    `pk=${pk.length}`, `begin=${/-----BEGIN PRIVATE KEY-----/.test(pk)}`, `end=${/-----END PRIVATE KEY-----/.test(pk)}`,
+    `rsa=${/RSA PRIVATE/.test(pk)}`, `dashes=${/[—–]/.test(pk)}`, `slashn=${pk.includes('\\n')}`, `body=${body.length}`,
+  ].join(' ');
 }
 
 /**
