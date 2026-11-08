@@ -1,4 +1,5 @@
-import type { Card, Rank, Suit } from './cards';
+import { applyAction, newMatch, type GameState } from './game';
+import type { Card, Rank, Seat, Suit } from './cards';
 
 /** "AS KS QS" → أوراق (للاختبارات) */
 export function cards(spec: string): Card[] {
@@ -15,4 +16,18 @@ export function seededRng(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * يوصل لمرحلة الدبل عن طريق الحكم الثاني (الحكم الأول بعد تأكيده ما فيه دبل):
+ * الكل يقول بس في اللفة الأولى، ثم المقعد 1 «حكم ثاني» والباقين بس، يؤكد ويختار لوناً غير لون القبلة.
+ */
+export function toSecondHokmDoubling(seed: number): GameState {
+  let s = newMatch(seededRng(seed), 0);
+  for (const seat of [1, 2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+  s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'secondHokm' } });
+  for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
+  s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
+  const suit = (['S', 'H', 'C', 'D'] as Suit[]).find((x) => x !== s.qaba!.suit)!;
+  return applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit } });
 }

@@ -5,7 +5,7 @@ import {
   type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, dealHand, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './game';
-import { seededRng } from './testing';
+import { seededRng, toSecondHokmDoubling } from './testing';
 
 const pick = <T>(xs: T[], rng: () => number) => xs[Math.floor(rng() * xs.length)];
 
@@ -252,6 +252,12 @@ describe('game flow', () => {
     expect(availableBids(s, 2)).toEqual([]);
     s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
     expect(s.contract).toMatchObject({ mode: 'hokm', buyer: 1 });
+    // الحكم الأول بعد تأكيده: ما فيه دبل — يبدأ اللعب مباشرة
+    expect(s.phase).toBe('playing');
+  });
+
+  it('second hokm: doubling still offered after choosing the suit', () => {
+    const s = toSecondHokmDoubling(3);
     expect(s.phase).toBe('doubling');
     expect(availableDouble(s, 1)).toBeNull(); // الفريق المشتري لا يبدأ الدبل
     expect(availableDouble(s, 0)).toEqual({ label: 'دبل', needsLockChoice: true });
@@ -268,10 +274,7 @@ describe('game flow', () => {
   });
 
   it('hokm double chain: دبل (announced, then lock choice) → ثري (open) → فور (lock choice) → قهوة (open)', () => {
-    let s = newMatch(seededRng(6), 0);
-    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
-    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
-    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
+    let s = toSecondHokmDoubling(6);
     // الدبل يُعلن أولاً، ثم يختار صاحبه مقفل أو مفتوح — ولا يتحرك أحد غيره قبل اختياره
     s = applyAction(s, { type: 'double', seat: 0 });
     expect(s.doubling).toMatchObject({ level: 2, lockPending: 0 });
@@ -346,10 +349,7 @@ describe('game flow', () => {
   });
 
   it('three stays open even after a locked double', () => {
-    let s = newMatch(seededRng(9), 0);
-    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
-    for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
-    s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
+    let s = toSecondHokmDoubling(9);
     s = applyAction(s, { type: 'double', seat: 2, locked: true });
     s = applyAction(s, { type: 'double', seat: 1 });
     // شريك المدبّل لا يقرر؛ تمرير المدبّل وحده ينهي الدبل
@@ -419,7 +419,6 @@ describe('new rules: hokm confirmation, doubling pair, automatic baloot', () => 
       s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit: s.qaba!.suit } });
       for (const seat of [2, 3, 0] as Seat[]) s = applyAction(s, { type: 'bid', seat, bid: { type: 'pass' } });
       s = applyAction(s, { type: 'bid', seat: 1, bid: { type: 'confirmHokm' } });
-      for (const seat of [0, 2] as Seat[]) s = applyAction(s, { type: 'doublePass', seat });
       const trump = s.contract!.trump!;
       const holder = ([0, 1, 2, 3] as Seat[]).find((x) => ['K', 'Q'].every((r) => s.initialHands[x].some((c) => c.suit === trump && c.rank === r)));
       if (holder === undefined) continue;

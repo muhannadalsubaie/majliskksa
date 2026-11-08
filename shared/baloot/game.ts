@@ -201,10 +201,10 @@ const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' ||
  * بعد الشراء: إن كان الدبل ممكناً يبدأ الدبل والكل ما زال بخمس أوراق (وورقة الأرض على الطاولة)،
  * ولا تُوزّع بقية الأوراق إلا بعد انتهاء الدبل. وإلا تُوزّع مباشرة ويبدأ اللعب.
  */
-function finalizeContract(s: GameState, contract: Contract): GameState {
+function finalizeContract(s: GameState, contract: Contract, noDouble = false): GameState {
   const buyerTeam = teamOf(contract.buyer);
   const opp = otherTeam(buyerTeam);
-  const canDouble = contract.mode === 'hokm'
+  const canDouble = !noDouble && contract.mode === 'hokm'
     || (s.scores[buyerTeam] > SUN_DOUBLE_THRESHOLD && s.scores[opp] < SUN_DOUBLE_THRESHOLD);
   const base: GameState = { ...s, contract, turn: nextSeat(s.dealer), doubling: freshDoubling() };
   if (canDouble) return { ...base, phase: 'doubling', doubling: { ...freshDoubling(), awaitingTeam: opp } };
@@ -255,7 +255,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     const after = { ...s, hokmConfirm: false };
     return bid.type === 'sun'
       ? finalizeContract(after, { mode: 'sun', trump: null, buyer, qabaTo: buyer })
-      : finalizeContract(after, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
+      // الحكم الأول بعد تأكيده: ما فيه دبل — توزّع بقية الأوراق ويبدأ اللعب مباشرة
+      : finalizeContract(after, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer }, true);
   }
 
   if (bid.type === 'sun') {
