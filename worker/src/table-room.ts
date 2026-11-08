@@ -17,6 +17,10 @@ import { JackarooError } from '../../shared/jackaroo/engine';
 import type { VoiceInfo } from './voice-room';
 import type { Env } from './env';
 import { Firestore } from './firestore';
+import { rigTieDeal, tieHint } from '../../shared/baloot/tieRig';
+
+/** تجربة التعادل 81–81: مرة وحدة بس، لأول توزيع حكم في طاولة جالس فيها هالأربعة */
+const TIE_RIG_USERS = ['ياسر', 'البرجوازي', 'محمد', 'خالد'].map(usernameKey);
 
 /**
  * غرفة طاولة واحدة: تحفظ حالة اللعبة، تستقبل حركات اللاعبين عبر WebSocket،
@@ -235,6 +239,22 @@ export class TableRoom extends DurableObject<Env> {
    * طلب إداري لمرة وحدة: أول توزيع جديد (بلوت) فيه اللاعب المطلوب تكون أوراقه الخمس فيها الأكات الأربع،
    * وبعدها ينمسح الطلب ويرجع التوزيع عشوائي كالعادة
    */
+  /** توزيع جديد: الأكات (لو مطلوبة) ثم تجربة التعادل (لو هالطاولة فيها الأربعة ولسا ما انلعبت) */
+  private async rigDeal(t0: TableData): Promise<TableData> {
+    let t = await this.rigAces(t0);
+    const g = t.game;
+    if (!g || g.phase !== 'bidding' || g.bidRound !== 1 || g.bidsInRound !== 0 || g.hands.some((h) => h.length !== 5)) return t;
+    // توزيع جديد: أي تجربة سابقة في هالطاولة خلصت
+    if (t.tieRig) { const { tieRig: _r, ...rest } = t; void _r; t = rest as TableData; }
+    const keys = t.seats.map((m) => (m && !m.isBot ? usernameKey(m.username) : ''));
+    if (!TIE_RIG_USERS.every((k) => keys.includes(k))) return t;
+    const hub = this.env.HUBS.get(this.env.HUBS.idFromName('__rig_tie__'));
+    if ((await hub.getNote().catch(() => 'err')) !== '') return t; // انلعبت قبل (مرة وحدة بس)
+    await hub.setNote(`used ${new Date().toISOString()}`);
+    console.log('tie rig applied');
+    return { ...t, tieRig: true, game: rigTieDeal(g) };
+  }
+
   private async rigAces(t: TableData): Promise<TableData> {
     const g = t.game;
     if (!g || g.phase !== 'bidding' || g.bidRound !== 1 || g.bidsInRound !== 0 || g.hands.some((h) => h.length !== 5)) return t;
@@ -683,7 +703,7 @@ export class TableRoom extends DurableObject<Env> {
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
         const started = startAny(t, rng);
         const { events, voices } = started;
-        const next = await this.rigAces(started.table);
+        const next = await this.rigDeal(started.table);
         await this.save(next);
         this.broadcast(events, undefined, voices);
         await this.publish(next);
@@ -1051,7 +1071,7 @@ export class TableRoom extends DurableObject<Env> {
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
     if (step) {
       const r = runAutoStep(cur, step, rng);
-      r.table = await this.rigAces(r.table);
+      r.table = await this.rigDeal(r.table);
       await this.save(r.table);
       this.broadcast(r.events, undefined, r.voices);
       if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
@@ -1076,6 +1096,15 @@ export class TableRoom extends DurableObject<Env> {
         const mine = t.ludo ? events.map((e) => personalizeLudo(e, names, seatOf(t, uid) ?? -1)) : events;
         if ((events.length || voices?.length) && uid !== except) ws.send(JSON.stringify({ type: 'events', events: mine, ...(voices?.length ? { voices } : {}) }));
         ws.send(JSON.stringify({ type: 'state', view: viewFor(this.withVoice(t), uid) }));
+        // تجربة التعادل: اللي عليه الدور يوصله وش يسوي (هو بس)
+        if (t.tieRig && t.game) {
+          const seat = seatOf(t, uid);
+          const hint = seat === null ? null : tieHint(t.game, seat);
+          if (hint) {
+            ws.send(JSON.stringify({ type: 'events', events: [`تجربة التعادل: ${hint}`] }));
+            ws.send(JSON.stringify({ type: 'chat', uid: 'tie-rig', name: 'تجربة التعادل', text: hint }));
+          }
+        }
       } catch { /* اتصال مغلق */ }
     }
   }
