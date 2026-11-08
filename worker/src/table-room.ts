@@ -3,10 +3,10 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
-import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS, VOICE_MONTHLY_LISTEN_HOURS } from '../../shared/economy';
+import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
-  awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, withoutVoice,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, type VoiceMember,
   JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
 import { type GameKind, type GameVariant, GAME_NAMES, VARIANTS, gameTitle, applyOther, kindOf, otherActive, otherStatus, parseDomino, parseJackaroo, parseLudo, scoreSummary } from '../../shared/games';
@@ -14,7 +14,7 @@ import { LudoError } from '../../shared/ludo/engine';
 import { personalize as personalizeLudo } from '../../shared/ludo/labels';
 import { DominoError } from '../../shared/domino/engine';
 import { JackarooError } from '../../shared/jackaroo/engine';
-import { Realtime, type SessionDescription } from './realtime';
+import type { VoiceInfo } from './voice-room';
 import type { Env } from './env';
 import { Firestore } from './firestore';
 
@@ -47,7 +47,9 @@ type ClientMessage =
   | { type: 'setOwner'; uid: string }
   /** الدردشة الكتابية: رسالة، أو اختيار هذا الاتصال (off = ما توصله الرسائل ولا يرسل) */
   | { type: 'chat'; text: string }
-  | { type: 'chatPref'; off: boolean };
+  | { type: 'chatPref'; off: boolean }
+  /** التطبيق يفهم رسالة «voice» الخفيفة (قائمة المحادثة الصوتية بدون الطاولة كاملة) */
+  | { type: 'caps'; voice?: boolean };
 
 /** الدردشة الكتابية: حد طول الرسالة، وأقل مدة بين رسالتين لنفس الشخص */
 const CHAT_MAX = 200;
@@ -58,27 +60,6 @@ const CHAT_GAP_MS = 2000;
  * لا يمكن توقعه ولا التلاعب به، وكل توزيع مستقل تماماً عن الذي قبله.
  */
 const rng = () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-
-/** اسم مسار الميكروفون داخل جلسة كل شخص */
-const VOICE_TRACK = 'mic';
-
-export interface VoiceRequest {
-  op: 'session' | 'publish' | 'pull' | 'renegotiate' | 'close' | 'mute' | 'leave';
-  sessionId?: unknown;
-  offer?: unknown;
-  answer?: unknown;
-  mid?: unknown;
-  mids?: unknown;
-  uid?: unknown;
-  muted?: unknown;
-}
-
-/** خطأ Realtime لجلسة انتهت لخمولها (لم يتصل بها أي اتصال صوتي بعد) */
-const isStaleSession = (e: unknown) => /session_error|disconnected/i.test(String((e as Error)?.message ?? e));
-
-const isSdp = (d: unknown, type: 'offer' | 'answer'): d is SessionDescription =>
-  typeof d === 'object' && d !== null && (d as SessionDescription).type === type
-  && typeof (d as SessionDescription).sdp === 'string' && (d as SessionDescription).sdp.length < 20_000;
 
 const isSeat = (n: unknown): n is Seat => n === 0 || n === 1 || n === 2 || n === 3;
 const isSuit = (s: unknown): s is Suit => SUITS.includes(s as Suit);
@@ -129,8 +110,6 @@ const ERRORS: Record<string, string> = {
   'not-a-member': 'هذا الشخص لم يعد في الطاولة',
 };
 
-/** انقطاع قصير (تبديل شبكة، اتصال يُعاد) لا يُخرج الشخص من المحادثة الصوتية إلا إن لم يعد خلال هذه المدة */
-const VOICE_DROP_GRACE_MS = 60_000;
 
 /** مهلة قبل إغلاق طاولة لم يبق فيها أحد متصل (تحديث الصفحة أو انقطاع قصير لا يغلقها) */
 const EMPTY_GRACE_MS = 60_000;
@@ -271,12 +250,18 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   private async load(): Promise<TableData | null> {
-    if (!this.table) this.table = (await this.ctx.storage.get<TableData>('table')) ?? null;
+    if (!this.table) {
+      const stored = (await this.ctx.storage.get<TableData>('table')) ?? null;
+      // الصوت انتقل لغرفته المستقلة: ما يبقى داخل حالة اللعب
+      if (stored?.voice) { const { voice: _v, voiceSince: _s, ...rest } = stored; void _v; void _s; this.table = rest as TableData; } else this.table = stored;
+      await this.loadVoice();
+    }
     return this.table;
   }
 
   private publishedScore?: string;
-  private async save(t: TableData) {
+  private async save(t0: TableData) {
+    const t = t0.voice ? (({ voice: _v, voiceSince: _s, ...rest }) => { void _v; void _s; return rest as TableData; })(t0) : t0;
     this.table = t;
     await this.ctx.storage.put('table', t);
     // النتيجة تغيّرت (انتهت صكة أو جولة): نحدّث الملخص العام في الخلفية، عشان تطلع في قائمة الطاولات
@@ -468,143 +453,58 @@ export class TableRoom extends DurableObject<Env> {
     return !!t && (seatOf(t, uid) !== null || t.spectators.some((m) => m.uid === uid));
   }
 
-  // ───── المحادثة الصوتية (Cloudflare Realtime) ─────
+  // ───── المحادثة الصوتية: في غرفة مستقلة (VoiceRoom) ─────
+  // الطاولة ما تحفظ ولا تنتظر شي من الصوت: تعطي غرفة الصوت «مين عضو» (قراءة فقط)،
+  // وتستقبل منها قائمة المتكلمين في مكان منفصل عن حالة اللعب (voiceList) وتعرضها
 
-  private usage() {
-    return this.env.HUBS.get(this.env.HUBS.idFromName('__voice_usage__'));
+  private voiceMap: Record<string, VoiceMember> = {};
+  private voiceVer = -1;
+
+  private voiceRoom() {
+    return this.env.VOICES.get(this.env.VOICES.idFromName(this.ctx.id.toString()));
   }
 
-  /**
-   * يضيف استهلاك الصوت منذ آخر تغيير للعدّاد الشهري العام، ويعيد الطاولة بوقت محدّث.
-   * يُستدعى قبل أي تغيير في المنضمين (لأن عدد من يسمع من يتغير).
-   */
-  private accountVoice(t: TableData): TableData {
-    const now = Date.now();
-    const members = Object.values(t.voice ?? {});
-    const n = members.length;
-    const mics = members.filter((m) => m.mic !== false).length;
-    const listening = mics * (n - 1);
-    const since = t.voiceSince ?? now;
-    // العدّاد الشهري في الخلفية: ما ننتظره (الانتظار كان يوقف الطاولة)
-    if (listening > 0 && now > since) {
-      void this.usage().addVoiceUsage(((now - since) / 1000) * listening).catch((e) => console.error('voice usage', e));
+  /** أمر لغرفة الصوت بدون انتظار (اللعب ما يوقف لأجله) */
+  private toVoice(fn: (room: ReturnType<TableRoom['voiceRoom']>, id: string) => Promise<unknown>) {
+    this.ctx.waitUntil(fn(this.voiceRoom(), this.ctx.id.toString()).catch((e) => console.error('voice room', (e as Error).message)));
+  }
+
+  private async loadVoice() {
+    if (this.voiceVer < 0) {
+      this.voiceMap = (await this.ctx.storage.get<Record<string, VoiceMember>>('voiceList')) ?? {};
+      this.voiceVer = (await this.ctx.storage.get<number>('voiceVer')) ?? 0;
     }
-    return { ...t, voiceSince: now };
   }
 
-  /**
-   * تغيير المحادثة الصوتية على أحدث نسخة من الطاولة (بعد ما ترد خدمة الصوت): ما نحفظ نسخة قديمة
-   * من اللعب فوق ورقة انلعبت وقت الانتظار — فطلبات الصوت ما تحتاج توقف اللعب ولا تنتظر دوره
-   */
-  private async patchVoice(fn: (cur: TableData) => TableData): Promise<TableData> {
-    const cur = await this.load();
-    if (!cur) throw new Error('not-found');
-    const next = fn(cur);
-    await this.save(next);
-    return next;
+  /** الطاولة مع قائمة المحادثة الصوتية (للعرض فقط — ما تنحفظ داخل حالة اللعب) */
+  private withVoice(t: TableData): TableData {
+    // من طلع من الطاولة ما يظهر في قائمة الصوت (لو غرفة الصوت ما لحقت تحذفه)
+    return { ...t, voice: Object.fromEntries(Object.entries(this.voiceMap).filter(([u]) => memberName(t, u) !== null)) };
   }
 
-  /**
-   * كل طلبات الصوت تمر من هنا: الغرفة تعرف من في الطاولة ومن يملك أي جلسة،
-   * فلا يستطيع أحد سحب صوت طاولة ليس فيها أو التحكم بجلسة غيره.
-   */
-  async voice(uid: string, req: VoiceRequest): Promise<unknown> {
-    // طلبات الصوت ما تمشي في طابور اللعب: تنتظر خدمة الصوت (أحياناً ثواني) فكانت توقف اللعب، وحفظها آمن (patchVoice)
-    return this.voiceInner(uid, req);
-  }
-
-  private async voiceInner(uid: string, req: VoiceRequest): Promise<unknown> {
+  /** غرفة الصوت تسأل: هل هو عضو، وش اسمه، ومين مكتوم (قراءة فقط، ما تمر بطابور اللعب) */
+  async voiceInfo(uid: string): Promise<VoiceInfo> {
     const t = await this.load();
-    if (!t) throw new Error('not-found');
-    const name = memberName(t, uid);
-    if (!name) throw new Error('not-a-member');
-    if (!this.env.REALTIME_APP_ID || !this.env.REALTIME_APP_SECRET) throw new Error('voice-not-configured');
-    const rt = new Realtime(this.env.REALTIME_APP_ID, this.env.REALTIME_APP_SECRET);
-    const mine = t.voice?.[uid];
-    const own = (sessionId: unknown) => {
-      if (!mine || mine.sessionId !== sessionId) throw new Error('bad-session');
-      return mine.sessionId;
-    };
+    return { name: t ? memberName(t, uid) : null, blocked: t?.voiceBlocked ?? [] };
+  }
 
-    switch (req.op) {
-      case 'session': {
-        // الانضمام (تلقائياً عند دخول الطاولة): استماع فقط بلا ميكروفون، ويُعلن للبقية
-        if ((await this.usage().voiceUsageSeconds()) >= VOICE_MONTHLY_LISTEN_HOURS * 3600) throw new Error('voice-limit');
-        // التطبيقات الجديدة ترسل عرضاً فتتصل الجلسة فوراً (وإلا جلسة فارغة كالسابق)
-        // لو رفضت الخدمة العرض: جلسة فارغة كالسابق (التطبيق يتراجع عن عرضه ويكمل)، بدل ما يفشل الانضمام كله
-        const connected = isSdp(req.offer, 'offer')
-          ? await rt.connectedSession(req.offer).catch((e) => { console.error('voice session offer', (e as Error).message); return undefined; })
-          : undefined;
-        const sessionId = connected?.sessionId ?? await rt.newSession();
-        await this.patchVoice((cur) => { const acc = this.accountVoice(cur); return { ...acc, voice: { ...(acc.voice ?? {}), [uid]: { sessionId, muted: true, mic: false } } }; });
-        // إعادة اتصال صامتة (كان في المحادثة): لا نعلن "انضم" مرة أخرى
-        this.broadcast(mine ? [] : [`${name} انضم للمحادثة الصوتية`], uid);
-        const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
-        if (gone[uid] !== undefined) { delete gone[uid]; await this.ctx.storage.put('voiceGone', gone); }
-        return connected ? { sessionId, answer: connected.answer } : { sessionId };
-      }
-      case 'publish': {
-        // أول مرة يفتح الميكروفون: ننشره في جلسته
-        let sessionId = own(req.sessionId);
-        if (isVoiceBlocked(t, uid)) throw new Error('voice-blocked');
-        if (!isSdp(req.offer, 'offer') || typeof req.mid !== 'string') throw new Error('bad-request');
-        const offer = req.offer, mid = req.mid;
-        let answer: SessionDescription;
-        try {
-          answer = await rt.pushTrack(sessionId, offer, mid, VOICE_TRACK);
-        } catch (e) {
-          // جلسة الاستماع انتهت لخمولها قبل أن يفتح الميكروفون: جلسة جديدة بالميكروفون مباشرة
-          if (!isStaleSession(e)) throw e;
-          ({ sessionId, answer } = await rt.publish(offer, mid, VOICE_TRACK));
-        }
-        await this.patchVoice((cur) => { const acc = this.accountVoice(cur); return { ...acc, voice: { ...acc.voice, [uid]: { sessionId, muted: false, mic: true } } }; });
-        this.broadcast([]);
-        return { answer, sessionId };
-      }
-      case 'pull': {
-        const sessionId = own(req.sessionId);
-        const remote = typeof req.uid === 'string' ? t.voice?.[req.uid] : undefined;
-        if (!remote || remote.mic === false || req.uid === uid) throw new Error('bad-request');
-        // صوت من كتمه المالك لا يُسحب لأحد
-        if (isVoiceBlocked(t, req.uid as string)) throw new Error('voice-blocked');
-        // سحب بعرض من التطبيق (نسخة 1132 / 10113): الخدمة ترد بعرض منها مو جواب، فيعلق الاتصال وينكسر المايك.
-        // نرفضه قبل ما يوصل للخدمة عشان الاتصال يبقى سليم (المايك يشتغل) لين يتحدث التطبيق
-        if (req.offer !== undefined) throw new Error('bad-request');
-        try {
-          return await rt.pull(sessionId, remote.sessionId, VOICE_TRACK);
-        } catch (e) {
-          // جلسة المستمع انتهت لخمولها (لم يكن أحد يتكلم): جلسة جديدة له ثم نسحب الصوت إليها
-          if (!isStaleSession(e) || mine!.mic) throw e;
-          const fresh = await rt.newSession();
-          await this.patchVoice((cur) => ({ ...cur, voice: { ...cur.voice, [uid]: { ...(cur.voice?.[uid] ?? mine!), sessionId: fresh } } }));
-          this.broadcast([]);
-          return { ...(await rt.pull(fresh, remote.sessionId, VOICE_TRACK)), sessionId: fresh };
-        }
-      }
-      case 'renegotiate': {
-        if (!isSdp(req.answer, 'answer')) throw new Error('bad-request');
-        return rt.renegotiate(own(req.sessionId), req.answer);
-      }
-      case 'close': {
-        const mids = Array.isArray(req.mids) ? req.mids.filter((m): m is string => typeof m === 'string').slice(0, 20) : [];
-        if (mids.length) await rt.close(own(req.sessionId), mids);
-        return { ok: true };
-      }
-      case 'mute': {
-        own(req.sessionId);
-        if (req.muted !== true && isVoiceBlocked(t, uid)) throw new Error('voice-blocked');
-        await this.patchVoice((cur) => ({ ...cur, voice: { ...cur.voice, [uid]: { ...(cur.voice?.[uid] ?? mine!), muted: req.muted === true } } }));
-        this.broadcast([]);
-        return { ok: true };
-      }
-      case 'leave': {
-        if (!mine) return { ok: true };
-        await this.patchVoice((cur) => withoutVoice(this.accountVoice(cur), uid));
-        this.broadcast([`${name} غادر المحادثة الصوتية`], uid);
-        return { ok: true };
-      }
-      default:
-        throw new Error('bad-request');
+  /** غرفة الصوت تغيّرت قائمتها: نحفظها لحالها ونرسلها (ما نلمس حالة اللعب) */
+  async voiceChanged(list: Record<string, VoiceMember>, ver: number, events: string[], except?: string): Promise<void> {
+    await this.loadVoice();
+    if (ver <= this.voiceVer) return;
+    this.voiceMap = list;
+    this.voiceVer = ver;
+    await this.ctx.storage.put({ voiceList: list, voiceVer: ver });
+    const t = this.table ?? (await this.load());
+    if (!t) return;
+    const view = viewFor(this.withVoice(t), '').voice;
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as { uid: string; caps?: { voice?: boolean } };
+      try {
+        if (events.length && a.uid !== except) ws.send(JSON.stringify({ type: 'events', events }));
+        // التطبيقات الجديدة: رسالة صغيرة فيها القائمة بس. القديمة: الحالة كاملة كالسابق
+        ws.send(JSON.stringify(a.caps?.voice ? { type: 'voice', voice: view } : { type: 'state', view: viewFor(this.withVoice(t), a.uid) }));
+      } catch { /* اتصال مغلق */ }
     }
   }
 
@@ -621,7 +521,8 @@ export class TableRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(pair[1]);
     pair[1].serializeAttachment({ uid });
     const t = await this.load();
-    if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
+    await this.loadVoice();
+    if (t) pair[1].send(JSON.stringify({ type: 'state', view: viewFor(this.withVoice(t), uid) }));
     // المالك رجع (أو فتح الطاولة): يوصله أي طلب انضمام لسا ينتظر رده (آخر 5 دقائق)
     if (t && uid === t.ownerUid) {
       for (const [rid, r] of Object.entries(t.joinRequests ?? {})) {
@@ -653,11 +554,7 @@ export class TableRoom extends DurableObject<Env> {
       if (next !== cur) await this.save(next);
     }
     // عاد قبل انتهاء مهلة المحادثة الصوتية: يبقى فيها
-    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
-    if (gone[uid] !== undefined) {
-      delete gone[uid];
-      await this.ctx.storage.put('voiceGone', gone);
-    }
+    if (this.voiceMap[uid]) this.toVoice((v) => v.back(uid));
     await this.ctx.storage.delete('emptySince');
     await this.schedule();
     // أول فحص للنبضات (الاتصال الجديد ما نبض بعد، فقد لا يكون في المنبه فحص)
@@ -668,6 +565,11 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    // قدرات التطبيق: تنحفظ على الاتصال نفسه (بدون طابور)
+    if (typeof raw === 'string' && raw.startsWith('{"type":"caps"')) {
+      try { const m = JSON.parse(raw) as { voice?: boolean }; ws.serializeAttachment({ ...(ws.deserializeAttachment() as object), caps: { voice: m.voice === true } }); } catch { /* تجاهل */ }
+      return;
+    }
     let label = 'message';
     try { const m = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)) as { type?: string; action?: { type?: string } }; label = `msg:${m.type}${m.action?.type ? `:${m.action.type}` : ''}`; } catch { /* label only */ }
     return this.serial(() => this.webSocketMessageInner(ws, raw), label);
@@ -802,7 +704,8 @@ export class TableRoom extends DurableObject<Env> {
         if (typeof msg.uid !== 'string') throw new Error('bad-request');
         const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
         const seat = seatOf(t, msg.uid);
-        const r = kick(t.voice?.[msg.uid] ? await this.accountVoice(t) : t, msg.uid, msg.type === 'ban', rng);
+        const r = kick(t, msg.uid, msg.type === 'ban', rng);
+        { const out = msg.uid; this.toVoice((v, id) => v.remove(id, out)); }
         // الحظر عند المالك نفسه: يشمل كل طاولاته الحالية والقادمة
         if (msg.type === 'ban') await this.env.HUBS.get(this.env.HUBS.idFromName(uid)).ban(msg.uid, who);
         await this.save(r.table);
@@ -862,6 +765,7 @@ export class TableRoom extends DurableObject<Env> {
         if (typeof msg.uid !== 'string') throw new Error('bad-request');
         const who = memberName(t, msg.uid) ?? 'أحد الحاضرين';
         await this.save(setVoiceBlocked(t, msg.uid, msg.blocked === true));
+        if (msg.blocked === true) { const target = msg.uid; this.toVoice((v, id) => v.block(id, target)); }
         this.broadcast([msg.blocked ? `كتم مالك الطاولة ${who} في المحادثة الصوتية` : `ألغى مالك الطاولة كتم ${who}`]);
         break;
       }
@@ -909,7 +813,8 @@ export class TableRoom extends DurableObject<Env> {
       case 'leave': {
         const seat = seatOf(t, uid);
         const who = seat !== null ? t.seats[seat]!.username : t.spectators.find((m) => m.uid === uid)?.username ?? 'أحد الحاضرين';
-        const r = leave(t.voice?.[uid] ? await this.accountVoice(t) : t, uid);
+        const r = leave(t, uid);
+        this.toVoice((v, id) => v.remove(id, uid));
         // لم يبق إلا روبوتات (أو لا أحد): تُغلق الطاولة فوراً.
         // الحاضرون غير المتصلين (مشاهد قفل التطبيق) لا يُبقونها، ولا يُبقيها إلا لاعب جالس أو متصل آخر
         const humanSeated = r.table.seats.some((s) => s && !s.isBot);
@@ -938,12 +843,8 @@ export class TableRoom extends DurableObject<Env> {
     const stillHere = this.ctx.getWebSockets().some((w) => w !== ws && w.readyState === WebSocket.OPEN && (w.deserializeAttachment() as { uid: string }).uid === uid);
     const t = await this.load();
     // لا نخرجه فوراً: انقطاع قصير لا يُخرجه من المحادثة، ويخرج إن لم يعد خلال المهلة
-    if (t?.voice?.[uid] && !stillHere) {
-      const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
-      gone[uid] = Date.now();
-      await this.ctx.storage.put('voiceGone', gone);
-      await this.schedule();
-    }
+    void t;
+    if (this.voiceMap[uid] && !stillHere) this.toVoice((v, id) => v.gone(id, uid));
     // انقطع اتصاله وهو في الطاولة: ما نعلن ولا نحجز مقعده فوراً، ننتظر مهلة قصيرة (OFFLINE_GRACE_MS)
     // لأن أغلب الانقطاعات ثواني ويرجع التطبيق لحاله. إن ما رجع خلالها يُعلن ويُحجز مقعده (في المنبه)
     const current = this.table;
@@ -988,7 +889,7 @@ export class TableRoom extends DurableObject<Env> {
   /** إغلاق الطاولة نهائياً: إشعار المتصلين، حذف الحالة، وإزالتها من قائمة الطاولات. */
   private async closeTable() {
     const current = this.table ?? (await this.load());
-    if (current?.voice) await this.accountVoice(current);
+    this.toVoice((v) => v.closeAll());
     const id = current?.id;
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -1002,35 +903,6 @@ export class TableRoom extends DurableObject<Env> {
     if (id && this.env.DEV_AUTH !== '1') {
       await this.db().remove('tables', id).catch((e) => console.error('remove failed', e));
     }
-  }
-
-  /** أقرب موعد لإخراج منقطع من المحادثة الصوتية */
-  private async nextVoiceDrop(): Promise<number | null> {
-    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
-    const times = Object.values(gone);
-    return times.length ? Math.min(...times) + VOICE_DROP_GRACE_MS : null;
-  }
-
-  /** من انقطع ولم يعد خلال المهلة يخرج من المحادثة الصوتية */
-  private async dropExpiredVoice(): Promise<void> {
-    const gone = (await this.ctx.storage.get<Record<string, number>>('voiceGone')) ?? {};
-    const now = Date.now();
-    const connected = new Set(this.ctx.getWebSockets().filter((w) => w.readyState === WebSocket.OPEN)
-      .map((w) => (w.deserializeAttachment() as { uid: string }).uid));
-    let changed = false;
-    for (const [uid, at] of Object.entries(gone)) {
-      if (connected.has(uid)) { delete gone[uid]; changed = true; continue; }
-      if (now - at < VOICE_DROP_GRACE_MS) continue;
-      delete gone[uid];
-      changed = true;
-      const t = this.table ?? (await this.load());
-      if (t?.voice?.[uid]) {
-        const who = memberName(t, uid);
-        await this.save(withoutVoice(await this.accountVoice(t), uid));
-        this.broadcast(who ? [`${who} غادر المحادثة الصوتية`] : [], uid);
-      }
-    }
-    if (changed) await this.ctx.storage.put('voiceGone', gone);
   }
 
   // ───── الروبوتات والتوزيع التلقائي ─────
@@ -1085,11 +957,10 @@ export class TableRoom extends DurableObject<Env> {
     else await this.ctx.storage.delete('botAt');
     const awayAt = t ? nextAwayDeadline(t) : null;
     const lobbyAt = t ? nextLobbyDeadline(t) : null;
-    const voiceAt = await this.nextVoiceDrop();
     // فحص النبضات ما دام فيه اتصالات تنبض
     const staleAt = this.nextStaleCheck();
     const pendingAt = await this.nextPendingOffline();
-    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, voiceAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity);
+    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -1115,7 +986,6 @@ export class TableRoom extends DurableObject<Env> {
       await this.schedule();
       return;
     }
-    await this.dropExpiredVoice();
     // انتهت مهلة لاعب منقطع: روبوت مكانه (عملة من المالك إن توفرت — اللعب لا يتوقف لأجلها)
     let cur = this.table ?? t;
     for (const uid of awayExpired(cur, Date.now())) {
@@ -1136,7 +1006,8 @@ export class TableRoom extends DurableObject<Env> {
     // انتهت مهلة منقطع (خارج اللعب، أو مشاهد أثناء المباراة): يخرج من الطاولة
     for (const uid of lobbyExpired(cur, Date.now())) {
       const name = memberName(cur, uid) ?? 'أحد الحاضرين';
-      const r = leave(cur.voice?.[uid] ? await this.accountVoice(cur) : cur, uid);
+      const r = leave(cur, uid);
+      this.toVoice((v, id) => v.remove(id, uid, false));
       if (!hasHumans(r.table)) { await this.closeTable(); return; }
       cur = r.table;
       await this.save(cur);
@@ -1163,8 +1034,7 @@ export class TableRoom extends DurableObject<Env> {
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else {
-      await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, (await this.nextVoiceDrop()) ?? Infinity,
-        this.nextStaleCheck() ?? Infinity));
+      await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, this.nextStaleCheck() ?? Infinity));
     }
   }
 
@@ -1181,7 +1051,7 @@ export class TableRoom extends DurableObject<Env> {
         // إعلانات اللودو تُكمَّل لكل واحد: أرقام الخانات من خانة بدايته، و"أنت" بدل اسمه
         const mine = t.ludo ? events.map((e) => personalizeLudo(e, names, seatOf(t, uid) ?? -1)) : events;
         if ((events.length || voices?.length) && uid !== except) ws.send(JSON.stringify({ type: 'events', events: mine, ...(voices?.length ? { voices } : {}) }));
-        ws.send(JSON.stringify({ type: 'state', view: viewFor(t, uid) }));
+        ws.send(JSON.stringify({ type: 'state', view: viewFor(this.withVoice(t), uid) }));
       } catch { /* اتصال مغلق */ }
     }
   }

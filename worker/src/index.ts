@@ -6,11 +6,12 @@ import { isUnlimited, verifyToken, verifyUser } from './auth';
 import type { Env } from './env';
 import { Firestore, deleteAuthUser, parseServiceAccount } from './firestore';
 import { verifySsv } from './ads';
-import type { VoiceRequest } from './table-room';
+import type { VoiceRequest } from './voice-room';
 import { type VerifiedPurchase, accountTokenFor, consumeGoogle, verifyApple, verifyGoogle } from './purchases';
 
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
+export { VoiceRoom } from './voice-room';
 
 
 const CORS = {
@@ -444,7 +445,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const b = (await body()) as unknown as VoiceRequest;
       try {
         const t0 = Date.now();
-        const out = await env.TABLES.get(env.TABLES.idFromString(voiceMatch[1])).voice(user.uid, b);
+        // غرفة الصوت مستقلة عن غرفة اللعب: الطاولة تأكد العضوية بس (قراءة)، والباقي كله في غرفة الصوت
+        const info = await env.TABLES.get(env.TABLES.idFromString(voiceMatch[1])).voiceInfo(user.uid);
+        const out = await env.VOICES.get(env.VOICES.idFromName(voiceMatch[1])).voice(voiceMatch[1], user.uid, b, info);
         // للتشخيص (بلا بيانات مستخدم): نوع الطلب، وهل جاء بعرض من التطبيق، والمدة
         console.log('voice ok', b.op, b.offer ? 'offer' : '-', `${Date.now() - t0}ms`);
         return json(out);

@@ -18,12 +18,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "TABLES", "class_name": "TableRoom" },
-      { "name": "HUBS", "class_name": "UserHub" }
+      { "name": "HUBS", "class_name": "UserHub" },
+      { "name": "VOICES", "class_name": "VoiceRoom" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["TableRoom"] },
-    { "tag": "v2", "new_sqlite_classes": ["UserHub"] }
+    { "tag": "v2", "new_sqlite_classes": ["UserHub"] },
+    { "tag": "v3", "new_sqlite_classes": ["VoiceRoom"] }
   ],
   "vars": {
     "FIREBASE_PROJECT_ID": "majlisk-87eef",

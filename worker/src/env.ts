@@ -1,5 +1,6 @@
 import type { TableRoom } from './table-room';
 import type { UserHub } from './user-hub';
+import type { VoiceRoom } from './voice-room';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -10,6 +11,8 @@ export interface Env {
   UNLIMITED_EMAIL_SHA256?: string;
   TABLES: DurableObjectNamespace<TableRoom>;
   HUBS: DurableObjectNamespace<UserHub>;
+  /** غرفة المحادثة الصوتية لكل طاولة (مستقلة عن غرفة اللعب) */
+  VOICES: DurableObjectNamespace<VoiceRoom>;
   /** للتطوير المحلي فقط (ملف .dev.vars): يسمح بتوكنات وهمية ويتجاوز العملات. لا يُضبط في الإنتاج أبداً. */
   DEV_AUTH?: string;
   /** "1" = نقبل مكافأة الإعلانات التجريبية بلا SSV (أثناء التطوير بإعلانات Google التجريبية فقط) */
