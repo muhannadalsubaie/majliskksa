@@ -169,12 +169,26 @@ export class TableRoom extends DurableObject<Env> {
    * ترجع الورقة لصاحبها ويطلع صوت التوزيع. التسلسل يمنع هذا.
    */
   private chain: Promise<unknown> = Promise.resolve();
-  private serial<T>(fn: () => Promise<T>): Promise<T> {
+  private serial<T>(fn: () => Promise<T>, label = 'task'): Promise<T> {
     // لو علّق طلب قبله (خدمة برا ما ردّت) ما ننتظره للأبد: بعد 20 ثانية نكمل
+    const queued = Date.now();
     const prev = Promise.race([this.chain, new Promise((r) => setTimeout(r, 20000))]);
-    const run = prev.then(fn, fn);
+    const timed = async () => {
+      const started = Date.now();
+      try { return await fn(); } finally {
+        const wait = started - queued, run = Date.now() - started;
+        // تشخيص: أي طلب انتظر أو أخذ وقت طويل (يأخر حركات اللعب) نسجله بدون أي بيانات شخصية
+        if (wait > 800 || run > 800) this.noteSlow(`${label} wait=${wait} run=${run}`);
+      }
+    };
+    const run = prev.then(timed, timed);
     this.chain = run.catch(() => {});
     return run;
+  }
+
+  private noteSlow(line: string) {
+    console.log('slow', line);
+    void this.env.HUBS.get(this.env.HUBS.idFromName('__slow__')).appendNote(`${new Date().toISOString()} ${line}`).catch(() => {});
   }
 
   /** اتصالات تنبض (نسخ التطبيق الجديدة) وانقطعت نبضتها */
@@ -307,7 +321,7 @@ export class TableRoom extends DurableObject<Env> {
   // ───── استدعاءات من الخادم الرئيسي (RPC) ─────
 
   async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
-    return this.serial(() => this.createInner(id, owner, isPrivate, kind, variant));
+    return this.serial(() => this.createInner(id, owner, isPrivate, kind, variant), 'create');
   }
 
   private async createInner(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
@@ -320,28 +334,40 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async joinTable(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
-    return this.serial(() => this.joinTableInner(user, invite));
+    // كل اللي يحتاج خدمات برا (الحظر، الرصيد) يصير برا طابور اللعب: كان دخول أي أحد للطاولة يوقف حركات اللاعبين ثواني
+    const t0 = await this.load();
+    if (!t0) return { error: 'not-found' };
+    try {
+      // من حظره مالك هذه الطاولة لا يدخل أي طاولة يملكها
+      if (!inTable(t0, user.uid) && await this.env.HUBS.get(this.env.HUBS.idFromName(t0.ownerUid)).isBanned(user.uid)) {
+        return { error: 'banned-by-owner' };
+      }
+      // نعرف مسبقاً هل الدخول عليه عملة، ونتأكد إن رصيده يكفي قبل ما ندخله
+      if (join(t0, user, invite).charge && !(await this.db().canPay(user.uid, COINS.joinTable))) return { error: 'not-enough-coins' };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+    const r = await this.serial(() => this.joinTableInner(user, invite), 'join');
+    if ('error' in r) return r;
+    // الخصم بعد الدخول (برا الطابور)
+    if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable).catch((e) => console.log('join charge', (e as Error).message));
+    // جاء المدعو: الحين تنخصم عملة الدعوة من صاحبها (لو ما عنده، المدعو يدخل عادي)
+    if (r.invitedBy) await this.db().adjustCoins(r.invitedBy, -COINS.inviteFriend).catch((e) => console.log('invite charge', (e as Error).message));
+    return { ok: true };
   }
 
-  private async joinTableInner(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
+  private async joinTableInner(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true; charge: boolean; invitedBy?: string } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     try {
-      // من حظره مالك هذه الطاولة لا يدخل أي طاولة يملكها
-      if (!inTable(t, user.uid) && await this.env.HUBS.get(this.env.HUBS.idFromName(t.ownerUid)).isBanned(user.uid)) {
-        return { error: 'banned-by-owner' };
-      }
       const r = join(t, user, invite);
       // دخول جديد للطاولة (لا رجوع اتصال): لا نعلن "عاد اتصال" عند فتح الطاولة
       const offline = (await this.ctx.storage.get<Record<string, number>>('offline')) ?? {};
       if (offline[user.uid] !== undefined) { delete offline[user.uid]; await this.ctx.storage.put('offline', offline); }
-      if (r.charge) await this.db().adjustCoins(user.uid, -COINS.joinTable);
-      // جاء المدعو: الحين تنخصم عملة الدعوة من صاحبها (لو ما عنده، المدعو يدخل عادي)
-      if (r.invitedBy) await this.db().adjustCoins(r.invitedBy, -COINS.inviteFriend).catch((e) => console.log('invite charge', (e as Error).message));
       await this.save(r.table);
       this.broadcast([`انضم ${user.username}`]);
       await this.publish(r.table);
-      return { ok: true };
+      return { ok: true, charge: !!r.charge, ...(r.invitedBy ? { invitedBy: r.invitedBy } : {}) };
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -352,7 +378,7 @@ export class TableRoom extends DurableObject<Env> {
    * إن لم يكن فيها أحد متصل نبدأ مهلة الإغلاق (إن لم تكن بدأت).
    */
   async checkAlive(): Promise<boolean> {
-    return this.serial(() => this.checkAliveInner());
+    return this.serial(() => this.checkAliveInner(), 'checkAlive');
   }
 
   private async checkAliveInner(): Promise<boolean> {
@@ -409,15 +435,15 @@ export class TableRoom extends DurableObject<Env> {
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
   async createInvite(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
-    return this.serial(() => this.createInviteInner(uid, seat));
+    // ما تنخصم العملة الحين: تنخصم لما يدخل المدعو فعلاً. بس لازم يكون عنده عملة تكفي (نفحصها برا طابور اللعب)
+    if (!(await this.db().canPay(uid, COINS.inviteFriend))) return { error: 'not-enough-coins' };
+    return this.serial(() => this.createInviteInner(uid, seat), 'invite');
   }
 
   private async createInviteInner(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     if (t.ownerUid !== uid) return { error: 'not-owner' };
-    // ما تنخصم العملة الحين: تنخصم لما يدخل المدعو فعلاً. بس لازم يكون عنده عملة تكفي
-    if (!(await this.db().canPay(uid, COINS.inviteFriend))) return { error: 'not-enough-coins' };
     const bytes = crypto.getRandomValues(new Uint8Array(6));
     const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
     await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined, uid));
@@ -585,7 +611,7 @@ export class TableRoom extends DurableObject<Env> {
   // ───── WebSocket ─────
 
   async fetch(request: Request): Promise<Response> {
-    return this.serial(() => this.fetchInner(request));
+    return this.serial(() => this.fetchInner(request), 'connect');
   }
 
   private async fetchInner(request: Request): Promise<Response> {
@@ -642,7 +668,9 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-    return this.serial(() => this.webSocketMessageInner(ws, raw));
+    let label = 'message';
+    try { const m = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)) as { type?: string; action?: { type?: string } }; label = `msg:${m.type}${m.action?.type ? `:${m.action.type}` : ''}`; } catch { /* label only */ }
+    return this.serial(() => this.webSocketMessageInner(ws, raw), label);
   }
 
   private async webSocketMessageInner(ws: WebSocket, raw: string | ArrayBuffer) {
@@ -900,7 +928,7 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket) {
-    return this.serial(() => this.webSocketCloseInner(ws));
+    return this.serial(() => this.webSocketCloseInner(ws), 'disconnect');
   }
 
   private async webSocketCloseInner(ws: WebSocket) {
@@ -1067,7 +1095,7 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   async alarm() {
-    return this.serial(() => this.alarmInner());
+    return this.serial(() => this.alarmInner(), 'alarm');
   }
 
   private async alarmInner() {
@@ -1098,7 +1126,7 @@ export class TableRoom extends DurableObject<Env> {
       cur = markLobbyAway(cur, uid, Date.now() - LOBBY_LEAVE_AFTER_MS);
       await this.save(cur);
       if (seat !== null) {
-        await this.db().adjustCoins(cur.ownerUid, -COINS.addBot).catch(() => {});
+        void this.db().adjustCoins(cur.ownerUid, -COINS.addBot).catch(() => {}); // في الخلفية: ما يوقف اللعب
         this.broadcast([`انتهت مهلة ${name}، وحلّ مكانه ${cur.seats[seat]!.username}`]);
       }
       await this.publish(cur);
