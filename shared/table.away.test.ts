@@ -41,7 +41,7 @@ it('does not hold seats outside a running match', () => {
   expect(markAway(lobby, 'a', 0)).toBe(lobby);
 });
 
-it('reveals a project in the second trick as soon as it is its owner\'s turn, before they play, without holding the turn', async () => {
+it('reveals a project in the second trick as soon as it is its owner\'s turn, before they play, and holds the turn', async () => {
   const { addBot, nextAutoStep, runAutoStep, REVEAL_GAP_MS } = await import('./table');
   let found = false;
   for (let seed = 1; seed < 60 && !found; seed++) {
@@ -62,9 +62,8 @@ it('reveals a project in the second trick as soon as it is its owner\'s turn, be
         const owner = r.table.seats[g.turn]!.username;
         expect(r.events[reveal]).toContain(owner); // دوره الحين
         expect(g.trick.some((p) => p.seat === g.turn)).toBe(false); // قبل ما يلعب
-        // المشروع يُعلن بدون أي مهلة: صاحبه يلعب على طول
-        expect(r.table.hold).toBeUndefined();
-        void REVEAL_GAP_MS;
+        expect(r.table.hold?.seat).toBe(g.turn);
+        expect(r.table.hold!.until - now).toBeGreaterThanOrEqual(REVEAL_GAP_MS);
         // أوراق المشروع ظاهرة في العرض من الحين
         const v = viewFor(r.table, 'b').game!;
         expect(v.declared.find((d) => d.seat === g.turn)?.faces?.length).toBeGreaterThan(0);
