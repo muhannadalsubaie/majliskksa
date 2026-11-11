@@ -31,6 +31,9 @@ on:
       rename_to:
         description: الاسم الجديد
         default: ''
+      probe_seconds:
+        description: قياس حي لانتقال الدور على السيرفر (لاعبين وهميين) بدل النشر — عدد الثواني، مثلاً 240
+        default: ''
       rig_aces:
         description: أول توزيع جديد فيه هاللاعب (اسم المستخدم) يعطيه الأكات الأربع مرة وحدة بدل النشر
         default: ''
@@ -39,7 +42,7 @@ concurrency: worker-deploy
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '' && inputs.rename_from == '' && inputs.rig_aces == '')
+    if: github.event_name != 'workflow_dispatch' || (inputs.tail_minutes == '' && inputs.grant_gift == '' && inputs.rename_from == '' && inputs.rig_aces == '' && inputs.probe_seconds == '')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +142,21 @@ jobs:
               if (/invite|push|voice/i.test(path) || /push|voice/i.test(logs) || (e.exceptions ?? []).length)
                 console.log(new Date(e.eventTimestamp).toISOString(), e.event?.request?.method ?? "", path.replace(/[0-9a-f]{64}/, "<table>"), e.event?.response?.status ?? "", logs, JSON.stringify(e.exceptions ?? []));
             }' | tee -a $GITHUB_STEP_SUMMARY
+
+  probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.probe_seconds != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Latency probe
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROBE_SECONDS: ${{ inputs.probe_seconds }}
+        run: |
+          set -o pipefail
+          node scripts/latency-probe.mjs | tee -a $GITHUB_STEP_SUMMARY
 
   rig-aces:
     if: github.event_name == 'workflow_dispatch' && inputs.rig_aces != ''
