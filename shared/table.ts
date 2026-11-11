@@ -715,12 +715,8 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     }
   }
   void rng;
-  // كشف مشروع: الدور يوقف عند صاحبه ٣ ثواني قبل ما يقدر يلعب
-  if (reveal !== null && after.phase === 'playing') {
-    const { hold: _o, ...rest0 } = t;
-    void _o;
-    return { table: { ...rest0, game: after, ...(history ? { history } : {}), hold: { until: now + REVEAL_GAP_MS + (before.trickNo !== after.trickNo ? TRICK_SHOW_MS : 0), seat: reveal } }, events, ...(voices.length ? { voices } : {}) };
-  }
+  // كشف المشروع: يُعلن ويُعرض بس، بدون أي مهلة — صاحبه يلعب على طول (المهلة كانت تعلّق الدور ٣ إلى ٤.٥ ثانية)
+  void reveal;
   // ثانية ونص بعد شراء حكم أو صن (أو أشكل/قبلك/تأكيد الحكم) قبل ما ينتقل الدور لمن بعده يختار — لا بعد «بس» ولا الدبل ولا لعب الورق
   const decision = action.type === 'bid' && HOLD_BIDS.has(action.bid.type);
   const hold = decision && after.phase !== 'matchOver' && !needsRedeal(after) ? { until: now + DECISION_GAP_MS, seat: action.seat } : undefined;
