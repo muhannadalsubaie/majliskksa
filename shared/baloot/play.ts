@@ -65,6 +65,8 @@ export function legalCards({ mode, trump, trick, hand, seat, lockedSeat, outstan
 
   // حكم ولا يملك اللون المطلوب
   const winner = trickWinner(trick, mode, trump);
+  // آخر واحد يلعب وشريكه ماسك الأكلة: حر (ما يلزمه يقطع بالحكم) حتى لو فيه ورق أكبر ما نزل
+  if (trick.length === 3 && teamOf(winner) === teamOf(seat)) return hand;
   // الشريك متصدر: حر — بشرط تكون ورقته أقوى ورقة باقية من لونها (مثلاً شايب سبيت والإكة أو العشرة ما نزلت: لازم تقطع)
   if (teamOf(winner) === teamOf(seat)) {
     const top = trick.find((p) => p.seat === winner)!.card;

@@ -562,7 +562,7 @@ export const REVEAL_GAP_MS = 3000;
 const TRICK_SHOW_MS = 1500;
 
 /** جاء دور صاحب مشروع في اللفة الثانية (وما لعب بعد): إعلان أوراق مشروعه، أو إلغاؤه */
-function revealProject(t: TableData, before: GameState, after: GameState): { seat: Seat; events: string[] } | null {
+function revealProject(t: TableData, before: GameState, after: GameState): { seat: Seat; events: string[]; cancelled?: true } | null {
   if (after.phase !== 'playing' || after.trickNo !== 1 || !after.projects) return null;
   const seat = after.turn;
   if (before.trickNo === 1 && before.turn === seat) return null;
@@ -573,7 +573,7 @@ function revealProject(t: TableData, before: GameState, after: GameState): { sea
   if (after.projects.winningTeam === teamOf(seat)) {
     return { seat, events: d.projects.map((p) => `مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`) };
   }
-  return { seat, events: [`أُلغي مشروع ${who}`] };
+  return { seat, events: [`أُلغي مشروع ${who}`], cancelled: true };
 }
 
 /**
@@ -599,12 +599,17 @@ export const SAWA_SHOW_MS = 2000;
 
 export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Date.now()): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
-  const after = applyAction(before, action);
+  let after = applyAction(before, action);
   // «سوا»: أول شي تنكشف أوراق الكل الباقية ثانيتين (الصكة ما تنحسب الحين)، وبعدها الخطوة التلقائية تحسبها
   if (action.type === 'sawa' && !t.sawa) {
     return {
       table: { ...t, sawa: { seat: action.seat, hands: before.hands.map((h) => [...h]) }, hold: { until: now + SAWA_SHOW_MS, seat: action.seat } },
-      events: [`${nameOf(t, action.seat)}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`],
+      // قارئ الشاشة يقرأ كل الأوراق اللي انكشفت: صاحب السوا أول، ثم الباقين بالترتيب
+      events: [
+        `${nameOf(t, action.seat)}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`,
+        ...[1, 2, 3].map((k) => nextSeat(action.seat, k)).filter((s) => before.hands[s].length)
+          .map((s) => `أوراق ${nameOf(t, s)}: ${before.hands[s].map(cardLabel).join('، ')}`),
+      ],
       voices: ['sawa'],
     };
   }
@@ -703,13 +708,23 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       if (isBossLead(before, action.card)) voices.push('ekka');
       // البلوت تلقائي مع الورقة الثانية منه (الشايب أو البنت)
       if (after.balootSeat !== null && before.balootSeat === null) events.push(`${who}: بلوت`);
+      // آخر أكلة في الصكة: بعد ما يلعب أولهم، أوراق الباقين (ورقة وحدة مع كل واحد) تنزل تلقائياً وتنقرأ كلها
+      while (after.phase === 'playing' && after.trickNo === 7 && after.trick.length > 0 && after.hands[after.turn].length === 1) {
+        const seat = after.turn;
+        const card = after.hands[seat][0];
+        const prev = after;
+        after = applyAction(after, { type: 'play', seat, card });
+        events.push(`${nameOf(t, seat)}: ${cardLabel(card)}`);
+        if (after.balootSeat !== null && prev.balootSeat === null) events.push(`${nameOf(t, seat)}: بلوت`);
+      }
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
       }
       // كشف المشروع في اللفة الثانية: أول ما يجي دور صاحبه (قبل ما يلعب ورقته) تُنطق أوراق مشروعه
       // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)، ويوقف الدور عنده لحظات عشان الكل يشوفه
       const shown = revealProject(t, before, after);
-      if (shown) { events.push(...shown.events); reveal = shown.seat; }
+      // المشروع الملغي (مشروع الخصم أقوى) يُعلن بس، بدون مهلة: صاحبه يلعب على طول
+      if (shown) { events.push(...shown.events); if (!shown.cancelled) reveal = shown.seat; }
       handEnd();
       break;
     }
