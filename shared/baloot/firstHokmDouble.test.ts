@@ -19,25 +19,11 @@ function confirmFirstHokm(scores: [number, number]): GameState {
   }
   throw new Error('ما لقينا توزيعة');
 }
-const teamOfTurnBuyer = (s: GameState) => s.contract!.buyer % 2;
 
 describe('الدبل بعد تأكيد الحكم الأول', () => {
-  it('الكل تحت المية: ما فيه دبل', () => {
-    expect(confirmFirstHokm([40, 60]).phase).toBe('playing');
-  });
-  it('فريق الخصم فوق المية: يقدر يدبّل', () => {
-    // نجرب الحالتين: الخصم فوق المية (والمشتري تحتها أو فوقها)
-    for (const sc of [[50, 120], [120, 50], [110, 130]] as [number, number][]) {
-      const s = confirmFirstHokm(sc);
-      const opp = 1 - teamOfTurnBuyer(s);
-      expect(s.phase).toBe(sc[opp] > 100 ? 'doubling' : 'playing');
-    }
-  });
-  it('فريق المشتري فوق المية والخصم تحتها: ما يدبّل الخصم', () => {
-    for (const sc of [[120, 50], [50, 120]] as [number, number][]) {
-      const s = confirmFirstHokm(sc);
-      const buyerTeam = teamOfTurnBuyer(s);
-      if (sc[buyerTeam] > 100 && sc[1 - buyerTeam] < 100) expect(s.phase).toBe('playing');
+  it('ما يطلع الدبل أبداً، مهما كانت النتيجة (فوق المية أو تحتها، للمشتري أو للخصم)', () => {
+    for (const sc of [[40, 60], [50, 120], [120, 50], [110, 130], [0, 0]] as [number, number][]) {
+      expect(confirmFirstHokm(sc).phase).toBe('playing');
     }
   });
 });

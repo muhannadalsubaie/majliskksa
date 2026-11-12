@@ -216,11 +216,11 @@ const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' ||
 function finalizeContract(s: GameState, contract: Contract, noDouble = false, skipWaraq = false): GameState {
   const buyerTeam = teamOf(contract.buyer);
   const opp = otherTeam(buyerTeam);
-  // الحكم: دبل عادي. إلا تأكيد الحكم الأول (noDouble): ما فيه دبل، إلا لو فريق الخصم فوق المية
-  // (فريق المشتري فوق المية والخصم تحتها: ما يدبّل الخصم)
+  // الحكم: دبل عادي، إلا بعد تأكيد الحكم الأول (noDouble): ما فيه دبل أبداً، مهما كانت النتيجة
+  // (كان شرط الصن ينطبق عليه بالغلط فيطلع الدبل لو المشتري فوق المية)
   // الصن: الدبل بس لو المشتري فوق المية والخصم تحتها
   const canDouble = contract.mode === 'hokm'
-    ? !noDouble || s.scores[opp] > SUN_DOUBLE_THRESHOLD
+    ? !noDouble
     : s.scores[buyerTeam] > SUN_DOUBLE_THRESHOLD && s.scores[opp] < SUN_DOUBLE_THRESHOLD;
   const base: GameState = { ...s, contract, turn: nextSeat(s.dealer), doubling: freshDoubling() };
   // قبل الدبل وتوزيع باقي الورق: اللي معه «ورق» (بالترتيب من بعد الموزع) يختار بس أو ورق
