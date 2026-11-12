@@ -3,7 +3,7 @@ import type { Card, Seat } from './cards';
 import { applyAction, availableBids, canWaraq, dealHand, hasWaraq, needsRedeal, redeal, type GameState } from './game';
 import { cards, seededRng } from './testing';
 
-/** صكة بأيدي محددة: المقعد 1 معه «ورق» (ما فيه إكة ولا عشرة)، والباقين معهم إكك */
+/** صكة بأيدي محددة: المقعد 1 معه «ورق» (كل أوراقه ٧ و٨ و٩)، والباقين معهم إكك */
 function deal(): GameState {
   const s = dealHand(0, [0, 0], seededRng(1));
   const hands = [cards('AS AH KS QS JS'), cards('9S 8S 7S 9H 8H'), cards('AD AC KD QD JD'), cards('10S 10H 10D 10C KH')];
@@ -14,10 +14,18 @@ function deal(): GameState {
 const bid = (s: GameState, seat: Seat, b: Parameters<typeof availableBids>[0] extends never ? never : any) => applyAction(s, { type: 'bid', seat, bid: b });
 
 describe('ورق', () => {
-  it('eligible only with five cards and no ace or ten', () => {
+  it('eligible only when all five cards are 7, 8 or 9', () => {
     const s = deal();
     expect(hasWaraq(s, 1)).toBe(true);
     expect(([0, 2, 3] as Seat[]).some((x) => hasWaraq(s, x))).toBe(false);
+  });
+
+  it('a single picture card (king, queen or jack) means no ورق', () => {
+    const s = deal();
+    for (const extra of ['KC', 'QC', 'JC', '10C', 'AC']) {
+      const hand = [...cards('9S 8S 7S 9H'), ...cards(extra)];
+      expect(hasWaraq({ ...s, hands: [s.hands[0], hand, s.hands[2], s.hands[3]] }, 1)).toBe(false);
+    }
   });
 
   it('before anyone buys: only on your turn, and the same dealer redeals', () => {

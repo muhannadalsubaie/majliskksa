@@ -122,7 +122,7 @@ export type Action =
   | { type: 'play'; seat: Seat; card: Card }
   /** سوا: كل أوراقك مضمونة تاكل، فتنلعب كلها وتنحسب الأكلات الباقية لك */
   | { type: 'sawa'; seat: Seat }
-  /** «ورق»: أوراقك الخمس الأولى كلها أقل من العشرة — يعاد التوزيع. call=false = بس (في نافذة ما بعد الشراء) */
+  /** «ورق»: أوراقك الخمس الأولى كلها ٧ و٨ و٩ بس — يعاد التوزيع. call=false = بس (في نافذة ما بعد الشراء) */
   | { type: 'waraq'; seat: Seat; call: boolean };
 
 export class IllegalAction extends Error {}
@@ -234,10 +234,11 @@ function afterContract(base: GameState, canDouble: boolean): GameState {
 
 // ───── «ورق» ─────
 
-/** أوراقه الخمس الأولى كلها أقل من العشرة (ما فيها إكة ولا عشرة) */
+/** أوراقه الخمس الأولى كلها ٧ و٨ و٩ (ما فيها صورة ولا عشرة ولا إكة) */
 export function hasWaraq(s: GameState, seat: Seat): boolean {
   const h = s.hands[seat];
-  return h.length === 5 && h.every((c) => c.rank !== 'A' && c.rank !== '10');
+  // كل أوراقه الخمس ٧ أو ٨ أو ٩ بس (لو معه ولو ورقة وحدة صورة أو عشرة أو أكة: ما فيه ورق)
+  return h.length === 5 && h.every((c) => c.rank === '7' || c.rank === '8' || c.rank === '9');
 }
 
 /** هل اشترى أحد (حكم، صن، أشكل، حكم ثاني) — قبل توزيع باقي الورق */
