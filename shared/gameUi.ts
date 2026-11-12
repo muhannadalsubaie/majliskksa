@@ -92,7 +92,7 @@ export function jackarooUi(s: JackarooState, mySeat: number | null, names: strin
     return {
       label: `${cardName(c)}، ${burning ? 'حرق' : cardHint(c, s.rules.kingThirteen, s.rules.complex)}`,
       usable: myTurn && (burning || moves.length > 0),
-      moves: moves.map((m) => ({ move: m, text: moveText(m, names, me, me, jkNext(s, me)) })),
+      moves: moves.map((m) => ({ move: m, text: moveText(m, names, me, me, jkNext(s, me), s) })),
     };
   });
   let mineText = jkBoard(s, names, me);

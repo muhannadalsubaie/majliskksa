@@ -2,7 +2,7 @@
 import { RANK_NAMES as BALOOT_RANKS, SUIT_NAMES as SUIT } from '../baloot/cards';
 import {
   type Card, type JackarooState, type MarbleRef, type MoveSpec,
-  SAFE_SIZE, activeSeats, isTeams, nextPlayer, progressOf, teamOf, trackLen,
+  SAFE_SIZE, activeSeats, isTeams, nextPlayer, previewMove, progressOf, teamOf, trackLen,
 } from './engine';
 
 // نفس أسماء البلوت (أكة، شايب، بنت، ولد، والأرقام)
@@ -60,8 +60,26 @@ function movedMarbles(move: MoveSpec): MarbleRef[] {
 
 /** نص الحركة. actor = من لعبها (لمعرفة اللاعب التالي له) */
 /** next = اللاعب اللي بعد اللي لعب (يتخطى المقاعد الفاضية في اللعب بلاعبين أو ثلاثة) */
-export function moveText(move: MoveSpec, names: string[], me: number, actor = me, next = (actor + 1) % 4): string {
+export function moveText(move: MoveSpec, names: string[], me: number, actor = me, next = (actor + 1) % 4, s?: JackarooState): string {
   const n = (r: MarbleRef) => marbleName(r, names, me);
+  // خيارات اللاعب: «حجرك رقم ٣ في ٢٤» (رقم الحجر ووين يوصل)
+  const after = s ? previewMove(s, move) : null;
+  if (s && after) {
+    const num = (r: MarbleRef) => r.owner === me ? `حجرك رقم ${r.index + 1}` : `حجر ${names[r.owner]} رقم ${r.index + 1}`;
+    const at = (r: MarbleRef) => {
+      const m = after.marbles[r.owner][r.index];
+      return m.zone === 'safe' ? `في الأمان ${m.pos + 1}` : m.zone === 'home' ? 'في البيت' : `في ${m.pos}`;
+    };
+    switch (move.kind) {
+      case 'out': return `إنزال ${num(move.marble)} ${at(move.marble)}`;
+      case 'forward': return `${num(move.marble)} ${at(move.marble)}، يتقدم ${move.steps}`;
+      case 'back': return `${num(move.marble)} ${at(move.marble)}، يرجع ${move.steps} للخلف`;
+      case 'swap': return `تبديل ${num(move.mine)} مع ${num(move.other)}: ${num(move.mine)} يصير ${at(move.mine)}`;
+      case 'split': return move.parts.map((p) => `${num(p.marble)} ${at(p.marble)}`).join(' و');
+      case 'kingRun': return `${num(move.marble)} ${at(move.marble)}، يتقدم ${move.steps} ويأكل كل حجر يمر عليه`;
+      default: break;
+    }
+  }
   switch (move.kind) {
     case 'out': return `إنزال ${n(move.marble)}`;
     case 'forward': return `${n(move.marble)} يتقدم ${move.steps}`;

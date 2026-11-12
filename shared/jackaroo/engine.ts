@@ -434,6 +434,11 @@ function execute(s: JackarooState, move: MoveSpec): { state: JackarooState; capt
   }
 }
 
+/** وين توصل الأحجار لو انلعبت الحركة (لنص الخيارات)؛ null لو ما تنفع */
+export function previewMove(s: JackarooState, move: MoveSpec): JackarooState | null {
+  try { return execute(s, move).state; } catch { return null; }
+}
+
 export function applyJackaroo(s: JackarooState, a: JackarooAction, rng: Rng): JackarooState {
   if (s.phase !== 'playing') fail('انتهت اللعبة');
   if (s.turn !== a.seat) fail('ليس دورك');
