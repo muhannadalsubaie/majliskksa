@@ -459,21 +459,24 @@ export class TableRoom extends DurableObject<Env> {
   }
 
   /** المالك ينشئ رابط دعوة: عملة منه فوراً، والمدعو يدخل مجاناً */
-  async createInvite(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
+  async createInvite(uid: string, seat?: number, toName?: string): Promise<{ code: string } | { error: string }> {
     // ما تنخصم العملة الحين: تنخصم لما يدخل المدعو فعلاً. بس لازم يكون عنده عملة تكفي (نفحصها برا طابور اللعب)
     if (!(await this.db().canPay(uid, COINS.inviteFriend))) return { error: 'not-enough-coins' };
-    return this.serial(() => this.createInviteInner(uid, seat), 'invite');
+    return this.serial(() => this.createInviteInner(uid, seat, toName), 'invite');
   }
 
-  private async createInviteInner(uid: string, seat?: number): Promise<{ code: string } | { error: string }> {
+  private async createInviteInner(uid: string, seat?: number, toName?: string): Promise<{ code: string } | { error: string }> {
     const t = await this.load();
     if (!t) return { error: 'not-found' };
     if (t.ownerUid !== uid) return { error: 'not-owner' };
     const bytes = crypto.getRandomValues(new Uint8Array(6));
     const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
     await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined, uid));
-    // صوت «أُرسلت دعوة» يسمعه كل اللي على الطاولة
-    this.broadcast([], undefined, ['invite']);
+    // كل اللي على الطاولة: صوت «أُرسلت دعوة»، وقارئ الشاشة يقرأ «فلان أرسل دعوة إلى فلان»، وتنكتب في الدردشة
+    const from = memberName(t, uid) ?? 'مالك الطاولة';
+    const line = toName ? `${from} أرسل دعوة إلى ${toName}${isSeat(seat) ? ` للمقعد ${seat + 1}` : ''}` : `${from} أرسل دعوة`;
+    this.broadcast([line], undefined, ['invite']);
+    this.systemChat(line);
     return { code };
   }
 
@@ -642,6 +645,15 @@ export class TableRoom extends DurableObject<Env> {
       const code = (e as Error).message;
       const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError || e instanceof LudoError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
       ws.send(JSON.stringify({ type: 'error', message: text }));
+    }
+  }
+
+  /** سطر من الطاولة نفسها في الدردشة (مثل الدعوات): uid = system، والتطبيق ما يقرأه مرة ثانية */
+  private systemChat(text: string) {
+    const out = JSON.stringify({ type: 'chat', uid: 'system', name: 'الطاولة', text });
+    for (const w of this.ctx.getWebSockets()) {
+      if (w.readyState !== WebSocket.OPEN || (w.deserializeAttachment() as { chatOff?: boolean }).chatOff) continue;
+      try { w.send(out); } catch { /* مغلق */ }
     }
   }
 

@@ -493,7 +493,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const tableId = inviteFriendMatch[1];
       // يمكن أن تحجز الدعوة مقعداً محدداً (من شاشة المقاعد)
       const seat = typeof b.seat === 'number' ? b.seat : undefined;
-      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid, seat);
+      const toName = await usernameOf(friend).catch(() => '');
+      const r = await env.TABLES.get(env.TABLES.idFromString(tableId)).createInvite(user.uid, seat, toName || undefined);
       if ('error' in r) return json(r, r.error === 'not-enough-coins' ? 402 : 400);
       const fromName = await usernameOf(user.uid);
       await hub(friend).pushInvite({ tableId, code: r.code, fromUid: user.uid, fromName, at: Date.now() });
