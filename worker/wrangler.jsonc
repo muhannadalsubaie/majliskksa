@@ -19,13 +19,15 @@
     "bindings": [
       { "name": "TABLES", "class_name": "TableRoom" },
       { "name": "HUBS", "class_name": "UserHub" },
-      { "name": "VOICES", "class_name": "VoiceRoom" }
+      { "name": "VOICES", "class_name": "VoiceRoom" },
+      { "name": "PRESENCE", "class_name": "Presence" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["TableRoom"] },
     { "tag": "v2", "new_sqlite_classes": ["UserHub"] },
-    { "tag": "v3", "new_sqlite_classes": ["VoiceRoom"] }
+    { "tag": "v3", "new_sqlite_classes": ["VoiceRoom"] },
+    { "tag": "v4", "new_sqlite_classes": ["Presence"] }
   ],
   "vars": {
     "FIREBASE_PROJECT_ID": "majlisk-87eef",

@@ -15,6 +15,7 @@ const RENAME_EVERY_MS = 182 * 24 * 3600 * 1000;
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
 export { VoiceRoom } from './voice-room';
+export { Presence } from './presence';
 
 
 const CORS = {
@@ -148,6 +149,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const me = await verifyToken(url.searchParams.get('token') ?? '', env.FIREBASE_PROJECT_ID, devAuth);
       if (!me) return json({ error: 'unauthenticated' }, 401);
       return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(request);
+    }
+
+    // المتصلون في التطبيق كله: عددهم يوصل على طول، وأسماؤهم عند الطلب
+    if (pathname === '/presence/ws') {
+      const me = await verifyToken(url.searchParams.get('token') ?? '', env.FIREBASE_PROJECT_ID, devAuth);
+      if (!me) return json({ error: 'unauthenticated' }, 401);
+      // الاسم من ملفه (ما نصدّق اسم يرسله التطبيق)
+      let name = '';
+      try { name = String((await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', me.uid))?.username ?? ''); } catch { /* بدون اسم: ينحسب بس ما يطلع في القائمة */ }
+      const inner = new URL('https://presence/ws');
+      inner.searchParams.set('uid', me.uid);
+      inner.searchParams.set('name', name);
+      return env.PRESENCE.get(env.PRESENCE.idFromName('global')).fetch(new Request(inner, request));
     }
 
     // ───── إدارة (من GitHub Actions فقط): الدخول برمز Google لحساب الخدمة نفسه ─────
