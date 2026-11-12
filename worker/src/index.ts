@@ -151,6 +151,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       // المركز يعرف صاحبه (عشان يبلغ عدد المتصلين لما يدخل ويطلع)
       const inner = new Request(request);
       inner.headers.set('X-Uid', me.uid);
+      // رقم الجوال (للتسجيل من جوال واحد بس)
+      inner.headers.set('X-Device', (url.searchParams.get('device') ?? '').slice(0, 64));
       return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(inner);
     }
 
@@ -599,6 +601,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     // قبول/رفض دعوة طاولة
     // رمز إشعارات هذا الجهاز (بعد ما يسمح المستخدم بالإشعارات)
+    // سجّل دخول من هالجوال: يصير جوال الحساب، والجوالات الثانية يتسجل خروجها
+    if (pathname === '/profile/claim-device' && request.method === 'POST') {
+      const device = String((await body()).device ?? '').slice(0, 64);
+      if (!device) return json({ error: 'bad-request' }, 400);
+      await hub(user.uid).claimDevice(device);
+      return json({ ok: true });
+    }
+
     if (pathname === '/profile/push-token' && request.method === 'POST') {
       console.log('push token registered');
       const b = await body();

@@ -37,6 +37,28 @@ export class UserHub extends DurableObject<Env> {
     return all.filter((i) => Date.now() - i.at < INVITE_TTL_MS);
   }
 
+  // ───── جوال واحد لكل حساب ─────
+
+  /**
+   * سجّل دخول من جوال جديد: يصير هو جوال الحساب، وأي جوال ثاني متصل يتسجل خروجه على طول.
+   * الجوال اللي كان مقفل يتسجل خروجه أول ما يتصل (يشوف إن الجوال الحالي غيره)
+   */
+  async claimDevice(device: string) {
+    if (!device) return;
+    await this.ctx.storage.put('device', device);
+    for (const ws of this.ctx.getWebSockets()) {
+      const d = (ws.deserializeAttachment() as { device?: string } | null)?.device;
+      if (d && d !== device) this.kickDevice(ws);
+    }
+  }
+
+  private kickDevice(ws: WebSocket) {
+    try {
+      ws.send(JSON.stringify({ type: 'loggedOut', reason: 'other-device' }));
+      ws.close(4001, 'other device');
+    } catch { /* مغلق */ }
+  }
+
   async getState(): Promise<HubState> {
     const friends = await this.map('friends');
     const requests = await this.map('requests');
@@ -280,9 +302,20 @@ export class UserHub extends DurableObject<Env> {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
     const wasOnline = this.liveSockets().length > 0;
     const uid = request.headers.get('X-Uid') ?? '';
+    const device = request.headers.get('X-Device') ?? '';
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ at: Date.now(), uid });
+    // جوال قديم والحساب انفتح من جوال ثاني بعده: يتسجل خروجه (النسخ القديمة بدون رقم جوال ما تتأثر)
+    if (device) {
+      const current = await this.ctx.storage.get<string>('device');
+      if (!current) await this.ctx.storage.put('device', device);
+      else if (current !== device) {
+        pair[1].serializeAttachment({ at: 0, uid });
+        this.kickDevice(pair[1]);
+        return new Response(null, { status: 101, webSocket: pair[0] });
+      }
+    }
+    pair[1].serializeAttachment({ at: Date.now(), uid, device });
     // عدد المتصلين في التطبيق كله: كل نسخ التطبيق تتصل هنا (حتى القديمة اللي ما تعرف غرفة المتصلين)
     if (uid) void this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global')).hubOnline(uid).catch(() => {});
     pair[1].send(JSON.stringify({ type: 'state', ...(await this.getState()) }));
