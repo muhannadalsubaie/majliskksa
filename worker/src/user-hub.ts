@@ -45,14 +45,28 @@ export class UserHub extends DurableObject<Env> {
    */
   async claimDevice(device: string) {
     if (!device) return;
+    const before = await this.ctx.storage.get<string>('device');
     await this.ctx.storage.put('device', device);
+    if (before !== device) this.logDevice(`دخول من جوال جديد ${device.slice(0, 6)} (كان ${before ? before.slice(0, 6) : 'ولا شي'})`);
     for (const ws of this.ctx.getWebSockets()) {
       const d = (ws.deserializeAttachment() as { device?: string } | null)?.device;
-      if (d && d !== device) this.kickDevice(ws);
+      if (d && d !== device) this.kickDevice(ws, `جوال ${d.slice(0, 6)} طلع لأن الحساب دخل من ${device.slice(0, 6)}`);
     }
   }
 
-  private kickDevice(ws: WebSocket) {
+  /** هل هذا هو جوال الحساب الحالي؟ (التطبيق يتأكد قبل ما يسجّل خروجه) */
+  async isCurrentDevice(device: string): Promise<boolean> {
+    const current = await this.ctx.storage.get<string>('device');
+    return !current || current === device;
+  }
+
+  /** سجل التشخيص: متى ولماذا انسجل خروج جوال (أول ٦ حروف من رقم الجوال بس) */
+  private logDevice(line: string) {
+    void this.env.HUBS.get(this.env.HUBS.idFromName('__slow__')).appendNote(`${new Date().toISOString()} حساب: ${line}`).catch(() => {});
+  }
+
+  private kickDevice(ws: WebSocket, why?: string) {
+    if (why) this.logDevice(why);
     try {
       ws.send(JSON.stringify({ type: 'loggedOut', reason: 'other-device' }));
       ws.close(4001, 'other device');
@@ -311,7 +325,7 @@ export class UserHub extends DurableObject<Env> {
       if (!current) await this.ctx.storage.put('device', device);
       else if (current !== device) {
         pair[1].serializeAttachment({ at: 0, uid });
-        this.kickDevice(pair[1]);
+        this.kickDevice(pair[1], `جوال ${device.slice(0, 6)} رجع يتصل والحساب صار على ${current.slice(0, 6)}`);
         return new Response(null, { status: 101, webSocket: pair[0] });
       }
     }

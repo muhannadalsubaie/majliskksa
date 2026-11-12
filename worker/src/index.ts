@@ -609,6 +609,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ok: true });
     }
 
+    // التطبيق وصله «انسجل خروجك»: يتأكد إن جواله فعلاً مو جوال الحساب قبل ما يطلع
+    if (pathname === '/profile/device-status' && request.method === 'POST') {
+      const device = String((await body()).device ?? '').slice(0, 64);
+      return json({ current: await hub(user.uid).isCurrentDevice(device) });
+    }
+
     if (pathname === '/profile/push-token' && request.method === 'POST') {
       console.log('push token registered');
       const b = await body();
