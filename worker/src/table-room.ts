@@ -97,6 +97,7 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
     case 'declareBaloot': return { type: 'declareBaloot', seat };
     case 'sawa': return { type: 'sawa', seat };
     case 'play': return isCard(a.card) ? { type: 'play', seat, card: { suit: a.card.suit, rank: a.card.rank } } : null;
+    case 'waraq': return { type: 'waraq', seat, call: a.call !== false };
     default: return null;
   }
 }

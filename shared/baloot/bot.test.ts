@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Seat } from './cards';
 import { DEFAULT_BOT, botAction, hokmStrength, sunStrength } from './bot';
 import { winRate } from './botSim';
-import { applyAction, availableDouble, newMatch } from './game';
-import { cards, seededRng, toSecondHokmDoubling } from './testing';
+import { availableDouble, newMatch } from './game';
+import { cards, seededRng, toSecondHokmDoubling, applyAction } from './testing';
 
 describe('bot', () => {
   it('evaluates hands sensibly', () => {

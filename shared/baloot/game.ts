@@ -10,7 +10,8 @@ import { type HandScore, type MatchOutcome, matchOutcome, scoreHand } from './sc
 
 export type Rng = () => number;
 
-export type Phase = 'bidding' | 'doubling' | 'playing' | 'matchOver';
+/** waraq: بعد الشراء وقبل توزيع باقي الورق — اللي معه «ورق» يختار بس أو ورق */
+export type Phase = 'bidding' | 'waraq' | 'doubling' | 'playing' | 'matchOver';
 
 export type Bid =
   | { type: 'pass' }
@@ -102,6 +103,12 @@ export interface GameState {
   cardAbnat: [number, number];
   lastHand: HandScore | null;
   outcome: MatchOutcome;
+  /** «ورق» بعد الشراء: من بقي يُسأل (بالترتيب)، ووش يجي بعدهم (الدبل أو توزيع باقي الورق) */
+  waraqAsk?: Seat[];
+  waraqThen?: 'doubling' | 'deal';
+  /** من أعلن «ورق» (للإعلان)، وهل يعيد التوزيع نفس الموزع (ما اشترى أحد) أو اللي بعده */
+  waraqBy?: Seat;
+  redealSame?: boolean;
 }
 
 export type Action =
@@ -114,7 +121,9 @@ export type Action =
   | { type: 'declareBaloot'; seat: Seat }
   | { type: 'play'; seat: Seat; card: Card }
   /** سوا: كل أوراقك مضمونة تاكل، فتنلعب كلها وتنحسب الأكلات الباقية لك */
-  | { type: 'sawa'; seat: Seat };
+  | { type: 'sawa'; seat: Seat }
+  /** «ورق»: أوراقك الخمس الأولى كلها أقل من العشرة — يعاد التوزيع. call=false = بس (في نافذة ما بعد الشراء) */
+  | { type: 'waraq'; seat: Seat; call: boolean };
 
 export class IllegalAction extends Error {}
 
@@ -204,14 +213,70 @@ const bidEquals = (a: Bid, b: Bid) => a.type === b.type && (a.type !== 'hokm' ||
  * بعد الشراء: إن كان الدبل ممكناً يبدأ الدبل والكل ما زال بخمس أوراق (وورقة الأرض على الطاولة)،
  * ولا تُوزّع بقية الأوراق إلا بعد انتهاء الدبل. وإلا تُوزّع مباشرة ويبدأ اللعب.
  */
-function finalizeContract(s: GameState, contract: Contract, noDouble = false): GameState {
+function finalizeContract(s: GameState, contract: Contract, noDouble = false, skipWaraq = false): GameState {
   const buyerTeam = teamOf(contract.buyer);
   const opp = otherTeam(buyerTeam);
   const canDouble = !noDouble && contract.mode === 'hokm'
     || (s.scores[buyerTeam] > SUN_DOUBLE_THRESHOLD && s.scores[opp] < SUN_DOUBLE_THRESHOLD);
   const base: GameState = { ...s, contract, turn: nextSeat(s.dealer), doubling: freshDoubling() };
-  if (canDouble) return { ...base, phase: 'doubling', doubling: { ...freshDoubling(), awaitingTeam: opp } };
-  return dealRest(base);
+  // قبل الدبل وتوزيع باقي الورق: اللي معه «ورق» (بالترتيب من بعد الموزع) يختار بس أو ورق
+  // (دبّل أحد قبل التأكيد: ندخل الدبل على طول، واللي معه ورق يقدر يقوله أثناء الدبل)
+  const ask = skipWaraq ? [] : waraqSeats({ ...base, phase: 'waraq' });
+  if (ask.length) return { ...base, phase: 'waraq', waraqAsk: ask, waraqThen: canDouble ? 'doubling' : 'deal', turn: ask[0] };
+  return afterContract(base, canDouble);
+}
+
+function afterContract(base: GameState, canDouble: boolean): GameState {
+  const opp = otherTeam(teamOf(base.contract!.buyer));
+  if (canDouble) return { ...base, phase: 'doubling', turn: nextSeat(base.dealer), doubling: { ...freshDoubling(), awaitingTeam: opp } };
+  return dealRest({ ...base, turn: nextSeat(base.dealer) });
+}
+
+// ───── «ورق» ─────
+
+/** أوراقه الخمس الأولى كلها أقل من العشرة (ما فيها إكة ولا عشرة) */
+export function hasWaraq(s: GameState, seat: Seat): boolean {
+  const h = s.hands[seat];
+  return h.length === 5 && h.every((c) => c.rank !== 'A' && c.rank !== '10');
+}
+
+/** هل اشترى أحد (حكم، صن، أشكل، حكم ثاني) — قبل توزيع باقي الورق */
+const purchased = (s: GameState) => !!(s.contract || s.hokmBid || s.secondHokm || s.sunClaim);
+
+/** من يُسأل «بس أو ورق» بعد الشراء: كل من معه ورق، بالترتيب من بعد الموزع */
+function waraqSeats(s: GameState): Seat[] {
+  return [1, 2, 3, 4].map((n) => nextSeat(s.dealer, n)).filter((seat) => hasWaraq(s, seat));
+}
+
+/**
+ * يقدر يقول «ورق» الحين؟
+ *  • ما اشترى أحد: في دوره (اللفة الأولى أو الثانية) → يعاد التوزيع من نفس الموزع
+ *  • اشترى أحد ولسا ما توزع باقي الورق: في أي وقت (أو لما يجي دوره في نافذة بس/ورق) → التوزيع للي بعد الموزع
+ */
+export function canWaraq(s: GameState, seat: Seat): boolean {
+  if (!hasWaraq(s, seat) || !s.qaba && s.phase === 'bidding') return false;
+  if (s.phase === 'waraq') return s.turn === seat;
+  if (s.phase === 'doubling') return true;
+  if (s.phase !== 'bidding') return false;
+  return purchased(s) || s.turn === seat;
+}
+
+function applyWaraq(s: GameState, seat: Seat, call: boolean): GameState {
+  if (!call) {
+    // بس (في نافذة ما بعد الشراء): ننتقل للي بعده، وإذا خلصوا نكمل (الدبل أو توزيع باقي الورق)
+    if (s.phase !== 'waraq' || s.turn !== seat) fail('ليس دورك');
+    const rest = (s.waraqAsk ?? []).filter((x) => x !== seat);
+    if (rest.length) return { ...s, waraqAsk: rest, turn: rest[0] };
+    const { waraqAsk: _a, waraqThen, ...base } = s;
+    void _a;
+    return afterContract({ ...base, phase: 'bidding' } as GameState, waraqThen === 'doubling');
+  }
+  if (!canWaraq(s, seat)) fail('ما تقدر تقول ورق الحين');
+  // يعاد التوزيع: ما اشترى أحد → نفس الموزع، اشترى أحد → اللي بعده (الخادم يوزّع مثل «الكل قال بس»)
+  return {
+    ...s, phase: 'bidding', qaba: null, contract: null, hokmBid: null, hokmConfirm: false, secondHokm: null, sunClaim: null,
+    waraqAsk: undefined, waraqThen: undefined, waraqBy: seat, redealSame: !purchased(s), outcome: { status: 'ongoing' },
+  };
 }
 
 /** توزيع بقية الأوراق: ورقة الأرض لصاحبها، والباقي حتى يصبح مع كل لاعب ثماني أوراق، ثم يبدأ اللعب */
@@ -248,7 +313,7 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     // الحكم الثاني: اللون ما اختير بعد — ينتهي الدور على صاحبه ليختار اللون، ويُطبَّق الدبل بعده
     if (s.secondHokm) return { ...s, secondHokm: { seat: s.secondHokm.seat, remaining: 0, confirmed: true, doubledBy: seat }, turn: s.secondHokm.seat };
     const { seat: buyer, suit } = s.hokmBid!;
-    const bought = finalizeContract(s, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer });
+    const bought = finalizeContract(s, { mode: 'hokm', trump: suit, buyer, qabaTo: buyer }, false, true);
     return applyDouble(bought, seat);
   }
 
@@ -290,8 +355,9 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
     const owner = s.secondHokm.seat;
     if (s.secondHokm.remaining === 0 && bid.type === 'confirmHokm') return { ...s, secondHokm: { ...s.secondHokm, confirmed: true } };
     if (s.secondHokm.remaining === 0 && bid.type === 'hokm') {
-      const bought = finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner });
-      return s.secondHokm.doubledBy != null ? applyDouble(bought, s.secondHokm.doubledBy) : bought;
+      const doubledBy = s.secondHokm.doubledBy;
+      const bought = finalizeContract(s, { mode: 'hokm', trump: bid.suit, buyer: owner, qabaTo: owner }, false, doubledBy != null);
+      return doubledBy != null ? applyDouble(bought, doubledBy) : bought;
     }
     // بس من أحد البقية
     const remaining = s.secondHokm.remaining - 1;
@@ -316,7 +382,8 @@ function applyBid(s: GameState, seat: Seat, bid: Bid): GameState {
 export const needsRedeal = (s: GameState) => s.phase === 'bidding' && s.qaba === null;
 
 export function redeal(s: GameState, rng: Rng): GameState {
-  return dealHand(nextSeat(s.dealer), s.scores, rng);
+  // «ورق» قبل أي شراء: نفس الموزع يعيد التوزيع
+  return dealHand(s.redealSame ? s.dealer : nextSeat(s.dealer), s.scores, rng);
 }
 
 /** خيارات الدبل المتاحة لهذا المقعد الآن. */
@@ -529,6 +596,7 @@ export function applyAction(s: GameState, a: Action): GameState {
       return { ...s, balootSeat: a.seat };
     case 'play': return applyPlay(s, a.seat, a.card);
     case 'sawa': return applySawa(s, a.seat);
+    case 'waraq': return applyWaraq(s, a.seat, a.call);
   }
 }
 

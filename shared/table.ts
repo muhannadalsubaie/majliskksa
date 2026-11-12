@@ -3,7 +3,7 @@ import { type Card, type Seat, type Suit, type Team, MAX_PEOPLE_AT_TABLE, SUIT_N
 import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
-  canDeclareProject, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
+  canDeclareProject, canWaraq, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './baloot/game';
 import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
@@ -663,7 +663,7 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       } else {
         events.push(`${who} ${bidText(action.bid, before.bidRound)}`);
       }
-      if (needsRedeal(after)) { events.push('الكل مرّ مرتين — صكة، إعادة توزيع'); voices.push('paper'); }
+      if (needsRedeal(after) && after.waraqBy === undefined) { events.push('الكل مرّ مرتين — صكة، إعادة توزيع'); voices.push('paper'); }
       // الكل قال بس في اللفة الأولى: تبدأ اللفة الثانية
       else if (before.bidRound === 1 && after.bidRound === 2 && after.phase === 'bidding') voices.push('second');
       break;
@@ -694,6 +694,10 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     }
     case 'declareBaloot':
       events.push(`${who}: بلوت`);
+      break;
+    case 'waraq':
+      if (action.call) { events.push(`${who}: ورق — يعاد التوزيع${after.redealSame ? '' : ' من الموزع اللي بعده'}`); voices.push('paper'); }
+      else events.push(`${who}: بس`);
       break;
     case 'sawa': {
       // سوا (بعد كشف الأوراق): تنلعب وتنحسب الأكلات الباقية لفريقه وتنتهي الصكة
@@ -857,6 +861,9 @@ export interface GameView {
     canProject: boolean;
     canBaloot: boolean;
     canSawa: boolean;
+    /** «ورق»: الزر يطلع، وwaraqDecision = دورك في نافذة ما بعد الشراء (بس أو ورق) */
+    canWaraq: boolean;
+    waraqDecision: boolean;
   };
 }
 
@@ -947,6 +954,8 @@ export function viewFor(t: TableData, uid: string): TableView {
         canBaloot: playing && canDeclareBaloot(g, mySeat),
         // سوا: دورك تبدأ الأكلة وكل أوراقك مضمونة تاكل (اختياري)
         canSawa: playing && canSawa(g, mySeat),
+        canWaraq: playing && canWaraq(g, mySeat),
+        waraqDecision: playing && g.phase === 'waraq' && g.turn === mySeat,
       },
     };
   }

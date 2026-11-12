@@ -20,7 +20,8 @@ export function playMatch(a: Player, b: Player, rng: Rng, maxHands = 60): 0 | 1 
       const who = teamOf(seat) === 0 ? a : b;
       let action;
       if (who === 'random') {
-        if (s.phase === 'bidding' && s.turn === seat) action = { type: 'bid' as const, seat, bid: pick(availableBids(s, seat)) };
+        if (s.phase === 'waraq' && s.turn === seat) action = { type: 'waraq' as const, seat, call: false };
+        else if (s.phase === 'bidding' && s.turn === seat) action = { type: 'bid' as const, seat, bid: pick(availableBids(s, seat)) };
         else if (isDoublingTurn(s, seat)) action = { type: 'doublePass' as const, seat };
         else if (isLockChoiceTurn(s, seat)) action = { type: 'doubleLock' as const, seat, locked: false };
         else if (s.phase === 'playing' && s.turn === seat) action = { type: 'play' as const, seat, card: pick(legalCardsFor(s, seat)) };

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { Seat } from './cards';
 import { HAND_TOTAL, SUN_ABNAT_MULTIPLIER, teamOf } from './cards';
 import {
-  type GameState, IllegalAction, applyAction, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn,
+  type GameState, IllegalAction, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, dealHand, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
 } from './game';
-import { seededRng, toSecondHokmDoubling } from './testing';
+import { seededRng, toSecondHokmDoubling, applyAction } from './testing';
 
 const pick = <T>(xs: T[], rng: () => number) => xs[Math.floor(rng() * xs.length)];
 

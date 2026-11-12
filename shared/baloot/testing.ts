@@ -1,4 +1,4 @@
-import { applyAction, newMatch, type GameState } from './game';
+import { applyAction as rawApply, newMatch, type Action, type GameState } from './game';
 import type { Card, Rank, Seat, Suit } from './cards';
 
 /** "AS KS QS" → أوراق (للاختبارات) */
@@ -31,3 +31,10 @@ export function toSecondHokmDoubling(seed: number): GameState {
   const suit = (['S', 'H', 'C', 'D'] as Suit[]).find((x) => x !== s.qaba!.suit)!;
   return applyAction(s, { type: 'bid', seat: 1, bid: { type: 'hokm', suit } });
 }
+
+/** يطبّق الحركة، وإذا انفتحت نافذة «ورق» بعد الشراء يقول الكل بس (لاختبارات ما تخص «ورق») */
+export function passWaraq(s: GameState): GameState {
+  while (s.phase === 'waraq') s = rawApply(s, { type: 'waraq', seat: s.turn, call: false });
+  return s;
+}
+export const applyAction = (s: GameState, a: Action): GameState => passWaraq(rawApply(s, a));

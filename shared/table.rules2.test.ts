@@ -14,9 +14,10 @@ function playHand(seed: number, onPlay: (r: ReturnType<typeof applyWithEvents>, 
   let now = 10_000;
   for (let step = 0; step < 80; step++) {
     const g = t.game!;
-    if (g.lastHand || !['bidding', 'doubling', 'playing'].includes(g.phase)) break;
+    if (g.lastHand || !['bidding', 'waraq', 'doubling', 'playing'].includes(g.phase)) break;
     let seat: Seat = g.turn; let a: any;
-    if (g.phase === 'bidding') { const b = availableBids(g, seat); if (!b.length) break; a = { type: 'bid', seat, bid: b.find((x) => x.type === 'hokm') ?? b.find((x) => x.type === 'confirmHokm') ?? b.find((x) => x.type === 'pass')! }; }
+    if (g.phase === 'waraq') a = { type: 'waraq', seat, call: false };
+    else if (g.phase === 'bidding') { const b = availableBids(g, seat); if (!b.length) break; a = { type: 'bid', seat, bid: b.find((x) => x.type === 'hokm') ?? b.find((x) => x.type === 'confirmHokm') ?? b.find((x) => x.type === 'pass')! }; }
     else if (g.phase === 'doubling') { const s2 = ([0, 1, 2, 3] as Seat[]).find((x) => isDoublingTurn(g, x)); if (s2 === undefined) break; seat = s2; a = { type: 'doublePass', seat }; }
     else { const l = legalCardsFor(g, seat); a = { type: 'play', seat, card: l[Math.floor(rng() * l.length)] }; }
     const r = applyWithEvents(t, a, rng, now);
