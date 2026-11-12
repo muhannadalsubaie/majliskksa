@@ -410,6 +410,21 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ...state, friends });
     }
 
+    // قائمة المتصلين في التطبيق: كل لاعب وطاولته (اللعبة، وعامة أو خاصة) — مثل قائمة الأصدقاء
+    if (pathname === '/online/list' && request.method === 'POST') {
+      const all = await env.PRESENCE.get(env.PRESENCE.idFromName('global')).players();
+      // نجيب طاولات أول ٣٠٠ بس (الباقي يطلع بدون طاولة) عشان ما يثقل الطلب
+      const players = await Promise.all(all.map(async (p, i) => {
+        const base = { ...p, me: p.uid === user.uid };
+        if (i >= 300) return base;
+        const tableId = await hub(p.uid).currentTable().catch(() => null);
+        const t = tableId ? await env.TABLES.get(env.TABLES.idFromString(tableId)).friendTable(p.uid).catch(() => null) : null;
+        return t ? { ...base, tableId, tablePrivate: t.isPrivate, tableKind: t.kind, tableVariant: t.variant } : base;
+      }));
+      players.sort((a, b) => Number(b.me) - Number(a.me) || a.username.localeCompare(b.username, 'ar'));
+      return json({ count: all.length, players });
+    }
+
     // المحظورون: من حظرهم اللاعب من طاولاته، ورفع الحظر
     if (pathname === '/bans/list' && request.method === 'POST') {
       return json({ bans: await hub(user.uid).bans() });

@@ -56,6 +56,13 @@ export class Presence extends DurableObject<Env> {
     if (cur === null || cur > at) await this.ctx.storage.setAlarm(at);
   }
 
+  /** المتصلون الآن (كل لاعب مرة، واللي بدون اسم ما يطلع) — للقائمة مع طاولة كل واحد */
+  async players(): Promise<{ uid: string; username: string }[]> {
+    const seen = new Map<string, string>();
+    for (const { who } of this.live()) if (who.name && !seen.has(who.uid)) seen.set(who.uid, who.name);
+    return [...seen].slice(0, MAX_LIST).map(([uid, username]) => ({ uid, username }));
+  }
+
   async alarm() {
     const n = this.count();
     if (n !== this.lastSent) this.broadcast();
