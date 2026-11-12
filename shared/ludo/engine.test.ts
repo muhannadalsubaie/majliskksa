@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from '../baloot/testing';
 import { ludoBotAction } from './bot';
-import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, moveOptions, newGame } from './engine';
+import { type LudoState, DEFAULT_RULES, FINISH, TEAM_RULES, applyLudo, capturesAt, movableTokens, moveOptions, newGame, rollDice } from './engine';
 import { moveAnnouncement, optionText, personalize, squareText } from './labels';
 
 /** نرد مضبوط: يرجع القيم بالترتيب */
-const dice = (...vals: number[]) => { let i = 0; return () => { const v = vals[i++ % vals.length]; return v === 6 ? 0.1 : 0.25 + (v - 1) * 0.15 + 0.01; }; };
+const dice = (...vals: number[]) => { let i = 0; return () => { const v = vals[i++ % vals.length]; return (v - 1) / 6 + 0.01; }; };
 
 function base(over: Partial<LudoState> = {}): LudoState {
   return { ...newGame(() => 0, DEFAULT_RULES), turn: 0, ...over };
@@ -172,5 +172,13 @@ describe('lastRolled', () => {
       }
     }
     expect(seen.length).toBeGreaterThan(0);
+  });
+});
+
+describe('النرد العادل', () => {
+  it('كل رقم من 1 إلى 6 بنفس الفرصة', () => {
+    const counts = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < 6000; i++) counts[rollDice(() => (i + 0.5) / 6000) - 1]++;
+    expect(counts).toEqual([1000, 1000, 1000, 1000, 1000, 1000]);
   });
 });

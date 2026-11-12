@@ -103,7 +103,7 @@ describe('domino and jackaroo tables', () => {
     let t = startAny(table('ludo'), rng).table;
     t = { ...t, ludo: { ...t.ludo!, turn: 0, tokens: [[10, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]] } };
     // نرد ثابت 3: حجر واحد فقط يتحرك (البقية في البيت)
-    const three = () => 0.25 + 2 * 0.15 + 0.01;
+    const three = () => 2 / 6 + 0.01;
     const r = applyOther(t, parseLudo({ type: 'roll' }, 0)!, three);
     expect(r.events.map((e) => personalize(e, ['مهند'], 0))).toEqual(['رميت ثلاثة']);
     expect(r.events.map((e) => personalize(e, ['مهند'], 1))).toEqual(['مهند رمى ثلاثة']);

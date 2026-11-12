@@ -170,10 +170,9 @@ export function capturesAt(s: LudoState, owner: number, p: Progress): TokenRef[]
   return out;
 }
 
-/** النرد: الستة 25%، وكل رقم من 1 إلى 5 بـ 15% */
+/** النرد: عشوائي تماماً، كل رقم من 1 إلى 6 بنفس الفرصة (السدس) — العشوائية من مولّد التشفير في الخادم */
 export function rollDice(rng: Rng): number {
-  const r = rng();
-  return r < 0.25 ? 6 : 1 + Math.min(4, Math.floor((r - 0.25) / 0.15));
+  return 1 + Math.min(5, Math.floor(rng() * 6));
 }
 
 export function applyLudo(s: LudoState, a: LudoAction, rng: Rng): LudoState {
