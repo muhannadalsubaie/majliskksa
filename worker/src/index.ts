@@ -9,6 +9,9 @@ import { verifySsv } from './ads';
 import type { VoiceRequest } from './voice-room';
 import { type VerifiedPurchase, accountTokenFor, consumeGoogle, verifyApple, verifyGoogle } from './purchases';
 
+/** تغيير اسم المستخدم: مرة كل ستة أشهر (١٨٢ يوم) */
+const RENAME_EVERY_MS = 182 * 24 * 3600 * 1000;
+
 export { TableRoom } from './table-room';
 export { UserHub } from './user-hub';
 export { VoiceRoom } from './voice-room';
@@ -307,6 +310,41 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       await db.update('users', user.uid, { username });
       return json({ ok: true, username });
+    }
+
+    // تغيير اسم المستخدم: مرة كل ٦ أشهر، والاسم القديم يصير متاح لغيرك.
+    // { check: true } يرجع متى يقدر يغيّر بدون ما يغيّر شي
+    if (pathname === '/profile/rename' && request.method === 'POST') {
+      const body = (await request.json().catch(() => ({}))) as { username?: unknown; check?: unknown };
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      const profile = await db.get('users', user.uid);
+      const current = String(profile?.username ?? '');
+      if (!current) return json({ error: 'no-username' }, 400);
+      // آخر تغيير بالمللي ثانية (رقم، لأن قارئ Firestore عندنا يقرأ الأرقام والنصوص بس)
+      const last = Number(profile?.usernameChangedMs ?? 0);
+      const nextAt = last ? last + RENAME_EVERY_MS : 0;
+      if (body.check === true) return json({ ok: true, nextAt: nextAt > Date.now() ? nextAt : 0 });
+      if (nextAt > Date.now()) return json({ error: 'too-soon', nextAt }, 429);
+      const raw = typeof body.username === 'string' ? body.username : '';
+      const invalid = validateUsername(raw);
+      if (invalid) return json({ error: invalid }, 400);
+      const username = cleanUsername(raw);
+      if (username === current) return json({ error: 'same' }, 400);
+      const oldKey = usernameKey(current), newKey = usernameKey(raw);
+      if (newKey !== oldKey && !(await db.createIfMissing('usernames', newKey, { uid: user.uid, username, createdAt: new Date() }))) {
+        const holder = await db.get('usernames', newKey);
+        if (holder?.uid !== user.uid) return json({ error: 'taken' }, 409);
+      }
+      const now = Date.now();
+      await db.update('users', user.uid, { username, usernameChangedMs: now });
+      // الاسم القديم يتحرر (إلا لو هو نفس الاسم بتشكيل أو حالة حروف مختلفة)
+      if (newKey !== oldKey) {
+        const old = await db.get('usernames', oldKey);
+        if (old?.uid === user.uid) await db.remove('usernames', oldKey);
+      } else await db.update('usernames', newKey, { username });
+      const friends = await hub(user.uid).friendIds();
+      for (const f of friends) await hub(f).renameFriend(user.uid, username);
+      return json({ ok: true, username, nextAt: now + RENAME_EVERY_MS });
     }
 
     // رفع صورتك الشخصية (أو حذفها): صورة JPEG أو PNG صغيرة (التطبيق يقصّها مربعة ويصغّرها)
