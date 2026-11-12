@@ -21,7 +21,7 @@ export async function sendPush(projectId: string, serviceAccountJson: string, to
           notification: { title: msg.title, body: msg.body },
           data: msg.data,
           android: { priority: 'HIGH', notification: { channel_id: 'invites', sound: 'default' } },
-          apns: { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'default' } } },
+          apns: { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'notify.caf' } } },
         },
       }),
     }).catch(() => null);
