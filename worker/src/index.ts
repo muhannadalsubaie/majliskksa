@@ -73,6 +73,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // فحص توفر اسم المستخدم (متاح قبل إنشاء الحساب، لذلك بدون تسجيل دخول)
+    // تشخيص: التطبيق لقى نفسه مطلّع (بدون ما يضغط اللاعب «تسجيل الخروج») يرسل السبب لسجل التشخيص.
+    // بدون أي بيانات شخصية: أول ٦ حروف من رقم الجوال، ونوع الخطأ بس
+    if (pathname === '/diag/auth' && request.method === 'POST') {
+      const b = (await request.json().catch(() => ({}))) as { device?: unknown; what?: unknown; detail?: unknown };
+      const line = `دخول ضاع: جوال ${String(b.device ?? '').slice(0, 6)} ${String(b.what ?? '').slice(0, 40)} ${String(b.detail ?? '').replace(/\s+/g, ' ').slice(0, 120)}`;
+      await env.HUBS.get(env.HUBS.idFromName('__slow__')).appendNote(`${new Date().toISOString()} ${line}`).catch(() => {});
+      return json({ ok: true });
+    }
+
     if (pathname === '/username/available' && request.method === 'POST') {
       const body = (await request.json().catch(() => ({}))) as { username?: unknown };
       const raw = typeof body.username === 'string' ? body.username : '';
