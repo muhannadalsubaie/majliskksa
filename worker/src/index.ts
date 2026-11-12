@@ -148,7 +148,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (pathname === '/me/ws') {
       const me = await verifyToken(url.searchParams.get('token') ?? '', env.FIREBASE_PROJECT_ID, devAuth);
       if (!me) return json({ error: 'unauthenticated' }, 401);
-      return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(request);
+      // المركز يعرف صاحبه (عشان يبلغ عدد المتصلين لما يدخل ويطلع)
+      const inner = new Request(request);
+      inner.headers.set('X-Uid', me.uid);
+      return env.HUBS.get(env.HUBS.idFromName(me.uid)).fetch(inner);
     }
 
     // المتصلون في التطبيق كله: عددهم يوصل على طول، وأسماؤهم عند الطلب

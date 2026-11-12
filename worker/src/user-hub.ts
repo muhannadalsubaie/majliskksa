@@ -279,9 +279,12 @@ export class UserHub extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('bad request', { status: 400 });
     const wasOnline = this.liveSockets().length > 0;
+    const uid = request.headers.get('X-Uid') ?? '';
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ at: Date.now() });
+    pair[1].serializeAttachment({ at: Date.now(), uid });
+    // عدد المتصلين في التطبيق كله: كل نسخ التطبيق تتصل هنا (حتى القديمة اللي ما تعرف غرفة المتصلين)
+    if (uid) void this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global')).hubOnline(uid).catch(() => {});
     pair[1].send(JSON.stringify({ type: 'state', ...(await this.getState()) }));
     // صار متصلاً: أصدقاؤه يشوفونه متصل فوراً
     if (!wasOnline) this.notifyFriends();
@@ -296,7 +299,11 @@ export class UserHub extends DurableObject<Env> {
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closed */ }
     // خرج من التطبيق (آخر اتصال له): أصدقاؤه يشوفونه غير متصل فوراً
-    if (this.liveSockets(ws).length === 0) this.notifyFriends();
+    if (this.liveSockets(ws).length === 0) {
+      this.notifyFriends();
+      const uid = (ws.deserializeAttachment() as { uid?: string } | null)?.uid;
+      if (uid) void this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global')).hubOffline(uid).catch(() => {});
+    }
   }
 
   async webSocketError(ws: WebSocket) {
