@@ -472,6 +472,8 @@ export class TableRoom extends DurableObject<Env> {
     const bytes = crypto.getRandomValues(new Uint8Array(6));
     const code = [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
     await this.save(addInvite(t, code, isSeat(seat) && t.seats[seat] === null ? seat : undefined, uid));
+    // صوت «أُرسلت دعوة» يسمعه كل اللي على الطاولة
+    this.broadcast([], undefined, ['invite']);
     return { code };
   }
 
