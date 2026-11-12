@@ -18,6 +18,7 @@ import type { VoiceInfo } from './voice-room';
 import type { Env } from './env';
 import { Firestore } from './firestore';
 import { rigTieDeal, tieHint } from '../../shared/baloot/tieRig';
+import { refreshClock, timeoutAction, validTurnLimit } from '../../shared/turnClock';
 
 /** تجربة التعادل 81–81: مرة وحدة بس، لأول توزيع حكم في طاولة جالس فيها هالأربعة */
 const TIE_RIG_USERS = ['ياسر', 'البرجوازي', 'محمد', 'خالد'].map(usernameKey);
@@ -33,7 +34,7 @@ type ClientMessage =
   | { type: 'jackaroo'; action: unknown }
   | { type: 'ludo'; action: unknown }
   | { type: 'addBot'; seat: number }
-  | { type: 'start' }
+  | { type: 'start'; turnLimit?: number }
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
@@ -298,7 +299,9 @@ export class TableRoom extends DurableObject<Env> {
 
   private publishedScore?: string;
   private async save(t0: TableData) {
-    const t = t0.voice ? (({ voice: _v, voiceSince: _s, ...rest }) => { void _v; void _s; return rest as TableData; })(t0) : t0;
+    const t1 = t0.voice ? (({ voice: _v, voiceSince: _s, ...rest }) => { void _v; void _s; return rest as TableData; })(t0) : t0;
+    // مؤقت الدور: وقت جديد لو تغيّر الدور
+    const t = refreshClock(t1);
     this.table = t;
     await this.ctx.storage.put('table', t);
     // النتيجة تغيّرت (انتهت صكة أو جولة): نحدّث الملخص العام في الخلفية، عشان تطلع في قائمة الطاولات
@@ -705,8 +708,11 @@ export class TableRoom extends DurableObject<Env> {
       case 'start': {
         if (!isOwner) throw new Error('not-owner');
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
-        const started = startAny(t, rng);
+        // مؤقت الدور: اللي اختاره المالك من القائمة (بدونه يبقى اختيار المباراة السابقة)
+        const limit = validTurnLimit(msg.turnLimit);
+        const started = startAny(limit === null ? t : { ...t, turnLimit: limit }, rng);
         const { events, voices } = started;
+        if (limit) events.push(`وقت كل دور ${limit} ثانية`);
         const next = await this.rigDeal(started.table);
         await this.save(next);
         this.broadcast(events, undefined, voices);
@@ -1008,7 +1014,8 @@ export class TableRoom extends DurableObject<Env> {
     // فحص النبضات ما دام فيه اتصالات تنبض
     const staleAt = this.nextStaleCheck();
     const pendingAt = await this.nextPendingOffline();
-    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity);
+    const clockAt = t?.clock?.deadline ?? Infinity;
+    const at = Math.min(holdUntil || Infinity, botAt ?? Infinity, awayAt ?? Infinity, lobbyAt ?? Infinity, staleAt ?? Infinity, pendingAt ?? Infinity, clockAt);
     if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
     else await this.ctx.storage.deleteAlarm();
   }
@@ -1070,6 +1077,27 @@ export class TableRoom extends DurableObject<Env> {
       await this.save(cur);
       this.broadcast([]);
     }
+    // خلص وقت الدور: الروبوت يلعب عن اللاعب أفضل حركة
+    const timeout = timeoutAction(cur);
+    if (timeout) {
+      const seat = cur.clock!.seat;
+      const name = cur.seats[seat]?.username ?? 'اللاعب';
+      let r: { table: TableData; events: string[]; voices?: string[] };
+      try {
+        r = timeout.game === 'baloot'
+          ? applyWithEvents(cur, timeout.action as Parameters<typeof applyWithEvents>[1], rng)
+          : applyOther(cur, timeout.action as Parameters<typeof applyOther>[1], rng);
+      } catch {
+        // الحركة ما نفعت: نوقف المؤقت لهالدور بدل ما يعيد المحاولة على طول
+        r = { table: { ...cur, clock: { ...cur.clock!, deadline: Infinity } }, events: [] };
+      }
+      r.table = await this.rigDeal(r.table);
+      await this.save(r.table);
+      this.broadcast(r.events.length ? [`خلص وقت ${name}`, ...r.events] : [], undefined, r.voices);
+      if (r.table.game?.phase === 'matchOver' || ((r.table.domino || r.table.jackaroo || r.table.ludo) && !otherActive(r.table))) await this.publish(r.table);
+      await this.schedule();
+      return;
+    }
     // دور الروبوت (قد يوقظنا المنبه مبكراً لمهلة منقطع، فلا نسبق وقت تفكيره)
     const botAt = await this.ctx.storage.get<number>('botAt');
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
@@ -1082,7 +1110,7 @@ export class TableRoom extends DurableObject<Env> {
     }
     if (step || !botAt || botAt <= Date.now() + 50) await this.schedule();
     else {
-      await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, this.nextStaleCheck() ?? Infinity));
+      await this.ctx.storage.setAlarm(Math.min(botAt, cur.hold?.until ?? Infinity, nextAwayDeadline(cur) ?? Infinity, nextLobbyDeadline(cur) ?? Infinity, this.nextStaleCheck() ?? Infinity, this.table?.clock?.deadline ?? Infinity));
     }
   }
 

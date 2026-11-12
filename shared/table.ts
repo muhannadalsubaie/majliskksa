@@ -12,6 +12,7 @@ import type { JackarooState } from './jackaroo/engine';
 import type { LudoState } from './ludo/engine';
 import { personalize as personalizeLudo } from './ludo/labels';
 import { human } from './botPace';
+import { type TurnClock, clockView } from './turnClock';
 import { type DominoUi, type JackarooUi, type LudoUi, dominoUi, jackarooUi, ludoUi } from './gameUi';
 
 /** أسماء المقاعد (للنصوص) */
@@ -53,6 +54,10 @@ export interface TableData {
   /** مهلة بعد شراء حكم أو صن قبل انتقال الدور: حتى هذا الوقت يبقى الدور ظاهراً عند صاحب القرار ولا أزرار لأحد */
   /** deal: مهلة بعد التوزيع (تنسمع ورقة الأرض قبل ما يبدأ الدور) */
   hold?: { until: number; seat: Seat; deal?: true };
+  /** مؤقت الدور (ثواني لكل دور، ٠ أو بدون = بلا وقت): يختاره المالك لما يبدأ المباراة */
+  turnLimit?: number;
+  /** وقت الدور الحالي: لو خلص، الروبوت يلعب عن اللاعب */
+  clock?: TurnClock;
   /** تجربة التعادل جارية في هالصكة (توزيع محسوب + توجيه كل لاعب بدوره) */
   tieRig?: boolean;
   /** «سوا» انضغط: أوراق الكل الباقية مكشوفة قدام أصحابها ثانيتين، وبعدها تنحسب الصكة */
@@ -897,6 +902,8 @@ export interface TableView {
   ui: DominoUi | JackarooUi | LudoUi | null;
   /** كم لاعب يقدر يبدأ اللعبة (البلوت والجاكارو 4، الدومينو 2 أو 4، اللودو 2 أو 3 أو 4) */
   startCounts: number[];
+  /** مؤقت الدور: limit = الثواني المختارة (٠ = بدون)، seat = اللي عليه الوقت، remainingMs = الباقي له */
+  clock: { limit: number; seat: number | null; remainingMs: number | null };
   /** سجل الدومينو لكل جولة */
   dominoLog: { hand: number; lines: string[] }[];
   /** سجل اللودو */
@@ -981,6 +988,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     ludo: t.ludo ?? null,
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
     startCounts: allowedPlayers(t),
+    clock: clockView(t),
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
     ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
