@@ -308,6 +308,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
         const name = String((await db.get('users', user.uid))?.username ?? '');
         const access = PRO_OPEN || dev || (!!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name)));
         await db.update('users', user.uid, { proAccess: access });
+        // المجرّبين: شهر تجربة مجاني يتفعل تلقائياً مرة وحدة (السجل يُنشأ ذرّياً فما يتكرر)
+        const tester = !!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name));
+        if (tester && await db.createIfMissing('gifts', `protrial-${user.uid}`, { uid: user.uid, coins: 0, at: new Date() })) {
+          const p = await db.get('users', user.uid);
+          const proGiftUntil = extendGift(p?.proGiftUntil);
+          await db.update('users', user.uid, { proGiftUntil, proUntil: proUntilOf(p?.proSubUntil, proGiftUntil) });
+        }
       }
       // هدايا لمرة واحدة: سجل الهدية يُنشأ مرة واحدة فقط (ذرّياً) قبل إضافة العملات، فلا تتكرر
       let gift = 0;
