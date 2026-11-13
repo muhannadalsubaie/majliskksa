@@ -231,11 +231,27 @@ function setMarble(s: JackarooState, r: MarbleRef, m: Marble): JackarooState {
 
 interface StepResult { state: JackarooState; captured: MarbleRef[]; enteredSafe: boolean }
 
-/** يحرك حجراً للأمام: يرجع null إن كانت الحركة غير ممكنة. burn = شايب الكمبلكس (يأكل ما يمر عليه) */
-function stepForward(s: JackarooState, ref: MarbleRef, steps: number, burn = false): StepResult | null {
+/**
+ * يحرك حجراً للأمام: يرجع null إن كانت الحركة غير ممكنة. burn = شايب الكمبلكس (يأكل ما يمر عليه).
+ * byOther = حرّكه لاعب غير صاحبه (الخمسة): ما يدخل منطقة أمان صاحبه، يكمل على المسار ويلف لفة ثانية،
+ * والحجر اللي داخل منطقة الأمان ما يتحرك (محمي).
+ */
+function stepForward(s: JackarooState, ref: MarbleRef, steps: number, burn = false, byOther = false): StepResult | null {
   const m = marble(s, ref);
   const L = trackLen(s.rules);
   if (m.zone === 'home' || steps <= 0) return null;
+  if (byOther) {
+    if (m.zone !== 'track') return null;
+    for (let k = 1; k < steps; k++) if (protectedAt(s, (m.pos + k) % L)) return null;
+    const pos = (m.pos + steps) % L;
+    if (protectedAt(s, pos)) return null;
+    const occ = occupantAt(s, pos);
+    if (occ && occ.owner === ref.owner) return null; // ما يوقف على حجر لنفس صاحبه
+    let next = s;
+    const captured: MarbleRef[] = [];
+    if (occ) { next = setMarble(next, occ, { zone: 'home' }); captured.push(occ); }
+    return { state: setMarble(next, ref, { zone: 'track', pos }), captured, enteredSafe: false };
+  }
   if (m.zone === 'safe') {
     const to = m.pos + steps;
     if (to >= SAFE_SIZE) return null;
@@ -326,7 +342,7 @@ export function movesForCard(s: JackarooState, seat: number, card: Card): MoveSp
   const out: MoveSpec[] = [];
   const can = (r: StepResult | null) => r !== null;
   const forward = (steps: number, refs = mine) => {
-    for (const marble of refs) if (can(stepForward(s, marble, steps))) out.push({ kind: 'forward', marble, steps });
+    for (const marble of refs) if (can(stepForward(s, marble, steps, false, marble.owner !== owner))) out.push({ kind: 'forward', marble, steps });
   };
   if (card.rank === 'A' || card.rank === 'K') {
     const home = mine.find((r) => s.marbles[r.owner][r.index].zone === 'home');
@@ -420,7 +436,8 @@ function execute(s: JackarooState, move: MoveSpec): { state: JackarooState; capt
   };
   switch (move.kind) {
     case 'out': return { state: apply(s, takeOut(s, move.marble)), captured, enteredSafe };
-    case 'forward': return { state: apply(s, stepForward(s, move.marble, move.steps), move.marble), captured, enteredSafe };
+    // الخمسة على حجر غيرك: ما يدخل منطقة أمان صاحبه (يكمل اللفة)
+    case 'forward': return { state: apply(s, stepForward(s, move.marble, move.steps, false, move.marble.owner !== controlledOwner(s, s.turn)), move.marble), captured, enteredSafe };
     case 'back': return { state: apply(s, stepBack(s, move.marble, move.steps)), captured, enteredSafe };
     case 'swap': return { state: apply(s, swap(s, move.mine, move.other)), captured, enteredSafe };
     case 'split': {

@@ -206,3 +206,30 @@ describe('five', () => {
     expect(moves.every((m) => m.kind === 'forward' && m.marble.owner === 2)).toBe(true);
   });
 });
+
+describe('الخمسة على حجر غيرك', () => {
+  // حجر المقعد 1 قبل منطقة أمانه بثلاث خانات (قاعدته 19، وآخر خانة قبل الأمان 18)
+  const near = (s: JackarooState) => (startOf(s.rules, 1) - 3 + trackLen(s.rules)) % trackLen(s.rules);
+
+  it('ما يدخل منطقة أمان صاحبه: يكمل على المسار ويلف لفة ثانية', () => {
+    const base = newGame(seededRng(1));
+    const s = setup([[track(40)], [track(near(base))], [], []], [card('5')]);
+    const move = movesForCard(s, 0, card('5')).find((m) => m.kind === 'forward' && m.marble.owner === 1)!;
+    expect(move).toBeDefined();
+    const after = applyJackaroo(s, { type: 'play', seat: 0, card: card('5'), move }, seededRng(2));
+    expect(after.marbles[1][0]).toEqual(track((near(base) + 5) % trackLen(base.rules)));
+  });
+
+  it('صاحب الحجر نفسه بالخمسة يدخل منطقة أمانه عادي', () => {
+    const base = newGame(seededRng(1));
+    const s = setup([[], [track(near(base))], [], []], [card('5')], { turn: 1, hands: [[card('2', 'H')], [card('5')], [card('2', 'D')], [card('2', 'C')]] });
+    const move = movesForCard(s, 1, card('5')).find((m) => m.kind === 'forward' && m.marble.owner === 1)!;
+    const after = applyJackaroo(s, { type: 'play', seat: 1, card: card('5'), move }, seededRng(2));
+    expect(after.marbles[1][0]).toEqual({ zone: 'safe', pos: 2 });
+  });
+
+  it('الحجر اللي داخل منطقة الأمان ما يحركه غير صاحبه', () => {
+    const s = setup([[track(40)], [{ zone: 'safe', pos: 0 }], [], []], [card('5')]);
+    expect(movesForCard(s, 0, card('5')).some((m) => m.kind === 'forward' && m.marble.owner === 1)).toBe(false);
+  });
+});
