@@ -23,4 +23,4 @@ export const proUntilOf = (subUntil: unknown, giftUntil: unknown) =>
  * PRO_OPEN = true يفتحها للجميع.
  */
 export const PRO_OPEN = false;
-export const PRO_TESTERS: string[] = [];
+export const PRO_TESTERS: string[] = ['ياسر', 'البرجوازي', 'خالد', 'محمد', 'المطور'];
