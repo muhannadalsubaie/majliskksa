@@ -83,6 +83,9 @@ export class UserHub extends DurableObject<Env> {
     };
   }
 
+  /** تنبيه يطلع للاعب داخل التطبيق لو كان مفتوح (مثل: وصلتك هدية الباقة الاحترافية) */
+  async notify(text: string) { await this.push({ type: 'notice', text }); }
+
   /** يرسل الحالة لكل اتصالات هذا اللاعب (قد يكون مفتوحاً على أكثر من جهاز) */
   private async push(extra?: Record<string, unknown>) {
     const state = await this.getState();

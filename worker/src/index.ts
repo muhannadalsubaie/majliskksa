@@ -7,7 +7,8 @@ import type { Env } from './env';
 import { Firestore, deleteAuthUser, parseServiceAccount } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './voice-room';
-import { type VerifiedPurchase, accountTokenFor, consumeGoogle, verifyApple, verifyGoogle } from './purchases';
+import { type VerifiedPurchase, type VerifiedSub, accountTokenFor, consumeGoogle, verifyApple, verifyAppleSub, verifyGoogle, verifyGoogleSub } from './purchases';
+import { PRO_GIFT_ID, extendGift, isPro, proUntilOf } from '../../shared/pro';
 
 /** تغيير اسم المستخدم: مرة كل ستة أشهر (١٨٢ يوم) */
 const RENAME_EVERY_MS = 182 * 24 * 3600 * 1000;
@@ -570,6 +571,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
         await env.HUBS.get(env.HUBS.idFromName('__purchase__')).setNote(`${new Date().toISOString()} ${platform} ${(e as Error).message}`).catch(() => {});
         return json({ error: 'not-verified' }, 400);
       }
+      // هدية الباقة الاحترافية لها مسارها (/gift/verify): هنا العملات بس، فما نستهلكها بالغلط
+      if (v.coins <= 0) return json({ error: 'not-coins' }, 400);
       if (v.accountToken && v.accountToken !== (await accountTokenFor(user.uid))) return json({ error: 'other-account' }, 403);
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
       const fresh = await db.createIfMissing('purchases', v.id, { uid: user.uid, productId: v.productId, coins: v.coins, at: new Date() });
@@ -583,6 +586,99 @@ async function handle(request: Request, env: Env): Promise<Response> {
       }
       if (platform === 'android') await consumeGoogle(env, v.productId, String(b.purchaseToken)).catch((e) => console.error('consume', e));
       return json({ ok: true, coins: v.coins, duplicate: !fresh });
+    }
+
+    // ───── الباقة الاحترافية ─────
+    // حالة الباقة: متى تنتهي (0 = مو مشترك)
+    if (pathname === '/pro/status') {
+      const profile = devAuth ? null : await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', user.uid);
+      const proUntil = Number(profile?.proUntil ?? 0);
+      return json({ pro: isPro(proUntil), proUntil });
+    }
+
+    // التحقق من الاشتراك الشهري مع Google/Apple وحفظ تاريخ نهايته. التطبيق يناديه بعد الشراء،
+    // وكل ما انفتح (عشان التجديد التلقائي والإلغاء)، ومن «استعادة المشتريات»
+    if (pathname === '/pro/verify' && request.method === 'POST') {
+      const b = await body();
+      const platform = String(b.platform ?? '');
+      let v: VerifiedSub;
+      try {
+        if (platform === 'android') v = await verifyGoogleSub(env, String(b.purchaseToken ?? ''));
+        else if (platform === 'ios') v = await verifyAppleSub(env, String(b.transactionId ?? ''));
+        else return json({ error: 'bad-request' }, 400);
+      } catch (e) {
+        console.error('sub verify', (e as Error).message);
+        await env.HUBS.get(env.HUBS.idFromName('__purchase__')).setNote(`${new Date().toISOString()} sub ${platform} ${(e as Error).message}`).catch(() => {});
+        return json({ error: 'not-verified' }, 400);
+      }
+      if (v.accountToken && v.accountToken !== (await accountTokenFor(user.uid))) return json({ error: 'other-account' }, 403);
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      // الاشتراك الواحد لحساب واحد: أول حساب يسجله يبقى صاحبه
+      await db.createIfMissing('subscriptions', v.id, { uid: user.uid, platform, at: new Date() });
+      const owner = await db.get('subscriptions', v.id);
+      if (owner?.uid !== user.uid) return json({ error: 'other-account' }, 403);
+      const profile = await db.get('users', user.uid);
+      const proUntil = proUntilOf(v.until, profile?.proGiftUntil);
+      await db.update('users', user.uid, { proSubUntil: v.until, proUntil });
+      return json({ ok: true, pro: isPro(proUntil), proUntil });
+    }
+
+    // الإهداء: نتأكد من اسم المستخدم قبل الدفع (يرجع الاسم كما هو مسجل)
+    if (pathname === '/gift/lookup' && request.method === 'POST') {
+      const b = await body();
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      const entry = await db.get('usernames', usernameKey(String(b.username ?? '')));
+      const uid = String(entry?.uid ?? '');
+      if (!uid) return json({ found: false });
+      return json({ found: true, uid, username: await usernameOf(uid), self: uid === user.uid });
+    }
+
+    // إهداء الباقة: شراء لمرة وحدة يدفعه لاعب، ويضيف شهر للاعب اللي كتب اسمه (ما يتجدد تلقائياً)
+    if (pathname === '/gift/verify' && request.method === 'POST') {
+      const b = await body();
+      const platform = String(b.platform ?? '');
+      const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      // المستلم أولاً: لو الاسم غلط ما نستهلك الشراء، فيقدر يعيد بالاسم الصحيح
+      const to = String((await db.get('usernames', usernameKey(String(b.username ?? ''))))?.uid ?? '');
+      if (!to) return json({ error: 'no-such-user' }, 404);
+      let v: VerifiedPurchase;
+      try {
+        if (platform === 'android') v = await verifyGoogle(env, PRO_GIFT_ID, String(b.purchaseToken ?? ''));
+        else if (platform === 'ios') v = await verifyApple(env, String(b.transactionId ?? ''));
+        else return json({ error: 'bad-request' }, 400);
+        if (v.productId !== PRO_GIFT_ID) throw new Error('not-a-gift');
+      } catch (e) {
+        console.error('gift verify', (e as Error).message);
+        await env.HUBS.get(env.HUBS.idFromName('__purchase__')).setNote(`${new Date().toISOString()} gift ${platform} ${(e as Error).message}`).catch(() => {});
+        return json({ error: 'not-verified' }, 400);
+      }
+      if (v.accountToken && v.accountToken !== (await accountTokenFor(user.uid))) return json({ error: 'other-account' }, 403);
+      // سجل الشراء يُنشأ مرة وحدة (ذرّياً) قبل إضافة الشهر، فما تتكرر الهدية
+      const fresh = await db.createIfMissing('purchases', v.id, { uid: user.uid, productId: v.productId, giftTo: to, coins: 0, at: new Date() });
+      let proUntil = 0;
+      if (fresh) {
+        try {
+          const profile = await db.get('users', to);
+          if (!profile) throw new Error('no-profile');
+          const proGiftUntil = extendGift(profile.proGiftUntil);
+          proUntil = proUntilOf(profile.proSubUntil, proGiftUntil);
+          await db.update('users', to, { proGiftUntil, proUntil });
+        } catch (e) {
+          await db.remove('purchases', v.id).catch(() => {}); // نسمح بإعادة المحاولة
+          throw e;
+        }
+        // المستلم يعرف: تنبيه داخل التطبيق، وإشعار على جواله
+        const fromName = await usernameOf(user.uid).catch(() => '');
+        const text = `${fromName || 'لاعب'} أهداك الباقة الاحترافية لمدة شهر`;
+        await hub(to).notify(text).catch(() => {});
+        const tokens = await hub(to).pushTokens().catch(() => [] as string[]);
+        if (tokens.length) {
+          const dead = await sendPush(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '', tokens, { title: 'هدية', body: text, data: { type: 'gift' } }).catch(() => [] as string[]);
+          await hub(to).removePushTokens(dead).catch(() => {});
+        }
+      }
+      if (platform === 'android') await consumeGoogle(env, v.productId, String(b.purchaseToken)).catch((e) => console.error('consume', e));
+      return json({ ok: true, duplicate: !fresh, proUntil });
     }
 
     // حذف الحساب نهائياً (مطلب Google Play وApp Store): الملف، اسم المستخدم، الأصدقاء، وحساب الدخول

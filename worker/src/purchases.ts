@@ -5,6 +5,7 @@
 // كل عملية تُسجَّل مرة واحدة فقط (purchases/{المعرّف}) فلا تتكرر الإضافة أبداً.
 import { SignJWT, decodeJwt, importPKCS8 } from 'jose';
 import { COIN_PACKS } from '../../shared/economy';
+import { PRO_GIFT_ID, PRO_SUB_ID } from '../../shared/pro';
 import type { Env } from './env';
 import { accessToken, describeServiceAccount, parseServiceAccount } from './firestore';
 
@@ -20,8 +21,11 @@ export interface VerifiedPurchase { id: string; productId: string; coins: number
 export const packCoins = (productId: string) => COIN_PACKS.find((p) => p.id === productId)?.coins ?? 0;
 
 /** يتحقق من شراء Google Play ويرجع بياناته، أو يرمي سبب الرفض */
+/** المنتجات اللي تنشرى مرة وحدة: باقات العملات وهدية الباقة الاحترافية */
+const oneTime = (productId: string) => packCoins(productId) > 0 || productId === PRO_GIFT_ID;
+
 export async function verifyGoogle(env: Env, productId: string, purchaseToken: string): Promise<VerifiedPurchase> {
-  if (!packCoins(productId)) throw new Error('unknown-product');
+  if (!oneTime(productId)) throw new Error('unknown-product');
   const token = await accessToken(playAccount(env), PLAY_SCOPE).catch((e: Error) => {
     throw new Error(`${e.message} [${playOk(env) ? 'play' : 'firebase'} ${describeServiceAccount(playAccount(env))}]`);
   });
@@ -70,7 +74,7 @@ export async function verifyApple(env: Env, transactionId: string): Promise<Veri
     if (t.bundleId !== PACKAGE) throw new Error('wrong-app');
     if (t.revocationDate) throw new Error('revoked');
     const productId = String(t.productId ?? '');
-    if (!packCoins(productId)) throw new Error('unknown-product');
+    if (!oneTime(productId)) throw new Error('unknown-product');
     return { id: `apple:${transactionId}`, productId, coins: packCoins(productId), accountToken: t.appAccountToken ?? '' };
   }
   throw new Error('apple-not-found');
@@ -83,4 +87,55 @@ export async function accountTokenFor(uid: string): Promise<string> {
   h[8] = (h[8] & 0x3f) | 0x80;
   const x = Array.from(h, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+
+/** اشتراك الباقة الاحترافية بعد التحقق من المتجر: متى ينتهي، ولمين */
+export interface VerifiedSub { id: string; until: number; accountToken: string }
+
+/**
+ * يتحقق من اشتراك Google Play (Subscriptions v2) ويرجع تاريخ نهايته، ويؤكده (وإلا يرجّع Google المبلغ بعد 3 أيام).
+ * الاشتراك الملغى يبقى صالح لين نهاية المدة المدفوعة.
+ */
+export async function verifyGoogleSub(env: Env, purchaseToken: string): Promise<VerifiedSub> {
+  const token = await accessToken(playAccount(env), PLAY_SCOPE);
+  const base = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}/purchases`;
+  const res = await fetch(`${base}/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`play-sub-${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  const p = (await res.json()) as {
+    subscriptionState?: string; acknowledgementState?: string; latestOrderId?: string;
+    lineItems?: { productId?: string; expiryTime?: string }[];
+    externalAccountIdentifiers?: { obfuscatedExternalAccountId?: string };
+  };
+  const item = (p.lineItems ?? []).find((l) => l.productId === PRO_SUB_ID);
+  if (!item) throw new Error('unknown-product');
+  const ok = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', 'SUBSCRIPTION_STATE_CANCELED'];
+  const until = ok.includes(p.subscriptionState ?? '') ? Date.parse(item.expiryTime ?? '') || 0 : 0;
+  if (until > 0 && p.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING') {
+    await fetch(`${base}/subscriptions/${PRO_SUB_ID}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      .catch((e) => console.error('sub acknowledge', e));
+  }
+  return { id: `play-sub:${purchaseToken.slice(0, 80)}`, until, accountToken: p.externalAccountIdentifiers?.obfuscatedExternalAccountId ?? '' };
+}
+
+/** يتحقق من اشتراك App Store: آخر حالة للاشتراك (بعد أي تجديد) برقم أي عملية منه */
+export async function verifyAppleSub(env: Env, transactionId: string): Promise<VerifiedSub> {
+  if (!/^\d{1,30}$/.test(transactionId)) throw new Error('bad-transaction');
+  const jwt = await appleToken(env);
+  for (const host of ['api.storekit.itunes.apple.com', 'api.storekit-sandbox.itunes.apple.com']) {
+    const res = await fetch(`https://${host}/inApps/v1/subscriptions/${transactionId}`, { headers: { Authorization: `Bearer ${jwt}` } });
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error(`apple-sub-${res.status}`);
+    const body = (await res.json()) as { bundleId?: string; data?: { lastTransactions?: { status?: number; originalTransactionId?: string; signedTransactionInfo?: string }[] }[] };
+    if (body.bundleId !== PACKAGE) throw new Error('wrong-app');
+    for (const last of (body.data ?? []).flatMap((d) => d.lastTransactions ?? [])) {
+      if (!last.signedTransactionInfo) continue;
+      const t = decodeJwt(last.signedTransactionInfo) as { productId?: string; expiresDate?: number; revocationDate?: number; appAccountToken?: string };
+      if (t.productId !== PRO_SUB_ID) continue;
+      // 1 = شغال، 3 = إعادة محاولة الدفع، 4 = مهلة الدفع؛ 2 = انتهى، 5 = مسترجع
+      const active = (last.status === 1 || last.status === 3 || last.status === 4) && !t.revocationDate;
+      return { id: `apple-sub:${last.originalTransactionId ?? transactionId}`, until: active ? Number(t.expiresDate ?? 0) : 0, accountToken: t.appAccountToken ?? '' };
+    }
+    throw new Error('unknown-product');
+  }
+  throw new Error('apple-not-found');
 }

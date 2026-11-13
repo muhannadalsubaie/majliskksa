@@ -1,3 +1,4 @@
+import { isPro } from '../../shared/pro';
 import { SignJWT, importPKCS8 } from 'jose';
 
 interface ServiceAccount { client_email: string; private_key: string; project_id: string }
@@ -167,8 +168,9 @@ export class Firestore {
       headers: { Authorization: `Bearer ${await accessToken(this.serviceAccountJson)}` },
     });
     if (!res.ok) return false;
-    const doc = (await res.json()) as { fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean } } };
-    return doc.fields?.unlimited?.booleanValue === true || Number(doc.fields?.coins?.integerValue ?? 0) >= amount;
+    const doc = (await res.json()) as { fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean }; proUntil?: { integerValue?: string } } };
+    // المشترك في الباقة الاحترافية يلعب بدون عملات طول مدة اشتراكه
+    return doc.fields?.unlimited?.booleanValue === true || isPro(Number(doc.fields?.proUntil?.integerValue ?? 0)) || Number(doc.fields?.coins?.integerValue ?? 0) >= amount;
   }
 
   async adjustCoins(uid: string, delta: number): Promise<number> {
@@ -179,11 +181,13 @@ export class Firestore {
       if (!res.ok) throw new Error(res.status === 404 ? 'no-profile' : `firestore ${res.status}`);
       const doc = (await res.json()) as {
         updateTime: string;
-        fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean } };
+        fields?: { coins?: { integerValue?: string }; unlimited?: { booleanValue?: boolean }; proUntil?: { integerValue?: string } };
       };
       const current = Number(doc.fields?.coins?.integerValue ?? 0);
       // حساب المطوّر: لا يُخصم منه شيء
       if (delta < 0 && doc.fields?.unlimited?.booleanValue === true) return current;
+      // المشترك في الباقة الاحترافية: ما ينخصم منه شيء طول مدة اشتراكه
+      if (delta < 0 && isPro(Number(doc.fields?.proUntil?.integerValue ?? 0))) return current;
       const coins = current + delta;
       if (coins < 0) throw new Error('not-enough-coins');
       const patch = await fetch(
