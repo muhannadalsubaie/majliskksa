@@ -145,3 +145,21 @@ export function hasBaloot(hand: Card[], trump: Suit | null): boolean {
   const four = (r: Card['rank']) => hand.filter((c) => c.rank === r).length === 4;
   return !four('K') && !four('Q');
 }
+
+/**
+ * القيد: الأوراق اللي فرشها اللاعب تكوّن مشروع واحد بالضبط؟ (سرا/خمسين/مية بالتسلسل من نفس النوع،
+ * أو أربع أوراق من نفس الرقم) — null لو ما تكوّن مشروع
+ */
+export function projectFromCards(cards: Card[], mode: GameMode): Project | null {
+  const n = cards.length;
+  if (n === 4 && cards.every((c) => c.rank === cards[0].rank)) {
+    const rank = cards[0].rank;
+    if (rank === 'A') return { kind: mode === 'sun' ? 'fourHundred' : 'hundred', cards, topRank: rank };
+    if (rank === 'J' || rank === 'K' || rank === 'Q' || rank === '10') return { kind: 'hundred', cards, topRank: rank };
+    return null;
+  }
+  if (n < 3 || n > 5 || !cards.every((c) => c.suit === cards[0].suit)) return null;
+  const idx = cards.map((c) => seqIndex(c.rank)).sort((a, b) => a - b);
+  for (let i = 1; i < n; i++) if (idx[i] !== idx[i - 1] + 1) return null;
+  return { kind: SEQ_KIND[n], cards: idx.map((k) => ({ suit: cards[0].suit, rank: SEQ_ORDER[k] })), topRank: SEQ_ORDER[idx[0]] };
+}

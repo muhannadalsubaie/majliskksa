@@ -3,8 +3,8 @@ import {
   LAST_TRICK_BONUS, SUN_DOUBLE_THRESHOLD, cardPoints, cardStrength, createDeck, nextSeat, otherTeam, sameCard, teamOf,
 } from './cards';
 import { type PlayedCard, legalCards, trickWinner } from './play';
-import { type DeclaredProjects, type ProjectResolution, findProjects, hasBaloot, resolveProjects } from './projects';
-import { type HandScore, type MatchOutcome, matchOutcome, scoreHand } from './scoring';
+import { type DeclaredProjects, type Project, type ProjectKind, type ProjectResolution, findProjects, hasBaloot, projectFromCards, resolveProjects } from './projects';
+import { type HandScore, type MatchOutcome, BALOOT_POINTS, abnatToPoints, matchOutcome, scoreHand } from './scoring';
 
 /** آلة حالة اللعبة — تعمل في Cloud Functions، والعميل يرسل "أفعالاً" فقط. */
 
@@ -113,7 +113,31 @@ export interface GameState {
   manualProjects?: boolean;
   /** مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم، لين تتوزع باقي الأوراق */
   waraqFree?: Seat[];
+  /**
+   * القيد والقطع (خيار المباراة): اللعب حر (أي ورقة)، والغلط ينسجل هنا بدون ما أحد يدري،
+   * والخصم يمسكه بـ«تسجيلة». والمشاريع تنعلن بنوعها وتنفرش أوراقها يدوي في اللفة الثانية.
+   */
+  qaid?: boolean;
+  /** زر «سوا» مقفل في هالمباراة (خيار المالك) */
+  noSawa?: boolean;
+  /** الغلطات في الصكة (سرية): مين، ووش نوعها */
+  fouls?: { seat: Seat; kind: FoulKind; trickNo: number }[];
+  /** مشاريع القيد: النوع اللي أعلنه، وهل فرشه صح (ok) أو غلط (ok=false)، وبدون shown = ما فرشه */
+  qaidProjects?: { seat: Seat; kind: ProjectKind; shown?: boolean; ok?: boolean }[];
+  /** آخر تسجيلة انحسمت فيها الصكة */
+  qaidResult?: { by: Seat; target: Seat; kind: QaidKind; correct: boolean };
 }
+
+/** غلطات اللعب: ما طلع بالحكم، ما دق بالحكم، قاطع، تربيع بحكم مقفل */
+export type FoulKind = 'noRaise' | 'noTrump' | 'revoke' | 'lockedLead';
+/** أنواع التسجيلة: غلطات اللعب، ومشروع غلط، وسوا غلط */
+export type QaidKind = FoulKind | 'badProject' | 'badSawa';
+export const QAID_NAMES: Record<QaidKind, string> = {
+  noRaise: 'ما طلع بالحكم', noTrump: 'ما دق بالحكم', revoke: 'قاطع', lockedLead: 'تربيع بحكم مقفل', badProject: 'مشروع غلط', badSawa: 'سوا غلط',
+};
+export const QAID_KINDS: QaidKind[] = ['noRaise', 'noTrump', 'revoke', 'lockedLead', 'badProject', 'badSawa'];
+const isQaidKind = (k: unknown): k is QaidKind => typeof k === 'string' && (QAID_KINDS as string[]).includes(k);
+export { isQaidKind };
 
 export type Action =
   | { type: 'bid'; seat: Seat; bid: Bid }
@@ -127,7 +151,13 @@ export type Action =
   /** سوا: كل أوراقك مضمونة تاكل، فتنلعب كلها وتنحسب الأكلات الباقية لك */
   | { type: 'sawa'; seat: Seat }
   /** «ورق»: أوراقك الخمس الأولى كلها ٧ و٨ و٩ بس — يعاد التوزيع. call=false = بس (في نافذة ما بعد الشراء) */
-  | { type: 'waraq'; seat: Seat; call: boolean };
+  | { type: 'waraq'; seat: Seat; call: boolean }
+  /** القيد: أعلن نوع مشروعك (قبل ورقتك الأولى) */
+  | { type: 'declareKind'; seat: Seat; kind: ProjectKind }
+  /** القيد: فرش أوراق مشروعك (في اللفة الثانية) */
+  | { type: 'showProject'; seat: Seat; cards: Card[] }
+  /** القيد: تسجيلة على لاعب من الفريق الثاني. sawaSeat = اللي ضغط سوا وأوراقه مكشوفة الحين (تحطه الطاولة) */
+  | { type: 'qaid'; seat: Seat; target: Seat; kind: QaidKind; sawaSeat?: Seat | null };
 
 export class IllegalAction extends Error {}
 
@@ -486,7 +516,7 @@ function applyDoublePass(s: GameState, seat: Seat): GameState {
 }
 
 export function canDeclareProject(s: GameState, seat: Seat): boolean {
-  return s.phase === 'playing' && s.trickNo === 0 && s.turn === seat
+  return !s.qaid && s.phase === 'playing' && s.trickNo === 0 && s.turn === seat
     && !s.declared.some((d) => d.seat === seat)
     && findProjects(s.initialHands[seat], s.contract!.mode).length > 0;
 }
@@ -506,14 +536,34 @@ export function legalCardsFor(s: GameState, seat: Seat): Card[] {
   return legalCards({ mode: c.mode, trump: c.trump, trick: s.trick, hand: s.hands[seat], seat, lockedSeat: lockedSeat(s), outstanding: s.hands.filter((_, i) => i !== seat).flat() });
 }
 
+/** الأوراق اللي تقدر تلعبها: مع القيد والقطع اللعب حر (أي ورقة في يدك) */
+export function playableCardsFor(s: GameState, seat: Seat): Card[] {
+  if (!s.qaid) return legalCardsFor(s, seat);
+  return s.phase === 'playing' && s.turn === seat ? s.hands[seat] : [];
+}
+
+/** وش الغلط في هالورقة (مع القيد): null = ورقة مسموحة */
+function foulOf(s: GameState, seat: Seat, card: Card): FoulKind | null {
+  if (legalCardsFor(s, seat).some((c) => sameCard(c, card))) return null;
+  const c = s.contract!;
+  if (!s.trick.length) return 'lockedLead';
+  const led = s.trick[0].card.suit;
+  const hand = s.hands[seat];
+  if (card.suit !== led && hand.some((x) => x.suit === led)) return 'revoke';
+  if (c.mode === 'hokm' && led === c.trump) return 'noRaise';
+  return 'noTrump';
+}
+
 function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
-  if (!legalCardsFor(s, seat).some((c) => sameCard(c, card))) fail('ورقة غير مسموحة');
+  if (!playableCardsFor(s, seat).some((c) => sameCard(c, card))) fail('ورقة غير مسموحة');
+  const foul = s.qaid ? foulOf(s, seat, card) : null;
+  if (foul) s = { ...s, fouls: [...(s.fouls ?? []), { seat, kind: foul, trickNo: s.trickNo }] };
   const c = s.contract!;
   const hands = s.hands.map((h, i) => (i === seat ? h.filter((x) => !sameCard(x, card)) : h));
   const trick = [...s.trick, { seat, card }];
   // الإعلان عن المشاريع إجباري وتلقائي: يُسجَّل مع أول ورقة يلعبها صاحبه
   // (مع خيار «إعلان المشاريع يدوي» ما ينسجل شيء تلقائياً: اللاعب يعلنه بنفسه قبل ورقته)
-  const declared = !s.manualProjects && s.trickNo === 0 && !s.declared.some((d) => d.seat === seat)
+  const declared = !s.manualProjects && !s.qaid && s.trickNo === 0 && !s.declared.some((d) => d.seat === seat)
     && findProjects(s.initialHands[seat], c.mode).length > 0
     ? [...s.declared, { seat, projects: findProjects(s.initialHands[seat], c.mode) }]
     : s.declared;
@@ -534,7 +584,8 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   if (s.trickNo === 7) cardAbnat[team] += LAST_TRICK_BONUS;
 
   next = { ...next, trick: [], lastTrick: { cards: trick, winner }, trickNo: s.trickNo + 1, tricksWon, cardAbnat, turn: winner };
-  if (s.trickNo === 0) next.projects = resolveProjects(next.declared, nextSeat(s.dealer), c.mode);
+  // القيد: المشاريع تنحسب بعد ما تنفرش في اللفة الثانية (المفروش صح بس)
+  if (s.trickNo === (s.qaid ? 1 : 0)) next.projects = resolveProjects(next.declared, nextSeat(s.dealer), c.mode);
   if (next.trickNo < 8) return next;
   return finishHand(next);
 }
@@ -609,7 +660,101 @@ export function applyAction(s: GameState, a: Action): GameState {
     case 'play': return applyPlay(s, a.seat, a.card);
     case 'sawa': return applySawa(s, a.seat);
     case 'waraq': return applyWaraq(s, a.seat, a.call);
+    case 'declareKind': return applyDeclareKind(s, a.seat, a.kind);
+    case 'showProject': return applyShowProject(s, a.seat, a.cards);
+    case 'qaid': return applyQaid(s, a.seat, a.target, a.kind, a.sawaSeat ?? null);
   }
+}
+
+// ───── القيد والقطع ─────
+
+/** القيد: أنواع المشاريع اللي تقدر تعلنها الحين (اللفة الأولى قبل ما تلعب ورقتك) */
+export function declarableKinds(s: GameState, seat: Seat): ProjectKind[] {
+  if (!s.qaid || s.phase !== 'playing' || s.trickNo !== 0 || s.lastHand || s.trick.some((p) => p.seat === seat)) return [];
+  const kinds: ProjectKind[] = ['sira', 'fifty', 'hundred'];
+  if (s.contract?.mode === 'sun') kinds.push('fourHundred');
+  return kinds;
+}
+
+function applyDeclareKind(s: GameState, seat: Seat, kind: ProjectKind): GameState {
+  if (!declarableKinds(s, seat).includes(kind)) fail('ما تقدر تعلن مشروع الحين');
+  return { ...s, qaidProjects: [...(s.qaidProjects ?? []), { seat, kind }] };
+}
+
+/** القيد: عندك مشروع معلن ما فرشته، والحين اللفة الثانية */
+export function canShowProject(s: GameState, seat: Seat): boolean {
+  return !!s.qaid && s.phase === 'playing' && s.trickNo === 1 && !s.lastHand && (s.qaidProjects ?? []).some((p) => p.seat === seat && !p.shown);
+}
+
+function applyShowProject(s: GameState, seat: Seat, cards: Card[]): GameState {
+  if (!canShowProject(s, seat)) fail('ما عندك مشروع تفرشه');
+  const pending = (s.qaidProjects ?? []).filter((p) => p.seat === seat && !p.shown);
+  const mode = s.contract!.mode;
+  const inHand = cards.length > 0 && cards.every((c) => s.initialHands[seat].some((x) => sameCard(x, c)))
+    && new Set(cards.map((c) => c.rank + c.suit)).size === cards.length;
+  const got = inHand ? projectFromCards(cards, mode) : null;
+  // أوراقه تطابق واحد من المشاريع اللي أعلنها؟ وإلا ينحسب أول مشروع معلن «مفروش غلط»
+  const match = got ? pending.find((p) => p.kind === got.kind) : undefined;
+  const target = match ?? pending[0];
+  const qaidProjects = (s.qaidProjects ?? []).map((p) => (p === target ? { ...p, shown: true, ok: !!match } : p));
+  if (!match) return { ...s, qaidProjects };
+  const prev = s.declared.find((d) => d.seat === seat);
+  const declared = prev
+    ? s.declared.map((d) => (d.seat === seat ? { seat, projects: [...d.projects, got!] } : d))
+    : [...s.declared, { seat, projects: [got as Project] }];
+  return { ...s, qaidProjects, declared };
+}
+
+/** القيد: تقدر تسجّل (الصكة شغالة بعد الشراء)، وعلى مين */
+export function qaidTargets(s: GameState, seat: Seat): Seat[] {
+  if (!s.qaid || s.phase !== 'playing' || s.lastHand) return [];
+  return ([0, 1, 2, 3] as Seat[]).filter((x) => teamOf(x) !== teamOf(seat));
+}
+
+/** هل التسجيلة صحيحة؟ */
+export function qaidCorrect(s: GameState, target: Seat, kind: QaidKind, sawaSeat: Seat | null): boolean {
+  if (kind === 'badSawa') return sawaSeat === target && !canSawa(s, target);
+  if (kind === 'badProject') {
+    return (s.qaidProjects ?? []).some((p) => p.seat === target && (p.ok === false || (!p.shown && s.trickNo >= 2)));
+  }
+  return (s.fouls ?? []).some((f) => f.seat === target && f.kind === kind);
+}
+
+/**
+ * التسجيلة: تنتهي الصكة على طول. صحيحة = الصكة كاملة لفريق المسجّل، غلط = الصكة كاملة للفريق الثاني.
+ * الصكة كاملة: نقاط الأوراق كلها (حكم ١٦، صن ٢٦) مضروبة في الدبل، ومعها المشاريع كلها (المفروشة صح) والبلوت.
+ */
+function applyQaid(s: GameState, seat: Seat, target: Seat, kind: QaidKind, sawaSeat: Seat | null): GameState {
+  if (!qaidTargets(s, seat).includes(target)) fail('ما تقدر تسجّل الحين');
+  if (kind === 'badSawa' && s.noSawa) fail('سوا مقفل');
+  const correct = qaidCorrect(s, target, kind, sawaSeat);
+  const winner: Team = correct ? teamOf(seat) : teamOf(target);
+  const c = s.contract!;
+  const resolved = resolveProjects(s.declared, nextSeat(s.dealer), c.mode);
+  const projectPoints = abnatToPoints(resolved.abnat[0] + resolved.abnat[1]) + (c.mode === 'hokm' && s.balootSeat !== null ? BALOOT_POINTS : 0);
+  const base = c.mode === 'sun' ? 26 : 16;
+  const points: [number, number] = [0, 0];
+  points[winner] = base * s.doubling.level + projectPoints;
+  const credited: [number, number] = [0, 0];
+  credited[winner] = projectPoints;
+  const lastHand: HandScore = {
+    points, cardAbnat: [...s.cardAbnat], projectPoints: credited,
+    buyerFailed: winner !== teamOf(c.buyer), kaboot: null, gahwaWinner: s.doubling.gahwa ? winner : null,
+  };
+  const scores: [number, number] = [s.scores[0] + points[0], s.scores[1] + points[1]];
+  const outcome = matchOutcome(scores, lastHand.gahwaWinner);
+  return {
+    ...s, scores, lastHand, outcome, trick: [], trickNo: 8, projects: resolved,
+    qaidResult: { by: seat, target, kind, correct },
+    phase: outcome.status === 'won' ? 'matchOver' : s.phase,
+  };
+}
+
+/** زر سوا: مع القيد يطلع كل ما بديت الأكلة (والغلط يمسكه الخصم)، وبدونه لو سوا مضمونة */
+export function sawaAvailable(s: GameState, seat: Seat): boolean {
+  if (s.noSawa) return false;
+  if (!s.qaid) return canSawa(s, seat);
+  return s.phase === 'playing' && s.turn === seat && s.trick.length === 0 && !!s.contract && s.hands[seat].length >= 2 && !s.lastHand;
 }
 
 /**
@@ -636,7 +781,9 @@ export function canSawa(s: GameState, seat: Seat): boolean {
 
 /** سوا: تنلعب الأكلات الباقية كلها (أنت تبدأ كل أكلة بحكمك أول، والباقين أي ورقة مسموحة) وتنتهي الصكة */
 function applySawa(s: GameState, seat: Seat): GameState {
-  if (!canSawa(s, seat)) fail('سوا غير ممكن');
+  if (!sawaAvailable(s, seat)) fail('سوا غير ممكن');
+  // القيد: سوا غلط وما أحد سجّلها خلال الكشف — تمشي، والأكلات الباقية كلها لفريقه
+  if (!canSawa(s, seat)) return awardRest(s, seat);
   const trump = s.contract!.mode === 'hokm' ? s.contract!.trump ?? null : null;
   let cur = s;
   for (let guard = 0; guard < 40 && cur.phase === 'playing' && cur.lastHand === null; guard++) {
@@ -651,4 +798,18 @@ function applySawa(s: GameState, seat: Seat): GameState {
     cur = applyPlay(cur, p, card);
   }
   return cur;
+}
+
+/** باقي الأكلات كلها لفريق اللاعب (سوا غلط ما انمسكت) */
+function awardRest(s: GameState, seat: Seat): GameState {
+  const c = s.contract!;
+  const team = teamOf(seat);
+  const left = s.hands.flat().concat(s.trick.map((p) => p.card));
+  const tricksWon: [number, number] = [...s.tricksWon];
+  const cardAbnat: [number, number] = [...s.cardAbnat];
+  tricksWon[team] += 8 - s.trickNo;
+  cardAbnat[team] += left.reduce((sum, x) => sum + cardPoints(x, c.mode, c.trump), 0) + LAST_TRICK_BONUS;
+  let next: GameState = { ...s, hands: [[], [], [], []], trick: [], trickNo: 8, tricksWon, cardAbnat };
+  if (s.trickNo <= (s.qaid ? 1 : 0)) next = { ...next, projects: resolveProjects(next.declared, nextSeat(s.dealer), c.mode) };
+  return finishHand(next);
 }

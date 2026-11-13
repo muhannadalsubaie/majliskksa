@@ -2,10 +2,11 @@ import {
   type Card, type Rank, type Seat, type Suit, SUITS, cardPoints, cardStrength, createDeck, nextSeat, sameCard, teamOf,
 } from './cards';
 import {
-  type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn, legalCardsFor,
+  type Action, type Bid, type GameState, availableBids, availableDouble, canShowProject, declarableKinds, isDoublingTurn, isLockChoiceTurn, legalCardsFor,
  canDeclareProject,
 } from './game';
 import { trickWinner } from './play';
+import { findProjects } from './projects';
 
 /**
  * الروبوت: يقيّم يده على أصول البلوت، ويتذكّر الأوراق التي نزلت في الصكة
@@ -622,6 +623,17 @@ export function choosePlayExpert(s: GameState, seat: Seat): Card {
 export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_BOT): Action | null {
   // إعلان المشاريع يدوي: الروبوت يعلن مشروعه قبل ما يلعب ورقته
   if (s.manualProjects && canDeclareProject(s, seat)) return { type: 'declareProject', seat };
+  // القيد والقطع: الروبوت يعلن نوع مشروعه قبل ورقته الأولى، ويفرش أوراقه صح في اللفة الثانية
+  if (s.qaid && s.phase === 'playing' && s.turn === seat) {
+    const mine = findProjects(s.initialHands[seat], s.contract!.mode);
+    const said = (s.qaidProjects ?? []).filter((p) => p.seat === seat);
+    if (declarableKinds(s, seat).length && said.length < mine.length) return { type: 'declareKind', seat, kind: mine[said.length].kind };
+    if (canShowProject(s, seat)) {
+      const next = said.find((p) => !p.shown)!;
+      const proj = mine.find((p) => p.kind === next.kind) ?? mine[0];
+      return { type: 'showProject', seat, cards: proj ? proj.cards : [s.initialHands[seat][0]] };
+    }
+  }
   // نافذة «ورق» بعد الشراء: الروبوت يقول بس
   if (s.phase === 'waraq') return s.turn === seat ? { type: 'waraq', seat, call: false } : null;
   if (s.phase === 'bidding' && s.turn === seat && s.qaba) return { type: 'bid', seat, bid: chooseBid(s, seat, params) };

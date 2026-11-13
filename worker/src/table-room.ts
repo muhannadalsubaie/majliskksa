@@ -3,7 +3,7 @@ import { usernameKey } from '../../shared/username';
 import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
-import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
+import { type Action, type Bid, IllegalAction, isQaidKind } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, pinnedPass, emptyPinned, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
@@ -35,7 +35,7 @@ type ClientMessage =
   | { type: 'jackaroo'; action: unknown }
   | { type: 'ludo'; action: unknown }
   | { type: 'addBot'; seat: number }
-  | { type: 'start'; turnLimit?: number; manualProjects?: boolean; qaid?: boolean }
+  | { type: 'start'; turnLimit?: number; manualProjects?: boolean; qaid?: boolean; sawa?: boolean }
   | { type: 'turnLimit'; turnLimit?: number }
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
@@ -101,6 +101,14 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
     case 'sawa': return { type: 'sawa', seat };
     case 'play': return isCard(a.card) ? { type: 'play', seat, card: { suit: a.card.suit, rank: a.card.rank } } : null;
     case 'waraq': return { type: 'waraq', seat, call: a.call !== false };
+    // القيد والقطع: إعلان نوع المشروع، وفرش أوراقه، والتسجيلة
+    case 'declareKind':
+      return a.kind === 'sira' || a.kind === 'fifty' || a.kind === 'hundred' || a.kind === 'fourHundred' ? { type: 'declareKind', seat, kind: a.kind } : null;
+    case 'showProject': {
+      if (!Array.isArray(a.cards) || a.cards.length > 5 || !a.cards.every(isCard)) return null;
+      return { type: 'showProject', seat, cards: (a.cards as { suit: Suit; rank: Rank }[]).map((c) => ({ suit: c.suit, rank: c.rank })) };
+    }
+    case 'qaid': return isSeat(a.target) && isQaidKind(a.kind) ? { type: 'qaid', seat, target: a.target, kind: a.kind } : null;
     default: return null;
   }
 }
@@ -708,7 +716,8 @@ export class TableRoom extends DurableObject<Env> {
         const action = parseAction(msg.action, seat);
         if (!action) throw new Error('bad-action');
         // خلال المهلة بين قرار اللاعب السابق وانتقال الدور (أو كشف أوراق «سوا») لا يُقبل قرار جديد
-        if (holding(t) || t.sawa) break;
+        // (التسجيلة تنقبل في أي وقت، حتى وقت كشف أوراق سوا)
+        if ((holding(t) || t.sawa) && action.type !== 'qaid') break;
         const r = applyWithEvents(t, action, rng);
         await this.save(r.table);
         this.broadcast(r.events, undefined, r.voices);
@@ -756,11 +765,14 @@ export class TableRoom extends DurableObject<Env> {
         const qaid = ownerPro && msg.qaid === true;
         // مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم
         const proSeats = baloot ? (await Promise.all(t.seats.map(async (m, i) => (m && !m.isBot && await this.isPro(m.uid) ? i : -1)))).filter((i) => i >= 0) : [];
-        const started = startAny({ ...t, ...(limit === null ? {} : { turnLimit: limit }), manualProjects, qaid, proSeats }, rng);
+        // زر سوا: المالك يقدر يقفله قبل البداية
+        const sawaOff = baloot && msg.sawa === false;
+        const started = startAny({ ...t, ...(limit === null ? {} : { turnLimit: limit }), manualProjects, qaid, sawaOff, proSeats }, rng);
         const { events, voices } = started;
         if (limit) events.push(`وقت كل دور ${limit} ثانية`);
         if (manualProjects) events.push('إعلان المشاريع يدوي');
-        if (qaid) events.push('القيد والقطع مفعّل');
+        if (qaid) events.push('القيد والقطع مفعّل: اللعب حر، والغلط يتسجّل');
+        if (sawaOff) events.push('زر سوا مقفل');
         const next = await this.rigDeal(stampMatchOptions(started.table));
         await this.save(next);
         this.broadcast(events, undefined, voices);

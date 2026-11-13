@@ -4,6 +4,7 @@ import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, canWaraq, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
+  QAID_NAMES, canShowProject, declarableKinds, playableCardsFor, qaidTargets, sawaAvailable,
 } from './baloot/game';
 import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
@@ -65,8 +66,10 @@ export interface TableData {
    * owner = صاحبها الدائم (يرجع مالكها كل ما دخل)، pass = بصمة كلمة المرور (ما نحفظ الكلمة نفسها)
    */
   pinned?: { owner: string; ownerName: string; pass: string };
-  /** القيد والقطع: الخيار جاهز، والقاعدة نفسها تنضاف لاحقاً */
+  /** القيد والقطع: اللعب حر، والغلط يمسكه الخصم بـ«تسجيلة» */
   qaid?: boolean;
+  /** زر «سوا» مقفل في هالمباراة (خيار المالك قبل البداية) */
+  sawaOff?: boolean;
   /** مقاعد المشتركين وقت بداية المباراة (زر «ورق» متاح لهم حتى لو مو دورهم) */
   proSeats?: number[];
   /** تجربة التعادل جارية في هالصكة (توزيع محسوب + توجيه كل لاعب بدوره) */
@@ -618,16 +621,19 @@ export function withDealHold(t: TableData, now = Date.now()): TableData {
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
 export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
 
-/** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة */
+/** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة (مع القيد ١٠ ثواني: الخصم يقدر يسجّل «سوا غلط») */
 export const SAWA_SHOW_MS = 2000;
+export const SAWA_SHOW_QAID_MS = 10000;
 
 export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Date.now()): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
+  // التسجيلة على «سوا غلط»: الطاولة تعرف مين أوراقه مكشوفة الحين
+  if (action.type === 'qaid') action = { ...action, sawaSeat: t.sawa?.seat ?? null };
   let after = applyAction(before, action);
   // «سوا»: أول شي تنكشف أوراق الكل الباقية ثانيتين (الصكة ما تنحسب الحين)، وبعدها الخطوة التلقائية تحسبها
   if (action.type === 'sawa' && !t.sawa) {
     return {
-      table: { ...t, sawa: { seat: action.seat, hands: before.hands.map((h) => [...h]) }, hold: { until: now + SAWA_SHOW_MS, seat: action.seat } },
+      table: { ...t, sawa: { seat: action.seat, hands: before.hands.map((h) => [...h]) }, hold: { until: now + (before.qaid ? SAWA_SHOW_QAID_MS : SAWA_SHOW_MS), seat: action.seat } },
       // قارئ الشاشة يقرأ كل الأوراق اللي انكشفت: صاحب السوا أول، ثم الباقين بالترتيب
       events: [
         `${nameOf(t, action.seat)}: سوا — ${before.hands[action.seat].map(cardLabel).join('، ')}`,
@@ -719,6 +725,20 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
     case 'declareBaloot':
       events.push(`${who}: بلوت`);
       break;
+    case 'declareKind':
+      events.push(`${who}: مشروع ${PROJECT_NAMES[action.kind]}`);
+      break;
+    case 'showProject': {
+      const p = (after.qaidProjects ?? []).filter((x) => x.seat === action.seat && x.shown).pop();
+      events.push(`${who} فرش ${p ? `مشروع ${PROJECT_NAMES[p.kind]}` : 'مشروعه'}: ${action.cards.map(cardLabel).join('، ')}`);
+      break;
+    }
+    case 'qaid': {
+      const r = after.qaidResult!;
+      events.push(`${who} سجّل على ${nameOf(t, action.target)}: ${QAID_NAMES[action.kind]} — ${r.correct ? 'تسجيلة صحيحة' : 'تسجيلة غلط'}`);
+      handEnd();
+      break;
+    }
     case 'waraq':
       if (action.call) { events.push(`${who}: ورق — يعاد التوزيع${after.redealSame ? '' : ' من الموزع اللي بعده'}`); voices.push('paper'); }
       else events.push(`${who}: بس`);
@@ -885,6 +905,9 @@ export interface GameView {
     canProject: boolean;
     canBaloot: boolean;
     canSawa: boolean;
+    declareKinds: string[];
+    canShowProject: boolean;
+    qaidTargets: number[];
     /** «ورق»: الزر يطلع، وwaraqDecision = دورك في نافذة ما بعد الشراء (بس أو ورق) */
     canWaraq: boolean;
     waraqDecision: boolean;
@@ -915,6 +938,8 @@ export interface TableView {
   /** خيارات مباراة البلوت الشغالة */
   manualProjects: boolean;
   qaid: boolean;
+  /** زر سوا مسموح في هالمباراة */
+  sawaOn: boolean;
   /** الدومينو والجاكارو: الحالة كاملة مع إخفاء قطع/أوراق الآخرين */
   domino: DominoState | null;
   jackaroo: JackarooState | null;
@@ -978,11 +1003,15 @@ export function viewFor(t: TableData, uid: string): TableView {
         double: playing ? availableDouble(g, mySeat) : null,
         canPassDouble: playing && isDoublingTurn(g, mySeat),
         chooseLock: playing && isLockChoiceTurn(g, mySeat),
-        legal: playing ? legalCardsFor(g, mySeat) : [],
+        legal: playing ? playableCardsFor(g, mySeat) : [],
         canProject: playing && canDeclareProject(g, mySeat),
         canBaloot: playing && canDeclareBaloot(g, mySeat),
         // سوا: دورك تبدأ الأكلة وكل أوراقك مضمونة تاكل (اختياري)
-        canSawa: playing && canSawa(g, mySeat),
+        canSawa: playing && sawaAvailable(g, mySeat),
+        // القيد والقطع: أنواع المشروع اللي تقدر تعلنها، وهل تفرش أوراقك الحين، وعلى مين تقدر تسجّل (حتى وقت كشف سوا)
+        declareKinds: playing ? declarableKinds(g, mySeat) : [],
+        canShowProject: playing && canShowProject(g, mySeat),
+        qaidTargets: mySeat !== null ? qaidTargets(g, mySeat) : [],
         canWaraq: playing && canWaraq(g, mySeat),
         waraqDecision: playing && g.phase === 'waraq' && g.turn === mySeat,
       },
@@ -1011,7 +1040,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
     startCounts: allowedPlayers(t),
     clock: clockView(t),
-    manualProjects: t.manualProjects === true, qaid: t.qaid === true,
+    manualProjects: t.manualProjects === true, qaid: t.qaid === true, sawaOn: t.sawaOff !== true,
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
     ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
@@ -1039,8 +1068,10 @@ export function stampMatchOptions(t: TableData): TableData {
   if (!g) return t;
   const manual = t.manualProjects === true;
   const free = (t.proSeats ?? []) as Seat[];
-  if ((g.manualProjects === true) === manual && (g.waraqFree ?? []).join() === free.join()) return t;
-  return { ...t, game: { ...g, manualProjects: manual, waraqFree: free } };
+  const qaid = t.qaid === true;
+  const noSawa = t.sawaOff === true;
+  if ((g.manualProjects === true) === manual && (g.waraqFree ?? []).join() === free.join() && (g.qaid === true) === qaid && (g.noSawa === true) === noSawa) return t;
+  return { ...t, game: { ...g, manualProjects: manual, waraqFree: free, qaid, noSawa } };
 }
 
 /** بصمة كلمة مرور الطاولة الثابتة (مربوطة برقم الطاولة) */
