@@ -309,7 +309,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
         // حساب المطوّر: بالإيميل، أو باسم المستخدم الرسمي (يستقبل تذاكر الدعم)
         const dev = unlimited || (!!name && DEV_USERNAMES.some((u) => usernameKey(u) === usernameKey(name)));
         await db.update('users', user.uid, { dev });
-        const access = PRO_OPEN || dev || (!!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name)));
+        const access = PRO_OPEN || (!!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name)));
         await db.update('users', user.uid, { proAccess: access });
         // المجرّبين: شهر تجربة مجاني يتفعل تلقائياً مرة وحدة (السجل يُنشأ ذرّياً فما يتكرر)
         const tester = !!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name));
