@@ -535,10 +535,13 @@ export function contractText(g: GameState): string {
   return c.mode === 'sun' ? 'صن' : `حكم ${SUIT_NAMES[c.trump!]}`;
 }
 
-/** مشروع أُعلن بعد مشروع بنفس قوته من لاعب سبقه: لا يُعلن (يُعلن مشروع الأسبق فقط) */
+/**
+ * مشروع أُعلن بعد مشروع بنفس قوته من **خصم** سبقه: لا يُعلن (يُعلن مشروع الأسبق فقط، وهو الفائز).
+ * مشروع الشريك المساوي ما يلغي مشروعك: مشاريع الفريق الفائز كلها تُحسب، فتُعلن وتنكشف كلها.
+ */
 function equalsEarlier(d: DeclaredProjects, earlier: DeclaredProjects[]): boolean {
   const best = (x: DeclaredProjects) => x.projects.reduce((a, b) => (compareProjects(b, a) > 0 ? b : a));
-  return earlier.some((e) => e.seat !== d.seat && e.projects.length > 0 && d.projects.length > 0 && compareProjects(best(d), best(e)) === 0);
+  return earlier.some((e) => teamOf(e.seat) !== teamOf(d.seat) && e.projects.length > 0 && d.projects.length > 0 && compareProjects(best(d), best(e)) === 0);
 }
 
 /** يطبق حركة ويرجع نصوص الإعلانات المناسبة لكل اللاعبين. */
@@ -573,11 +576,14 @@ function revealProject(t: TableData, before: GameState, after: GameState): { sea
   if (before.trickNo === 1 && before.turn === seat) return null;
   if (after.trick.some((p) => p.seat === seat)) return null;
   const d = after.declared.find((x) => x.seat === seat);
-  if (!d || equalsEarlier(d, after.declared.slice(0, after.declared.indexOf(d)))) return null;
+  if (!d) return null;
   const who = nameOf(t, seat);
+  // مشروع الفريق الفائز ينكشف دائماً (كل مشاريعه محسوبة)
   if (after.projects.winningTeam === teamOf(seat)) {
     return { seat, events: d.projects.map((p) => `مشروع ${who}: ${PROJECT_NAMES[p.kind]} — ${p.cards.map(cardLabel).join('، ')}`) };
   }
+  // مساوٍ لمشروع خصم سبقه: ما انعلن أصلاً، فما نقول «أُلغي»
+  if (equalsEarlier(d, after.declared.slice(0, after.declared.indexOf(d)))) return null;
   return { seat, events: [`أُلغي مشروع ${who}`], cancelled: true };
 }
 
