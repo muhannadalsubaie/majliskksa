@@ -600,6 +600,76 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ok: true, coins: v.coins, duplicate: !fresh });
     }
 
+    // ───── المساعدة والدعم: شكوى أو استفسار، يرد عليها المطور ─────
+    const support = () => env.HUBS.get(env.HUBS.idFromName('__support__'));
+    /** حساب المطور (نفس علامة العملات اللا محدودة) */
+    const isDev = async () => devAuth || (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256));
+    if (pathname === '/support/create' && request.method === 'POST') {
+      const b = (await request.json().catch(() => ({}))) as { kind?: unknown; text?: unknown; images?: unknown };
+      const kind = b.kind === 'complaint' ? 'complaint' : 'question';
+      const text = typeof b.text === 'string' ? b.text.trim().slice(0, 20000) : '';
+      if (!text) return json({ error: 'empty' }, 400);
+      const raw = Array.isArray(b.images) ? b.images.slice(0, 4) : [];
+      const images: ArrayBuffer[] = [];
+      for (const img of raw) {
+        if (typeof img !== 'string' || img.length > 3_000_000) return json({ error: 'bad-image' }, 400);
+        let bytes: Uint8Array;
+        try { bytes = Uint8Array.from(atob(img), (c) => c.charCodeAt(0)); } catch { return json({ error: 'bad-image' }, 400); }
+        const ok = (bytes[0] === 0xff && bytes[1] === 0xd8) || (bytes[0] === 0x89 && bytes[1] === 0x50);
+        if (!ok) return json({ error: 'bad-image' }, 400);
+        images.push(bytes.buffer as ArrayBuffer);
+      }
+      const username = await usernameOf(user.uid).catch(() => '');
+      const id = await support().supportCreate({ uid: user.uid, username, kind, text }, images);
+      return json({ ok: true, id });
+    }
+    // تذاكري (أو كل التذاكر للمطور مع all: true)
+    if (pathname === '/support/list' && request.method === 'POST') {
+      const b = await body();
+      const dev = await isDev();
+      const tickets = await support().supportList(b.all === true && dev ? undefined : user.uid);
+      return json({ tickets, dev });
+    }
+    // صورة مرفقة (لصاحب التذكرة أو المطور)
+    const supImg = pathname.match(/^\/support\/image\/([a-z0-9]{4,20})\/([0-3])$/);
+    if (supImg) {
+      const t = await support().supportGet(supImg[1]);
+      if (!t || (t.uid !== user.uid && !(await isDev()))) return json({ error: 'not-found' }, 404);
+      const img = await support().supportImage(supImg[1], Number(supImg[2]));
+      if (!img) return json({ error: 'not-found' }, 404);
+      const bytes = new Uint8Array(img);
+      return new Response(img, { headers: { 'Content-Type': bytes[0] === 0x89 ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, max-age=86400' } });
+    }
+    // رد: المطور يرد على أي تذكرة (ويوصل لصاحبها تنبيه وإشعار)، وصاحب التذكرة يرد على تذكرته
+    if (pathname === '/support/reply' && request.method === 'POST') {
+      const b = await body();
+      const id = String(b.id ?? ''); const text = String(b.text ?? '').trim().slice(0, 20000);
+      if (!text) return json({ error: 'empty' }, 400);
+      const t = await support().supportGet(id);
+      if (!t) return json({ error: 'not-found' }, 404);
+      const dev = await isDev();
+      if (!dev && t.uid !== user.uid) return json({ error: 'not-found' }, 404);
+      const from = dev && t.uid !== user.uid ? 'dev' : 'user';
+      const updated = await support().supportReply(id, from, text);
+      if (from === 'dev') {
+        const note = `وصلك رد من الدعم على ${t.kind === 'complaint' ? 'شكواك' : 'استفسارك'}`;
+        await hub(t.uid).notify(note).catch(() => {});
+        const tokens = await hub(t.uid).pushTokens().catch(() => [] as string[]);
+        if (tokens.length) {
+          const dead = await sendPush(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT ?? '', tokens, { title: 'الدعم', body: note, data: { type: 'support' } }).catch(() => [] as string[]);
+          await hub(t.uid).removePushTokens(dead).catch(() => {});
+        }
+      }
+      return json({ ok: true, ticket: updated });
+    }
+    if (pathname === '/support/close' && request.method === 'POST') {
+      const b = await body();
+      const t = await support().supportGet(String(b.id ?? ''));
+      if (!t || (t.uid !== user.uid && !(await isDev()))) return json({ error: 'not-found' }, 404);
+      await support().supportClose(t.id);
+      return json({ ok: true });
+    }
+
     // ───── الباقة الاحترافية ─────
     // حالة الباقة: متى تنتهي (0 = مو مشترك)
     if (pathname === '/pro/status') {

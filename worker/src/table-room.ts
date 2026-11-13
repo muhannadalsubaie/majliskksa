@@ -1074,6 +1074,8 @@ export class TableRoom extends DurableObject<Env> {
     // لا أحد متصل: لا داعي لتشغيل الروبوتات، ننتظر مهلة الإغلاق فقط
     const emptySince = await this.ctx.storage.get<number>('emptySince');
     if (emptySince) {
+      // تشخيص: دور روبوت والطاولة تحسب ما فيه أحد متصل (فيوقف الروبوت)
+      if (t && nextAutoStep(t, rng)) this.noteSlow(`روبوت موقوف (ما فيه متصلين) t=${t.id.slice(0, 4)} ${kindOf(t)}`);
       await this.ctx.storage.setAlarm(emptySince + this.grace());
       return;
     }
@@ -1177,6 +1179,9 @@ export class TableRoom extends DurableObject<Env> {
     const botAt = await this.ctx.storage.get<number>('botAt');
     const step = !botAt || botAt <= Date.now() + 50 ? nextAutoStep(cur, rng) : null;
     if (step) {
+      // تشخيص: الروبوت تأخر عن وقته (السجل: /tables/slow)
+      const late = botAt ? Date.now() - botAt : 0;
+      if (late > 2500) this.noteSlow(`روبوت تأخر ${late}ms t=${cur.id.slice(0, 4)} ${kindOf(cur)}`);
       const r = runAutoStep(cur, step, rng);
       r.table = await this.rigDeal(r.table);
       await this.save(r.table);

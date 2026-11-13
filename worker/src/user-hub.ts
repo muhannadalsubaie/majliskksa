@@ -318,13 +318,52 @@ export class UserHub extends DurableObject<Env> {
     return { data, type: (m.get('avatarType') as string) ?? 'image/jpeg', at: (m.get('avatarAt') as number) ?? 0 };
   }
 
+  // ───── تذاكر الدعم (في مركز واحد باسم __support__) ─────
+  /** تذكرة جديدة: الصور تنحفظ لحالها (كل صورة مفتاح) */
+  async supportCreate(t: { uid: string; username: string; kind: 'complaint' | 'question'; text: string }, images: ArrayBuffer[]): Promise<string> {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const ticket: SupportTicket = { id, ...t, images: images.length, at: Date.now(), status: 'open', messages: [{ from: 'user', text: t.text, at: Date.now() }] };
+    const put: Record<string, unknown> = { [`t:${id}`]: ticket };
+    images.forEach((img, i) => { put[`img:${id}:${i}`] = img; });
+    await this.ctx.storage.put(put);
+    return id;
+  }
+
+  async supportList(uid?: string): Promise<SupportTicket[]> {
+    const all = [...(await this.ctx.storage.list<SupportTicket>({ prefix: 't:' })).values()];
+    return all.filter((t) => !uid || t.uid === uid).sort((a, b) => b.at - a.at).slice(0, 200);
+  }
+
+  async supportGet(id: string): Promise<SupportTicket | null> {
+    return (await this.ctx.storage.get<SupportTicket>(`t:${id}`)) ?? null;
+  }
+
+  async supportImage(id: string, i: number): Promise<ArrayBuffer | null> {
+    return (await this.ctx.storage.get<ArrayBuffer>(`img:${id}:${i}`)) ?? null;
+  }
+
+  /** رد على التذكرة: من المطور (تصير «تم الرد») أو من صاحبها (ترجع «مفتوحة») */
+  async supportReply(id: string, from: 'user' | 'dev', text: string): Promise<SupportTicket | null> {
+    const t = await this.supportGet(id);
+    if (!t) return null;
+    t.messages.push({ from, text, at: Date.now() });
+    t.status = from === 'dev' ? 'answered' : 'open';
+    await this.ctx.storage.put(`t:${id}`, t);
+    return t;
+  }
+
+  async supportClose(id: string): Promise<void> {
+    const t = await this.supportGet(id);
+    if (t) { t.status = 'closed'; await this.ctx.storage.put(`t:${id}`, t); }
+  }
+
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
   /** سجل تشخيص: آخر 80 سطر */
   async appendNote(line: string): Promise<void> {
     const lines = ((await this.ctx.storage.get<string>('note')) ?? '').split('\n').filter(Boolean);
     lines.push(line.slice(0, 200));
-    await this.ctx.storage.put('note', lines.slice(-80).join('\n'));
+    await this.ctx.storage.put('note', lines.slice(-400).join('\n'));
   }
 
   /** حذف الحساب: يمسح كل بيانات اللاعب هنا ويغلق اتصالاته، ويرجع قائمة أصدقائه لإزالته عندهم */
@@ -383,4 +422,15 @@ export class UserHub extends DurableObject<Env> {
   async webSocketError(ws: WebSocket) {
     await this.webSocketClose(ws);
   }
+}
+
+export interface SupportTicket {
+  id: string; uid: string; username: string;
+  kind: 'complaint' | 'question';
+  text: string;
+  /** عدد الصور المرفقة (٠ إلى ٤) */
+  images: number;
+  at: number;
+  status: 'open' | 'answered' | 'closed';
+  messages: { from: 'user' | 'dev'; text: string; at: number }[];
 }
