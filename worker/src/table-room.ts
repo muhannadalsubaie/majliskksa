@@ -6,7 +6,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, pinnedPass, emptyPinned, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, type VoiceMember,
   JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
@@ -231,6 +231,14 @@ export class TableRoom extends DurableObject<Env> {
     return playing ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
   }
 
+  /** الطاولة الثابتة تبقى؟ صاحبها مشترك، وهي لسا طاولته الثابتة (ما سوّى غيرها) */
+  private async keepPinned(t: TableData): Promise<boolean> {
+    try {
+      const p = await this.db().get('users', t.pinned!.owner);
+      return isPro(p?.proUntil) && p?.pinnedTable === t.id;
+    } catch { return true; } // خطأ مؤقت في القراءة: ما نحذف طاولة أحد بسببه
+  }
+
   /** مشترك في الباقة الاحترافية الحين؟ (أي خطأ في القراءة = لا) */
   private async isPro(uid: string): Promise<boolean> {
     try { return isPro((await this.db().get('users', uid))?.proUntil); } catch { return false; }
@@ -329,6 +337,9 @@ export class TableRoom extends DurableObject<Env> {
       await this.db().set('tables', t.id, {
         ownerName: memberName(t, t.ownerUid) ?? t.seats.find((m) => m && !m.isBot)?.username ?? '',
         isPrivate: t.isPrivate,
+        // الطاولة الثابتة: تطلع في القائمة بقفل، والدخول بكلمة مرور
+        locked: !!t.pinned,
+        ...(t.pinned ? { ownerName: t.pinned.ownerName } : {}),
         players: t.seats.filter(Boolean).length,
         people: peopleCount(t),
         // قائمة الموجودين (ضغطة مطولة على الطاولة في قائمة الانضمام): اللاعبين بالترتيب ثم المشاهدين
@@ -352,12 +363,14 @@ export class TableRoom extends DurableObject<Env> {
 
   // ───── استدعاءات من الخادم الرئيسي (RPC) ─────
 
-  async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
-    return this.serial(() => this.createInner(id, owner, isPrivate, kind, variant), 'create');
+  async create(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic', password?: string): Promise<void> {
+    return this.serial(() => this.createInner(id, owner, isPrivate, kind, variant, password), 'create');
   }
 
-  private async createInner(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic'): Promise<void> {
-    const t = newTable(id, owner, isPrivate, Date.now(), kind, variant);
+  private async createInner(id: string, owner: { uid: string; username: string }, isPrivate: boolean, kind: GameKind = 'baloot', variant: GameVariant = 'classic', password?: string): Promise<void> {
+    const t0 = newTable(id, owner, isPrivate, Date.now(), kind, variant);
+    // الطاولة الثابتة بكلمة مرور (الخادم الرئيسي تأكد إن صاحبها مشترك)
+    const t: TableData = password ? { ...t0, pinned: { owner: owner.uid, ownerName: owner.username, pass: await pinnedPass(id, password) } } : t0;
     await this.save(t);
     await this.publish(t);
     // إن لم يتصل أحد خلال المهلة تُغلق الطاولة
@@ -365,10 +378,15 @@ export class TableRoom extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + this.grace());
   }
 
-  async joinTable(user: { uid: string; username: string }, invite?: string): Promise<{ ok: true } | { error: string }> {
+  async joinTable(user: { uid: string; username: string }, invite?: string, password?: string): Promise<{ ok: true } | { error: string }> {
     // كل اللي يحتاج خدمات برا (الحظر، الرصيد) يصير برا طابور اللعب: كان دخول أي أحد للطاولة يوقف حركات اللاعبين ثواني
     const t0 = await this.load();
     if (!t0) return { error: 'not-found' };
+    // الطاولة الثابتة: كلمة المرور (إلا صاحبها، واللي فيها أصلاً، والمدعو)
+    if (t0.pinned && t0.pinned.owner !== user.uid && !inTable(t0, user.uid) && !invite) {
+      if (!password) return { error: 'password-required' };
+      if (await pinnedPass(t0.id, password) !== t0.pinned.pass) return { error: 'wrong-password' };
+    }
     try {
       // من حظره مالك هذه الطاولة لا يدخل أي طاولة يملكها
       if (!inTable(t0, user.uid) && await this.env.HUBS.get(this.env.HUBS.idFromName(t0.ownerUid)).isBanned(user.uid)) {
@@ -986,6 +1004,20 @@ export class TableRoom extends DurableObject<Env> {
   /** إغلاق الطاولة نهائياً: إشعار المتصلين، حذف الحالة، وإزالتها من قائمة الطاولات. */
   private async closeTable() {
     const current = this.table ?? (await this.load());
+    // الطاولة الثابتة: ما تنقفل طول ما صاحبها مشترك وهي طاولته الثابتة — ترجع فاضية بانتظار أحد
+    if (current?.pinned && await this.keepPinned(current)) {
+      for (const ws of this.ctx.getWebSockets()) {
+        try { ws.send(JSON.stringify({ type: 'closed' })); ws.close(1000, 'table emptied'); } catch { /* already closed */ }
+      }
+      this.toVoice((v) => v.closeAll());
+      const empty = emptyPinned(current);
+      this.table = empty;
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.delete(['emptySince', 'offline']);
+      await this.ctx.storage.put('table', empty);
+      await this.publish(empty);
+      return;
+    }
     this.toVoice((v) => v.closeAll());
     const id = current?.id;
     for (const ws of this.ctx.getWebSockets()) {

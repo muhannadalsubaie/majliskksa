@@ -70,7 +70,7 @@ export class Presence extends DurableObject<Env> {
 
   /** عدد اللاعبين المتصلين (اللاعب المفتوح على جهازين ينحسب مرة) */
   private async total(except?: WebSocket): Promise<number> {
-    const set = new Set(this.live(except).map((l) => l.who.uid));
+    const set = new Set(this.live(except).map((l) => l.who.uid).filter(Boolean));
     for (const u of Object.keys(await this.hubMap())) set.add(u);
     return set.size;
   }

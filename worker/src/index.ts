@@ -174,8 +174,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       let name = '';
       try { name = String((await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', me.uid))?.username ?? ''); } catch { /* بدون اسم: ينحسب بس ما يطلع في القائمة */ }
       const inner = new URL('https://presence/ws');
-      inner.searchParams.set('uid', me.uid);
-      inner.searchParams.set('name', name);
+      // المشترك اللي أخفى ظهوره: يتصل بس ما ينحسب ولا يطلع في القائمة
+      const hidden = await env.HUBS.get(env.HUBS.idFromName(me.uid)).isHidden().catch(() => false);
+      inner.searchParams.set('uid', hidden ? '' : me.uid);
+      inner.searchParams.set('name', hidden ? '' : name);
       return env.PRESENCE.get(env.PRESENCE.idFromName('global')).fetch(new Request(inner, request));
     }
 
@@ -235,18 +237,26 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     // إنشاء طاولة: عملتان من المنشئ
     if (pathname === '/tables' && request.method === 'POST') {
-      const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown; kind?: unknown; variant?: unknown };
+      const body = (await request.json().catch(() => ({}))) as { isPrivate?: unknown; kind?: unknown; variant?: unknown; password?: unknown };
       const kind: GameKind = typeof body.kind === 'string' && Object.hasOwn(GAME_NAMES, body.kind) ? (body.kind as GameKind) : 'baloot';
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
       const db = new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT);
+      // طاولة ثابتة بكلمة مرور: للمشترك في الباقة الاحترافية بس (طاولة وحدة لكل مشترك)
+      const password = typeof body.password === 'string' ? body.password.trim() : '';
+      if (password) {
+        if (password.length < 4 || password.length > 20) return json({ error: 'bad-password' }, 400);
+        if (!devAuth && !isPro((await db.get('users', user.uid))?.proUntil)) return json({ error: 'pro-only' }, 403);
+      }
       if (!devAuth) {
         try { await db.adjustCoins(user.uid, -COINS.createTable); } catch (e) { return json({ error: (e as Error).message }, 402); }
       }
       const id = env.TABLES.newUniqueId();
       try {
         await env.TABLES.get(id).create(id.toString(), { uid: user.uid, username }, body.isPrivate === true,
-          kind, VARIANTS[kind].includes(body.variant as GameVariant) ? (body.variant as GameVariant) : 'classic');
+          kind, VARIANTS[kind].includes(body.variant as GameVariant) ? (body.variant as GameVariant) : 'classic', password || undefined);
+        // طاولته الثابتة (الجديدة تحل محل القديمة: القديمة تنقفل أول ما تفضى)
+        if (password && !devAuth) await db.update('users', user.uid, { pinnedTable: id.toString() });
       } catch (e) {
         if (!devAuth) await db.adjustCoins(user.uid, COINS.createTable).catch(() => {}); // استرجاع عند الفشل
         throw e;
@@ -260,9 +270,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (joinMatch && request.method === 'POST') {
       const username = await usernameOf(user.uid);
       if (!username) return json({ error: 'no-username' }, 400);
-      const body = (await request.json().catch(() => ({}))) as { invite?: unknown };
+      const body = (await request.json().catch(() => ({}))) as { invite?: unknown; password?: unknown };
       const invite = typeof body.invite === 'string' ? body.invite.slice(0, 20) : undefined;
-      const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username }, invite);
+      const password = typeof body.password === 'string' ? body.password.trim().slice(0, 20) : undefined;
+      const r = await env.TABLES.get(env.TABLES.idFromString(joinMatch[1])).joinTable({ uid: user.uid, username }, invite, password);
       if (!('error' in r)) await hub(user.uid).setTable(joinMatch[1]);
       return 'error' in r ? json(r, r.error === 'not-enough-coins' ? 402 : 400) : json(r);
     }
@@ -417,7 +428,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const state = await hub(user.uid).getState();
       // الصديق المتصل وفي طاولة: نرسل الطاولة (يدخلها صاحبه بالضغط المطوّل على اسمه)
       const friends = await Promise.all(state.friends.map(async (f) => {
-        const online = await hub(f.uid).isOnline();
+        // المشترك اللي أخفى ظهوره: يبان غير متصل لأصدقائه
+        const online = await hub(f.uid).isOnline() && !(await hub(f.uid).isHidden());
         const tableId = online ? await hub(f.uid).currentTable() : null;
         const t = tableId ? await env.TABLES.get(env.TABLES.idFromString(tableId)).friendTable(f.uid).catch(() => null) : null;
         return { ...f, online, ...(t ? { tableId, tablePrivate: t.isPrivate, tableKind: t.kind, tableVariant: t.variant } : {}) };
@@ -596,6 +608,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json({ pro: isPro(proUntil), proUntil });
     }
 
+    // إعدادات الباقة: إخفاء الظهور (ما تطلع في المتصلين ولا يبانك أصدقاؤك متصل)
+    if (pathname === '/pro/settings' && request.method === 'POST') {
+      const b = await body();
+      const proUntil = devAuth ? Date.now() + 86_400_000 : Number((await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', user.uid))?.proUntil ?? 0);
+      if (typeof b.hideOnline === 'boolean') {
+        if (b.hideOnline && !isPro(proUntil)) return json({ error: 'pro-only' }, 403);
+        await hub(user.uid).setHidden(b.hideOnline ? proUntil : 0);
+      }
+      return json({ hideOnline: await hub(user.uid).isHidden() });
+    }
+
     // التحقق من الاشتراك الشهري مع Google/Apple وحفظ تاريخ نهايته. التطبيق يناديه بعد الشراء،
     // وكل ما انفتح (عشان التجديد التلقائي والإلغاء)، ومن «استعادة المشتريات»
     if (pathname === '/pro/verify' && request.method === 'POST') {
@@ -620,6 +643,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const profile = await db.get('users', user.uid);
       const proUntil = proUntilOf(v.until, profile?.proGiftUntil);
       await db.update('users', user.uid, { proSubUntil: v.until, proUntil });
+      // الإخفاء يمتد مع التجديد
+      await hub(user.uid).extendHidden(proUntil).catch(() => {});
       return json({ ok: true, pro: isPro(proUntil), proUntil });
     }
 

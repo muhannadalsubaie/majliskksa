@@ -60,6 +60,11 @@ export interface TableData {
   clock?: TurnClock;
   /** خيارات مباراة البلوت (مالك مشترك في الباقة الاحترافية، تنضبط قبل البداية بس) */
   manualProjects?: boolean;
+  /**
+   * الطاولة الثابتة (الباقة الاحترافية): ما تتقفل لو فضيت طول ما صاحبها مشترك، وتدخلها بكلمة مرور.
+   * owner = صاحبها الدائم (يرجع مالكها كل ما دخل)، pass = بصمة كلمة المرور (ما نحفظ الكلمة نفسها)
+   */
+  pinned?: { owner: string; ownerName: string; pass: string };
   /** القيد والقطع: الخيار جاهز، والقاعدة نفسها تنضاف لاحقاً */
   qaid?: boolean;
   /** مقاعد المشتركين وقت بداية المباراة (زر «ورق» متاح لهم حتى لو مو دورهم) */
@@ -280,6 +285,8 @@ export function join(t: TableData, user: { uid: string; username: string }, invi
     const { [user.uid]: _used, ...rest } = t.joinRequests ?? {};
     t = { ...t, approved: t.approved.filter((u) => u !== user.uid), joinRequests: rest };
   }
+  // صاحب الطاولة الثابتة: يرجع مالكها كل ما دخل
+  if (t.pinned?.owner === user.uid) t = { ...t, ownerUid: user.uid };
   // عملة مع كل دخول (حتى لو رجع بعد ما غادر أو طار بانقطاع الاتصال) — صاحب الطاولة والمدعو مجاناً
   const charge = !invited && user.uid !== t.ownerUid;
   const paid = t.paid.includes(user.uid) ? t.paid : [...t.paid, user.uid];
@@ -1034,4 +1041,19 @@ export function stampMatchOptions(t: TableData): TableData {
   const free = (t.proSeats ?? []) as Seat[];
   if ((g.manualProjects === true) === manual && (g.waraqFree ?? []).join() === free.join()) return t;
   return { ...t, game: { ...g, manualProjects: manual, waraqFree: free } };
+}
+
+/** بصمة كلمة مرور الطاولة الثابتة (مربوطة برقم الطاولة) */
+export async function pinnedPass(tableId: string, password: string): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`majlisk-pin:${tableId}:${password}`));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** فضيت الطاولة الثابتة: ترجع فاضية بانتظار أحد (نفس اللعبة والخيارات وكلمة المرور) */
+export function emptyPinned(t: TableData): TableData {
+  return {
+    id: t.id, ownerUid: t.pinned!.owner, isPrivate: t.isPrivate, createdAt: t.createdAt, kind: t.kind, variant: t.variant,
+    seats: [null, null, null, null], spectators: [], paid: [], game: null, botCount: 0, pinned: t.pinned,
+    ...(t.turnLimit ? { turnLimit: t.turnLimit } : {}),
+  };
 }

@@ -83,6 +83,28 @@ export class UserHub extends DurableObject<Env> {
     };
   }
 
+  // ───── إخفاء الظهور (الباقة الاحترافية): لين نهاية الاشتراك ─────
+  async isHidden(): Promise<boolean> {
+    return ((await this.ctx.storage.get<number>('hiddenUntil')) ?? 0) > Date.now();
+  }
+
+  /** until = نهاية الاشتراك (0 = يظهر). يطلع من قائمة المتصلين أو يرجع لها على طول */
+  async setHidden(until: number) {
+    await this.ctx.storage.put('hiddenUntil', until);
+    const uid = await this.ctx.storage.get<string>('uid');
+    const presence = this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global'));
+    if (!uid) return;
+    if (until > Date.now()) await presence.hubOffline(uid).catch(() => {});
+    else if (this.ctx.getWebSockets().length) await presence.hubOnline(uid).catch(() => {});
+    this.notifyFriends();
+  }
+
+  /** تجدد الاشتراك: الإخفاء يمتد معه (لو كان مفعّل) */
+  async extendHidden(until: number) {
+    const cur = (await this.ctx.storage.get<number>('hiddenUntil')) ?? 0;
+    if (cur > 0 && until > cur) await this.ctx.storage.put('hiddenUntil', until);
+  }
+
   /** تنبيه يطلع للاعب داخل التطبيق لو كان مفتوح (مثل: وصلتك هدية الباقة الاحترافية) */
   async notify(text: string) { await this.push({ type: 'notice', text }); }
 
@@ -334,7 +356,9 @@ export class UserHub extends DurableObject<Env> {
     }
     pair[1].serializeAttachment({ at: Date.now(), uid, device });
     // عدد المتصلين في التطبيق كله: كل نسخ التطبيق تتصل هنا (حتى القديمة اللي ما تعرف غرفة المتصلين)
-    if (uid) void this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global')).hubOnline(uid).catch(() => {});
+    // (المخفي ما ينحسب: الباقة الاحترافية)
+    if (uid && await this.ctx.storage.get<string>('uid') !== uid) await this.ctx.storage.put('uid', uid);
+    if (uid && !(await this.isHidden())) void this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global')).hubOnline(uid).catch(() => {});
     pair[1].send(JSON.stringify({ type: 'state', ...(await this.getState()) }));
     // صار متصلاً: أصدقاؤه يشوفونه متصل فوراً
     if (!wasOnline) this.notifyFriends();
