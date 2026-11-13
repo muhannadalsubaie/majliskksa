@@ -17,3 +17,10 @@ export const extendGift = (giftUntil: unknown, now = Date.now(), ms = PRO_GIFT_M
 /** نهاية الباقة = الأبعد من الاشتراك والهدية */
 export const proUntilOf = (subUntil: unknown, giftUntil: unknown) =>
   Math.max(typeof subUntil === 'number' ? subUntil : 0, typeof giftUntil === 'number' ? giftUntil : 0);
+
+/**
+ * تجربة الباقة الاحترافية: قبل فتحها للكل، تطلع بس لهالحسابات (أسماء المستخدمين) ولحساب المطوّر.
+ * PRO_OPEN = true يفتحها للجميع.
+ */
+export const PRO_OPEN = false;
+export const PRO_TESTERS: string[] = [];

@@ -8,7 +8,7 @@ import { Firestore, deleteAuthUser, parseServiceAccount } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './voice-room';
 import { type VerifiedPurchase, type VerifiedSub, accountTokenFor, consumeGoogle, verifyApple, verifyAppleSub, verifyGoogle, verifyGoogleSub } from './purchases';
-import { PRO_GIFT_ID, extendGift, isPro, proUntilOf } from '../../shared/pro';
+import { PRO_GIFT_ID, PRO_OPEN, PRO_TESTERS, extendGift, isPro, proUntilOf } from '../../shared/pro';
 
 /** تغيير اسم المستخدم: مرة كل ستة أشهر (١٨٢ يوم) */
 const RENAME_EVERY_MS = 182 * 24 * 3600 * 1000;
@@ -301,7 +301,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const everyoneGift = `${EVERYONE_GIFT.id}-${user.uid}`;
       if (created) await db.createIfMissing('gifts', everyoneGift, { uid: user.uid, coins: 0, at: new Date() });
       // علامة حساب المطوّر تُكتب من الخادم فقط
-      if (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256)) await db.update('users', user.uid, { unlimited: true });
+      const dev = await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256);
+      if (dev) await db.update('users', user.uid, { unlimited: true });
+      // الباقة الاحترافية تطلع بس للمجرّبين (وحساب المطوّر) لين نفتحها للكل
+      {
+        const name = String((await db.get('users', user.uid))?.username ?? '');
+        const access = PRO_OPEN || dev || (!!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name)));
+        await db.update('users', user.uid, { proAccess: access });
+      }
       // هدايا لمرة واحدة: سجل الهدية يُنشأ مرة واحدة فقط (ذرّياً) قبل إضافة العملات، فلا تتكرر
       let gift = 0;
       if (!created) {
