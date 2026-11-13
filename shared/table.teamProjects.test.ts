@@ -16,9 +16,7 @@ describe('equal projects of two partners', () => {
     t = { ...startAny(t, rng).table, hold: undefined };
     // يدين بخمسين للشايب: المقعد 0 (هاص) وشريكه المقعد 2 (سبيت)، والخصوم بدون مشاريع
     const hands = [cards('KH QH JH 10H 7C 8D'), cards('7H 8H 9C 10C 7D 8S'), cards('KS QS JS 10S 7S 9D'), cards('AH 9H AC KC QC JC')];
-    const deck = t.game!;
-    const rest = [...deck.hands.flat(), ...(deck.deck ?? [])].filter((c) => !hands.flat().some((h) => h.suit === c.suit && h.rank === c.rank));
-    t = { ...t, game: { ...deck, hands: hands as typeof deck.hands, deck: rest.slice(0, deck.deck?.length ?? rest.length) } };
+    t = { ...t, game: { ...t.game!, hands: hands as NonNullable<TableData['game']>['hands'] } };
     let now = 10_000;
     const events: string[] = [];
     for (let step = 0; step < 60; step++) {
