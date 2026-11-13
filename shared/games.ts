@@ -6,7 +6,7 @@ import {
   type DominoAction, type DominoState, type Side, type Tile, applyDomino, newMatch as newDomino, nextHand as nextDominoHand, playable as dominoPlayable,
 } from './domino/engine';
 import { dominoBotAction } from './domino/bot';
-import { handAnnouncement as dominoHandText, moveAnnouncement as dominoMoveText } from './domino/labels';
+import { handAnnouncement as dominoHandText, moveAnnouncement as dominoMoveText, sideName as dominoSideName } from './domino/labels';
 import {
   type Card, type JackarooAction, type JackarooState, type MoveSpec, COMPLEX_RULES, DEFAULT_RULES as JACKAROO_CLASSIC,
   applyJackaroo, legalMoves as jackarooLegal, newGame as newJackaroo, teamOf,
@@ -178,7 +178,8 @@ function applyOtherMove(t: TableData, action: DominoAction | JackarooAction | Lu
     if (after.phase !== 'playing') events.push(...dominoHandText(after, names(t)).filter((e) => !e.startsWith('انتهت المباراة')));
     if (after.phase === 'matchOver') {
       const best = after.scores.indexOf(Math.max(...after.scores));
-      events.push(`انتهت المباراة — فاز ${teamName(t, best)}`);
+      // لاعبين أو ثلاثة: اسم الفائز بس (بدون «فريق» ولا مقعد فاضي)
+      events.push(`انتهت المباراة — فاز ${dominoSideName(after, best, names(t))}`);
     }
     // سجل الجولة: كل حركة ونتيجة الصكة
     const log = [...(t.dominoLog ?? [{ hand: t.domino.handNo, lines: [] }])];
