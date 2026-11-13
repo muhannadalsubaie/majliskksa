@@ -58,6 +58,12 @@ export interface TableData {
   turnLimit?: number;
   /** وقت الدور الحالي: لو خلص، الروبوت يلعب عن اللاعب */
   clock?: TurnClock;
+  /** خيارات مباراة البلوت (مالك مشترك في الباقة الاحترافية، تنضبط قبل البداية بس) */
+  manualProjects?: boolean;
+  /** القيد والقطع: الخيار جاهز، والقاعدة نفسها تنضاف لاحقاً */
+  qaid?: boolean;
+  /** مقاعد المشتركين وقت بداية المباراة (زر «ورق» متاح لهم حتى لو مو دورهم) */
+  proSeats?: number[];
   /** تجربة التعادل جارية في هالصكة (توزيع محسوب + توجيه كل لاعب بدوره) */
   tieRig?: boolean;
   /** «سوا» انضغط: أوراق الكل الباقية مكشوفة قدام أصحابها ثانيتين، وبعدها تنحسب الصكة */
@@ -899,6 +905,9 @@ export interface TableView {
   options: { teams: boolean; complex: boolean; target: number };
   /** اسم مالك الطاولة (يتحدث مع تغيّر المالك) */
   ownerName: string;
+  /** خيارات مباراة البلوت الشغالة */
+  manualProjects: boolean;
+  qaid: boolean;
   /** الدومينو والجاكارو: الحالة كاملة مع إخفاء قطع/أوراق الآخرين */
   domino: DominoState | null;
   jackaroo: JackarooState | null;
@@ -995,6 +1004,7 @@ export function viewFor(t: TableData, uid: string): TableView {
     // للتطبيقات الأصلية: الحركات المسموحة ونصوصها وقراءات اللوحة
     startCounts: allowedPlayers(t),
     clock: clockView(t),
+    manualProjects: t.manualProjects === true, qaid: t.qaid === true,
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
     ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
@@ -1015,3 +1025,13 @@ export const viewHasGame = (v: TableView) => Boolean(v.game || v.domino || v.jac
 export const viewPlaying = (v: TableView) => Boolean(
   (v.game && v.game.phase !== 'matchOver') || (v.domino && v.domino.phase !== 'matchOver') || v.jackaroo?.phase === 'playing' || (v.ludo && v.ludo.phase !== 'over'),
 );
+
+/** خيارات المباراة تنكتب على حالة اللعب (كل صكة جديدة تبدأ بحالة نظيفة، فنرجّعها عليها) */
+export function stampMatchOptions(t: TableData): TableData {
+  const g = t.game;
+  if (!g) return t;
+  const manual = t.manualProjects === true;
+  const free = (t.proSeats ?? []) as Seat[];
+  if ((g.manualProjects === true) === manual && (g.waraqFree ?? []).join() === free.join()) return t;
+  return { ...t, game: { ...g, manualProjects: manual, waraqFree: free } };
+}

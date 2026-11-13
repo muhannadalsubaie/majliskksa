@@ -1,3 +1,4 @@
+import { isPro } from '../../shared/pro';
 import { usernameKey } from '../../shared/username';
 import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
@@ -5,7 +6,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, type VoiceMember,
   JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
@@ -34,7 +35,8 @@ type ClientMessage =
   | { type: 'jackaroo'; action: unknown }
   | { type: 'ludo'; action: unknown }
   | { type: 'addBot'; seat: number }
-  | { type: 'start'; turnLimit?: number }
+  | { type: 'start'; turnLimit?: number; manualProjects?: boolean; qaid?: boolean }
+  | { type: 'turnLimit'; turnLimit?: number }
   | { type: 'leave' }
   | { type: 'replace'; seat: number; uid: string }
   | { type: 'vacate'; seat: number }
@@ -229,10 +231,15 @@ export class TableRoom extends DurableObject<Env> {
     return playing ? BOT_REPLACE_AFTER_MS + 30_000 : EMPTY_GRACE_MS;
   }
 
+  /** مشترك في الباقة الاحترافية الحين؟ (أي خطأ في القراءة = لا) */
+  private async isPro(uid: string): Promise<boolean> {
+    try { return isPro((await this.db().get('users', uid))?.proUntil); } catch { return false; }
+  }
+
   private db() {
     if (this.env.DEV_AUTH === '1') {
       // تطوير محلي: بدون Firestore
-      return { adjustCoins: async () => 99, canPay: async () => true, set: async () => {}, remove: async () => {} } as unknown as Firestore;
+      return { adjustCoins: async () => 99, canPay: async () => true, set: async () => {}, remove: async () => {}, get: async () => ({ proUntil: Number.MAX_SAFE_INTEGER }) } as unknown as Firestore;
     }
     return new Firestore(this.env.FIREBASE_PROJECT_ID, this.env.FIREBASE_SERVICE_ACCOUNT);
   }
@@ -301,7 +308,7 @@ export class TableRoom extends DurableObject<Env> {
   private async save(t0: TableData) {
     const t1 = t0.voice ? (({ voice: _v, voiceSince: _s, ...rest }) => { void _v; void _s; return rest as TableData; })(t0) : t0;
     // مؤقت الدور: وقت جديد لو تغيّر الدور
-    const t = refreshClock(t1);
+    const t = refreshClock(stampMatchOptions(t1));
     this.table = t;
     await this.ctx.storage.put('table', t);
     // النتيجة تغيّرت (انتهت صكة أو جولة): نحدّث الملخص العام في الخلفية، عشان تطلع في قائمة الطاولات
@@ -724,13 +731,35 @@ export class TableRoom extends DurableObject<Env> {
         if (kindOf(t) === 'baloot' && !isFull(t)) throw new TableError('not-full');
         // مؤقت الدور: اللي اختاره المالك من القائمة (بدونه يبقى اختيار المباراة السابقة)
         const limit = validTurnLimit(msg.turnLimit);
-        const started = startAny(limit === null ? t : { ...t, turnLimit: limit }, rng);
+        // خيارات الباقة الاحترافية (البلوت): تنضبط قبل البداية بس، ولو المالك مشترك
+        const baloot = kindOf(t) === 'baloot';
+        const ownerPro = baloot && await this.isPro(t.ownerUid);
+        const manualProjects = ownerPro && msg.manualProjects === true;
+        const qaid = ownerPro && msg.qaid === true;
+        // مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم
+        const proSeats = baloot ? (await Promise.all(t.seats.map(async (m, i) => (m && !m.isBot && await this.isPro(m.uid) ? i : -1)))).filter((i) => i >= 0) : [];
+        const started = startAny({ ...t, ...(limit === null ? {} : { turnLimit: limit }), manualProjects, qaid, proSeats }, rng);
         const { events, voices } = started;
         if (limit) events.push(`وقت كل دور ${limit} ثانية`);
-        const next = await this.rigDeal(started.table);
+        if (manualProjects) events.push('إعلان المشاريع يدوي');
+        if (qaid) events.push('القيد والقطع مفعّل');
+        const next = await this.rigDeal(stampMatchOptions(started.table));
         await this.save(next);
         this.broadcast(events, undefined, voices);
         await this.publish(next);
+        break;
+      }
+      case 'turnLimit': {
+        // تغيير المؤقت أو إيقافه والمباراة شغالة: للمالك المشترك في الباقة الاحترافية
+        if (!isOwner) throw new Error('not-owner');
+        const limit = validTurnLimit(msg.turnLimit);
+        if (limit === null) throw new Error('bad-request');
+        if (!(await this.isPro(uid))) throw new TableError('pro-only');
+        const { clock: _c, ...rest } = t;
+        void _c;
+        // الوقت الجديد يبدأ من الدور الحالي
+        await this.save({ ...rest, turnLimit: limit } as TableData);
+        this.broadcast([limit ? `وقت كل دور ${limit} ثانية` : 'أُوقف مؤقت الدور']);
         break;
       }
       case 'replace': {

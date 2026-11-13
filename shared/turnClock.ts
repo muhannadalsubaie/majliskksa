@@ -94,7 +94,8 @@ export function timeoutAction(t: TableData, now = Date.now()):
   if (!c || now < c.deadline - 50) return null;
   const turn = humanTurn(t);
   if (!turn || turn.key !== c.key) return null;
-  if (t.game) { const a = botAction(t.game, turn.seat as Seat); return a ? { game: 'baloot', action: a } : null; }
+  // (إعلان المشاريع يدوي: اللي خلص وقته ما ينعلن مشروعه عنه — تنلعب ورقته بس)
+  if (t.game) { const a = botAction({ ...t.game, manualProjects: false }, turn.seat as Seat); return a ? { game: 'baloot', action: a } : null; }
   if (t.domino) { const a = dominoBotAction(t.domino, turn.seat); return a ? { game: 'other', action: a } : null; }
   if (t.jackaroo) { const a = jackarooBotAction(t.jackaroo, turn.seat); return a ? { game: 'other', action: a } : null; }
   if (t.ludo) { const a = ludoBotAction(t.ludo, turn.seat); return a ? { game: 'other', action: a } : null; }

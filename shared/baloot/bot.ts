@@ -3,6 +3,7 @@ import {
 } from './cards';
 import {
   type Action, type Bid, type GameState, availableBids, availableDouble, isDoublingTurn, isLockChoiceTurn, legalCardsFor,
+ canDeclareProject,
 } from './game';
 import { trickWinner } from './play';
 
@@ -619,6 +620,8 @@ export function choosePlayExpert(s: GameState, seat: Seat): Card {
 
 /** الحركة التالية للروبوت في هذا المقعد (أو null إن لم يكن دوره). */
 export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_BOT): Action | null {
+  // إعلان المشاريع يدوي: الروبوت يعلن مشروعه قبل ما يلعب ورقته
+  if (s.manualProjects && canDeclareProject(s, seat)) return { type: 'declareProject', seat };
   // نافذة «ورق» بعد الشراء: الروبوت يقول بس
   if (s.phase === 'waraq') return s.turn === seat ? { type: 'waraq', seat, call: false } : null;
   if (s.phase === 'bidding' && s.turn === seat && s.qaba) return { type: 'bid', seat, bid: chooseBid(s, seat, params) };

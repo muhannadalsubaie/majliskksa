@@ -109,6 +109,10 @@ export interface GameState {
   /** من أعلن «ورق» (للإعلان)، وهل يعيد التوزيع نفس الموزع (ما اشترى أحد) أو اللي بعده */
   waraqBy?: Seat;
   redealSame?: boolean;
+  /** خيار المباراة (الباقة الاحترافية): إعلان المشاريع يدوي — اللي ما يعلن مشروعه قبل ورقته الأولى يروح عليه */
+  manualProjects?: boolean;
+  /** مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم، لين تتوزع باقي الأوراق */
+  waraqFree?: Seat[];
 }
 
 export type Action =
@@ -260,6 +264,8 @@ function waraqSeats(s: GameState): Seat[] {
  */
 export function canWaraq(s: GameState, seat: Seat): boolean {
   if (!hasWaraq(s, seat) || !s.qaba && s.phase === 'bidding') return false;
+  // المشترك: يقدر يقولها حتى لو مو دوره، طول ما باقي الأوراق ما توزعت
+  if (s.waraqFree?.includes(seat) && (s.phase === 'waraq' || s.phase === 'doubling' || s.phase === 'bidding')) return true;
   if (s.phase === 'waraq') return s.turn === seat;
   if (s.phase === 'doubling') return true;
   if (s.phase !== 'bidding') return false;
@@ -506,7 +512,8 @@ function applyPlay(s: GameState, seat: Seat, card: Card): GameState {
   const hands = s.hands.map((h, i) => (i === seat ? h.filter((x) => !sameCard(x, card)) : h));
   const trick = [...s.trick, { seat, card }];
   // الإعلان عن المشاريع إجباري وتلقائي: يُسجَّل مع أول ورقة يلعبها صاحبه
-  const declared = s.trickNo === 0 && !s.declared.some((d) => d.seat === seat)
+  // (مع خيار «إعلان المشاريع يدوي» ما ينسجل شيء تلقائياً: اللاعب يعلنه بنفسه قبل ورقته)
+  const declared = !s.manualProjects && s.trickNo === 0 && !s.declared.some((d) => d.seat === seat)
     && findProjects(s.initialHands[seat], c.mode).length > 0
     ? [...s.declared, { seat, projects: findProjects(s.initialHands[seat], c.mode) }]
     : s.declared;
