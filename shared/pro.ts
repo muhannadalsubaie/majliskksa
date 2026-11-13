@@ -24,3 +24,6 @@ export const proUntilOf = (subUntil: unknown, giftUntil: unknown) =>
  */
 export const PRO_OPEN = false;
 export const PRO_TESTERS: string[] = ['ياسر', 'البرجوازي', 'خالد', 'محمد', 'المطور'];
+
+/** حساب المطوّر الرسمي (باسم المستخدم): يستقبل تذاكر الدعم ويرد عليها */
+export const DEV_USERNAMES: string[] = ['المطور'];

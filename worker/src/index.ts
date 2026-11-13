@@ -8,7 +8,7 @@ import { Firestore, deleteAuthUser, parseServiceAccount } from './firestore';
 import { verifySsv } from './ads';
 import type { VoiceRequest } from './voice-room';
 import { type VerifiedPurchase, type VerifiedSub, accountTokenFor, consumeGoogle, verifyApple, verifyAppleSub, verifyGoogle, verifyGoogleSub } from './purchases';
-import { PRO_GIFT_ID, PRO_OPEN, PRO_TESTERS, extendGift, isPro, proUntilOf } from '../../shared/pro';
+import { DEV_USERNAMES, PRO_GIFT_ID, PRO_OPEN, PRO_TESTERS, extendGift, isPro, proUntilOf } from '../../shared/pro';
 
 /** تغيير اسم المستخدم: مرة كل ستة أشهر (١٨٢ يوم) */
 const RENAME_EVERY_MS = 182 * 24 * 3600 * 1000;
@@ -301,11 +301,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const everyoneGift = `${EVERYONE_GIFT.id}-${user.uid}`;
       if (created) await db.createIfMissing('gifts', everyoneGift, { uid: user.uid, coins: 0, at: new Date() });
       // علامة حساب المطوّر تُكتب من الخادم فقط
-      const dev = await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256);
-      if (dev) await db.update('users', user.uid, { unlimited: true });
+      const unlimited = await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256);
+      if (unlimited) await db.update('users', user.uid, { unlimited: true });
       // الباقة الاحترافية تطلع بس للمجرّبين (وحساب المطوّر) لين نفتحها للكل
       {
         const name = String((await db.get('users', user.uid))?.username ?? '');
+        // حساب المطوّر: بالإيميل، أو باسم المستخدم الرسمي (يستقبل تذاكر الدعم)
+        const dev = unlimited || (!!name && DEV_USERNAMES.some((u) => usernameKey(u) === usernameKey(name)));
+        await db.update('users', user.uid, { dev });
         const access = PRO_OPEN || dev || (!!name && PRO_TESTERS.some((u) => usernameKey(u) === usernameKey(name)));
         await db.update('users', user.uid, { proAccess: access });
         // المجرّبين: شهر تجربة مجاني يتفعل تلقائياً مرة وحدة (السجل يُنشأ ذرّياً فما يتكرر)
@@ -617,7 +620,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // ───── المساعدة والدعم: شكوى أو استفسار، يرد عليها المطور ─────
     const support = () => env.HUBS.get(env.HUBS.idFromName('__support__'));
     /** حساب المطور (نفس علامة العملات اللا محدودة) */
-    const isDev = async () => devAuth || (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256));
+    const isDev = async () => devAuth || (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256))
+      || DEV_USERNAMES.some((u) => usernameKey(u) === usernameKey(String(user.uid ? (await usernameOf(user.uid).catch(() => '')) : '')));
     if (pathname === '/support/create' && request.method === 'POST') {
       const b = (await request.json().catch(() => ({}))) as { kind?: unknown; text?: unknown; images?: unknown };
       const kind = b.kind === 'complaint' ? 'complaint' : 'question';
