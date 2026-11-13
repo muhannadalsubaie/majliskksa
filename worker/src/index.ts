@@ -620,8 +620,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // ───── المساعدة والدعم: شكوى أو استفسار، يرد عليها المطور ─────
     const support = () => env.HUBS.get(env.HUBS.idFromName('__support__'));
     /** حساب المطور (نفس علامة العملات اللا محدودة) */
-    const isDev = async () => devAuth || (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256))
-      || DEV_USERNAMES.some((u) => usernameKey(u) === usernameKey(String(user.uid ? (await usernameOf(user.uid).catch(() => '')) : '')));
+    const isDev = async () => {
+      if (devAuth || (await isUnlimited(user, env.UNLIMITED_EMAIL_SHA256))) return true;
+      const name = await usernameOf(user.uid).catch(() => '');
+      return !!name && DEV_USERNAMES.some((u) => usernameKey(u) === usernameKey(name));
+    };
     if (pathname === '/support/create' && request.method === 'POST') {
       const b = (await request.json().catch(() => ({}))) as { kind?: unknown; text?: unknown; images?: unknown };
       const kind = b.kind === 'complaint' ? 'complaint' : 'question';
