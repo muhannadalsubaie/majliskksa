@@ -4,7 +4,7 @@ import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, canWaraq, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
-  QAID_NAMES, canShowProject, kindDeclare, declarableKinds, playableCardsFor, qaidTargets, sawaAvailable,
+  QAID_NAMES, canShowProject, kindDeclare, qaidWinningTeam, declarableKinds, playableCardsFor, qaidTargets, sawaAvailable,
 } from './baloot/game';
 import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
@@ -783,6 +783,11 @@ export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Da
       if (after.lastTrick && after.trickNo !== before.trickNo) {
         events.push(`الأكلة لـ${nameOf(t, after.lastTrick.winner)}`);
       }
+      // القيد مع الإعلان اليدوي: أول اللفة الثانية تنلغي المشاريع الأضعف (ما تنفرش)
+      if (kindDeclare(after) && before.trickNo === 0 && after.trickNo === 1) {
+        const win = qaidWinningTeam(after);
+        for (const p of after.qaidProjects ?? []) if (teamOf(p.seat) !== win) events.push(`أُلغي مشروع ${nameOf(t, p.seat)}`);
+      }
       // كشف المشروع في اللفة الثانية: أول ما يجي دور صاحبه (قبل ما يلعب ورقته) تُنطق أوراق مشروعه
       // (أو يُعلن إلغاؤه إن كان مشروع الفريق الآخر أقوى)، ويوقف الدور عنده لحظات عشان الكل يشوفه
       const shown = revealProject(t, before, after);
@@ -1003,7 +1008,11 @@ export function viewFor(t: TableData, uid: string): TableView {
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
       // مشروع بنفس قوة مشروع أُعلن قبله لا يظهر (يُعلن مشروع الأسبق فقط)
       // القيد مع الإعلان اليدوي: المشروع ينكشف أول ما يفرشه صاحبه (أوراقه قدام الكل)، والإلغاء بعد ما تنحسب المشاريع
-      declared: kindDeclare(g) ? (g.qaidProjects ?? []).filter((p) => p.shown && p.cards).map((p) => {
+      declared: kindDeclare(g) ? [
+        // المشاريع الأضعف (الفريق الثاني مشروعه أقوى): تنلغي من اللفة الثانية وما تنفرش
+        ...(g.trickNo >= 1 ? (g.qaidProjects ?? []).filter((p) => !p.shown && teamOf(p.seat) !== qaidWinningTeam(g))
+          .map((p) => ({ seat: p.seat, kinds: [PROJECT_NAMES[p.kind]], cards: undefined, faces: [] as Card[], cancelled: true as const })) : []),
+        ...(g.qaidProjects ?? []).filter((p) => p.shown && p.cards).map((p) => {
         // المفروش ينكشف قدام الكل على طول؛ «أُلغي» بس بعد ما تنحسب المشاريع ويطلع مشروع الفريق الثاني أقوى
         const lost = !!g.projects && g.projects.winningTeam !== teamOf(p.seat);
         return {
@@ -1013,7 +1022,7 @@ export function viewFor(t: TableData, uid: string): TableView {
           faces: p.cards!,
           cancelled: lost ? true : undefined,
         };
-      }) : g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
+      })] : g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
         // تنكشف أول ما يجي دور صاحبها في اللفة الثانية (قبل ما يلعب)
         const shown = g.trickNo > 1 || (g.trickNo === 1 && (g.trick.some((p) => p.seat === d.seat) || g.turn === d.seat));
         const won = g.projects?.winningTeam === teamOf(d.seat);

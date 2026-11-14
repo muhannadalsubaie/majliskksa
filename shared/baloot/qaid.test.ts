@@ -106,6 +106,17 @@ describe('القيد والقطع', () => {
     expect(s.lastHand!.points).toEqual([18, 0]);
   });
 
+  it('المشروع الأضعف ينلغي وما ينفرش (سرا مقابل سرا: الأعلى ورقة يفوز)', () => {
+    const base = hokm(['AH KH QH 7S', '9C 8C 7C 8S', '9H 10H 10C JC', 'JH 9S KC QC'], { manualProjects: true });
+    let s = applyAction(base, { type: 'declareKind', seat: 0, kind: 'sira' });
+    s = play(s, 0, '7S');
+    s = applyAction(s, { type: 'declareKind', seat: 1, kind: 'sira' });
+    for (const [seat, c] of [[1, '8S'], [2, '10C'], [3, '9S']] as [Seat, string][]) s = play(s, seat, c);
+    expect(s.trickNo).toBe(1);
+    expect(canShowProject(s, 0)).toBe(true);
+    expect(canShowProject(s, 1)).toBe(false);
+  });
+
   it('أوراق المشروع', () => {
     expect(projectFromCards(cards('9S 10S JS QS'), 'hokm')!.kind).toBe('fifty');
     expect(projectFromCards(cards('AS AH AC AD'), 'sun')!.kind).toBe('fourHundred');

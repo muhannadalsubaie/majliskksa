@@ -3,7 +3,7 @@ import {
   LAST_TRICK_BONUS, SUN_DOUBLE_THRESHOLD, cardPoints, cardStrength, createDeck, nextSeat, otherTeam, sameCard, teamOf,
 } from './cards';
 import { type PlayedCard, legalCards, trickWinner } from './play';
-import { type DeclaredProjects, type Project, type ProjectKind, type ProjectResolution, findProjects, hasBaloot, projectFromCards, projectValue, resolveProjects } from './projects';
+import { type DeclaredProjects, type Project, type ProjectKind, type ProjectResolution, compareProjects, findProjects, hasBaloot, projectFromCards, projectValue, resolveProjects } from './projects';
 import { type HandScore, type MatchOutcome, BALOOT_POINTS, abnatToPoints, matchOutcome, scoreHand } from './scoring';
 
 /** آلة حالة اللعبة — تعمل في Cloud Functions، والعميل يرسل "أفعالاً" فقط. */
@@ -684,9 +684,28 @@ function applyDeclareKind(s: GameState, seat: Seat, kind: ProjectKind): GameStat
   return { ...s, qaidProjects: [...(s.qaidProjects ?? []), { seat, kind }] };
 }
 
-/** القيد: عندك مشروع معلن ما فرشته، والحين اللفة الثانية */
+/**
+ * القيد مع الإعلان اليدوي: الفريق صاحب المشروع الأقوى (من المشاريع المعلنة). الأقوى بالنوع،
+ * وعند تساوي النوع بأعلى ورقة في المشروع، وعند التساوي التام الأسبق في اللعب.
+ * المقارنة بأوراقه الفعلية (لو أعلن نوع ما عنده، ينحسب بأضعف ورقة).
+ */
+export function qaidWinningTeam(s: GameState): Team | null {
+  const mode = s.contract?.mode ?? 'hokm';
+  const first = nextSeat(s.dealer);
+  const order = (x: Seat) => [0, 1, 2, 3].findIndex((n) => nextSeat(first, n) === x);
+  let best: { seat: Seat; p: Project } | null = null;
+  for (const d of s.qaidProjects ?? []) {
+    const p: Project = findProjects(s.initialHands[d.seat], mode).find((x) => x.kind === d.kind) ?? { kind: d.kind, cards: [], topRank: '7' };
+    const cmp = best ? compareProjects(p, best.p) : 1;
+    if (cmp > 0 || (cmp === 0 && best && order(d.seat) < order(best.seat))) best = { seat: d.seat, p };
+  }
+  return best ? teamOf(best.seat) : null;
+}
+
+/** القيد: عندك مشروع معلن ما فرشته، والحين اللفة الثانية، ومشروع فريقك هو الأقوى (الأضعف ينلغي وما ينفرش) */
 export function canShowProject(s: GameState, seat: Seat): boolean {
-  return kindDeclare(s) && s.phase === 'playing' && s.trickNo === 1 && !s.lastHand && (s.qaidProjects ?? []).some((p) => p.seat === seat && !p.shown);
+  return kindDeclare(s) && s.phase === 'playing' && s.trickNo === 1 && !s.lastHand
+    && (s.qaidProjects ?? []).some((p) => p.seat === seat && !p.shown) && qaidWinningTeam(s) === teamOf(seat);
 }
 
 function applyShowProject(s: GameState, seat: Seat, cards: Card[]): GameState {
