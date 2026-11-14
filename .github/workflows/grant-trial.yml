@@ -1,0 +1,29 @@
+# تفعيل شهر تجربة الباقة الاحترافية لمستخدمين بأسمائهم: Actions ← Grant pro trial ← Run workflow
+name: Grant pro trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: أسماء المستخدمين مفصولة بفواصل
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix worker
+      - name: Grant
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          USERNAMES: ${{ inputs.usernames }}
+        shell: bash -eo pipefail {0}
+        run: npx -y tsx@4.19.2 scripts/grant-trial.ts "$USERNAMES" | tee -a $GITHUB_STEP_SUMMARY
