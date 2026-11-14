@@ -624,7 +624,7 @@ export function botAction(s: GameState, seat: Seat, params: BotParams = DEFAULT_
   // إعلان المشاريع يدوي: الروبوت يعلن مشروعه قبل ما يلعب ورقته
   if (s.manualProjects && canDeclareProject(s, seat)) return { type: 'declareProject', seat };
   // القيد والقطع: الروبوت يعلن نوع مشروعه قبل ورقته الأولى، ويفرش أوراقه صح في اللفة الثانية
-  if (s.qaid && s.phase === 'playing' && s.turn === seat) {
+  if (s.qaid && s.manualProjects && s.phase === 'playing' && s.turn === seat) {
     const mine = findProjects(s.initialHands[seat], s.contract!.mode);
     const said = (s.qaidProjects ?? []).filter((p) => p.seat === seat);
     if (declarableKinds(s, seat).length && said.length < mine.length) return { type: 'declareKind', seat, kind: mine[said.length].kind };

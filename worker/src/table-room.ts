@@ -765,14 +765,14 @@ export class TableRoom extends DurableObject<Env> {
         const qaid = ownerPro && msg.qaid === true;
         // مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم
         const proSeats = baloot ? (await Promise.all(t.seats.map(async (m, i) => (m && !m.isBot && await this.isPro(m.uid) ? i : -1)))).filter((i) => i >= 0) : [];
-        // زر سوا: المالك يقدر يقفله قبل البداية
-        const sawaOff = baloot && msg.sawa === false;
+        // زر سوا: للمشترك بس، لو فعّله المالك قبل البداية
+        const sawaOff = baloot && !(ownerPro && msg.sawa === true);
         const started = startAny({ ...t, ...(limit === null ? {} : { turnLimit: limit }), manualProjects, qaid, sawaOff, proSeats }, rng);
         const { events, voices } = started;
         if (limit) events.push(`وقت كل دور ${limit} ثانية`);
         if (manualProjects) events.push('إعلان المشاريع يدوي');
         if (qaid) events.push('القيد والقطع مفعّل: اللعب حر، والغلط يتسجّل');
-        if (sawaOff) events.push('زر سوا مقفل');
+        if (baloot && !sawaOff) events.push('زر سوا مفعّل');
         const next = await this.rigDeal(stampMatchOptions(started.table));
         await this.save(next);
         this.broadcast(events, undefined, voices);

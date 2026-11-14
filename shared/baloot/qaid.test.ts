@@ -57,7 +57,7 @@ describe('القيد والقطع', () => {
 
   it('مشروع: تعلن النوع، وتفرش الأوراق في اللفة الثانية؛ الفرش الغلط يتسجّل', () => {
     const hands = ['AH KH QH 7C 8D', '7H 8H AC 8C 9C', '9H 10H 10C JC 7D', 'JH 7S KC QC 9D'];
-    let s = hokm(hands);
+    let s = hokm(hands, { manualProjects: true });
     expect(declarableKinds(s, 0)).toContain('sira');
     s = applyAction(s, { type: 'declareKind', seat: 0, kind: 'sira' });
     for (const [seat, c] of [[0, '7C'], [1, '8C'], [2, '10C'], [3, 'KC']] as [Seat, string][]) s = play(s, seat, c);
@@ -72,7 +72,7 @@ describe('القيد والقطع', () => {
   });
 
   it('فرش صح ينحسب المشروع', () => {
-    const s0 = hokm(['AH KH QH 7C', '7H 8H AC 8C', '9H 10H 10C JC', 'JH 7S KC QC']);
+    const s0 = hokm(['AH KH QH 7C', '7H 8H AC 8C', '9H 10H 10C JC', 'JH 7S KC QC'], { manualProjects: true });
     let s = applyAction(s0, { type: 'declareKind', seat: 0, kind: 'sira' });
     for (const [seat, c] of [[0, '7C'], [1, '8C'], [2, '10C'], [3, 'KC']] as [Seat, string][]) s = play(s, seat, c);
     s = applyAction(s, { type: 'showProject', seat: 0, cards: cards('QH AH KH') });
@@ -89,8 +89,21 @@ describe('القيد والقطع', () => {
   });
 
   it('الروبوت ما يغلط: يعلن مشروعه ويلعب الورق المسموح بس', () => {
-    const s = hokm(['AH KH QH 7C', '7H 8H AC 8C', '9H 10H 10C JC', 'JH 7S KC QC']);
+    const s = hokm(['AH KH QH 7C', '7H 8H AC 8C', '9H 10H 10C JC', 'JH 7S KC QC'], { manualProjects: true });
     expect(botAction(s, 0)).toEqual({ type: 'declareKind', seat: 0, kind: 'sira' });
+  });
+
+  it('القيد ياخذ مشاريع الفريق اللي ياخذه بس: مشروع المشتري المقيّد ما ينحسب للخصم', () => {
+    // المشتري (0) عنده سرا ومفروشة، والخصم (1) عنده سرا معلنة. المشتري قطع، والخصم سجّل عليه
+    const base = hokm(['AH KH QH 7C 8D', '7H JC 10C 9C 8S', '9H 10H AC 7D 9S', 'JH 7S KC QC 9D'], { manualProjects: true });
+    let s = applyAction(base, { type: 'declareKind', seat: 0, kind: 'sira' });
+    s = play(s, 0, '7C');
+    s = applyAction(s, { type: 'declareKind', seat: 1, kind: 'sira' });
+    s = play(s, 1, '7H'); // معه كلفس ولعب هاص: قاطع
+    s = applyAction(s, { type: 'qaid', seat: 1, target: 0, kind: 'noTrump' }); // نوع غلط: القيد على المسجّل
+    expect(s.qaidResult!.correct).toBe(false);
+    // القيد للمشتري: ١٦ + سرّاه (٢)، وسرا الخصم ما تنحسب
+    expect(s.lastHand!.points).toEqual([18, 0]);
   });
 
   it('أوراق المشروع', () => {
