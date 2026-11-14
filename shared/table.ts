@@ -423,6 +423,21 @@ export function stopGame(t: TableData): TableData {
   };
 }
 
+/**
+ * المالك يحط روبوت مكان اللي في المقعد (حتى أثناء اللعب: الروبوت ياخذ أوراق المقعد).
+ * إن كان في المقعد إنسان يصبح مشاهداً.
+ */
+export function seatBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
+  const outgoing = t.seats[seat];
+  if (outgoing?.isBot) return t;
+  const base = outgoing ? withoutVoice(markBack(t, outgoing.uid), outgoing.uid) : t;
+  const n = base.botCount + 1;
+  const seats = [...base.seats];
+  seats[seat] = { uid: `bot-${n}`, username: botName(base, rng), isBot: true };
+  const spectators = outgoing && !base.spectators.some((m) => m.uid === outgoing.uid) ? [...base.spectators, outgoing] : base.spectators;
+  return { ...base, seats, spectators, botCount: n };
+}
+
 export function addBot(t: TableData, seat: Seat, rng: () => number = Math.random): TableData {
   if (!inLobby(t)) throw new TableError('game-started');
   if (t.seats[seat]) throw new TableError('seat-taken');

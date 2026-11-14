@@ -6,7 +6,7 @@ import { RANKS, SUITS } from '../../shared/baloot/cards';
 import { type Action, type Bid, IllegalAction, isQaidKind } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
-  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, pinnedPass, emptyPinned, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
+  type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, seatBot, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, pinnedPass, emptyPinned, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
   awayExpired, markAway, markBack, memberName, setGameOptions, gameOptions, nextAwayDeadline, replaceWithBot, runAutoStep, seatOf, holding, changeGame, startAny, viewFor, type VoiceMember,
   JOIN_REQUEST_HOLD_MS, JOIN_REJECT_BLOCK_MS, isJoinApproved,
 } from '../../shared/table';
@@ -804,6 +804,17 @@ export class TableRoom extends DurableObject<Env> {
         if (!isOwner) throw new Error('not-owner');
         if (!isSeat(msg.seat) || typeof msg.uid !== 'string') throw new Error('bad-request');
         const before = t.seats[msg.seat];
+        // «روبوت»: يحل روبوت مكان اللي في المقعد (قبل اللعب أو أثناءه)
+        if (msg.uid === 'bot') {
+          if (before?.isBot) break;
+          const withBot = seatBot(t, msg.seat, rng);
+          await this.db().adjustCoins(uid, -COINS.addBot);
+          await this.save(withBot);
+          const bot = withBot.seats[msg.seat]!.username;
+          this.broadcast([before ? `${bot} جلس مكان ${before.username}` : `أُضيف ${bot}`]);
+          await this.publish(withBot);
+          break;
+        }
         const next = assignSeat(t, msg.seat, msg.uid);
         await this.save(next);
         const incoming = next.seats[msg.seat]!.username;
