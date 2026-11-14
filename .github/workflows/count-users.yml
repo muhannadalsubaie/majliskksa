@@ -1,0 +1,24 @@
+# عدد الحسابات المسجلة (قراءة فقط): Actions ← Count users ← Run workflow
+name: Count users
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix worker
+      - name: Count
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        shell: bash -eo pipefail {0}
+        run: npx -y tsx@4.19.2 scripts/count-users.ts | tee -a $GITHUB_STEP_SUMMARY
