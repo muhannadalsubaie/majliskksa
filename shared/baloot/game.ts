@@ -123,7 +123,7 @@ export interface GameState {
   /** الغلطات في الصكة (سرية): مين، ووش نوعها */
   fouls?: { seat: Seat; kind: FoulKind; trickNo: number }[];
   /** مشاريع القيد: النوع اللي أعلنه، وهل فرشه صح (ok) أو غلط (ok=false)، وبدون shown = ما فرشه */
-  qaidProjects?: { seat: Seat; kind: ProjectKind; shown?: boolean; ok?: boolean }[];
+  qaidProjects?: { seat: Seat; kind: ProjectKind; shown?: boolean; ok?: boolean; cards?: Card[] }[];
   /** آخر تسجيلة انحسمت فيها الصكة */
   qaidResult?: { by: Seat; target: Seat; kind: QaidKind; correct: boolean };
 }
@@ -699,7 +699,8 @@ function applyShowProject(s: GameState, seat: Seat, cards: Card[]): GameState {
   // أوراقه تطابق واحد من المشاريع اللي أعلنها؟ وإلا ينحسب أول مشروع معلن «مفروش غلط»
   const match = got ? pending.find((p) => p.kind === got.kind) : undefined;
   const target = match ?? pending[0];
-  const qaidProjects = (s.qaidProjects ?? []).map((p) => (p === target ? { ...p, shown: true, ok: !!match } : p));
+  // الأوراق اللي فرشها تنكشف قدام الكل (صح أو غلط — الخصم هو اللي يمسك الغلط)
+  const qaidProjects = (s.qaidProjects ?? []).map((p) => (p === target ? { ...p, shown: true, ok: !!match, cards } : p));
   if (!match) return { ...s, qaidProjects };
   const prev = s.declared.find((d) => d.seat === seat);
   const declared = prev

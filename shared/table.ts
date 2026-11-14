@@ -988,13 +988,14 @@ export function viewFor(t: TableData, uid: string): TableView {
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
       // مشروع بنفس قوة مشروع أُعلن قبله لا يظهر (يُعلن مشروع الأسبق فقط)
       // القيد مع الإعلان اليدوي: المشروع ينكشف أول ما يفرشه صاحبه (أوراقه قدام الكل)، والإلغاء بعد ما تنحسب المشاريع
-      declared: kindDeclare(g) ? g.declared.map((d) => {
-        const lost = g.projects ? g.projects.winningTeam !== teamOf(d.seat) : false;
+      declared: kindDeclare(g) ? (g.qaidProjects ?? []).filter((p) => p.shown && p.cards).map((p) => {
+        // المفروش ينكشف قدام الكل على طول؛ «أُلغي» بس بعد ما تنحسب المشاريع ويطلع مشروع الفريق الثاني أقوى
+        const lost = !!g.projects && g.projects.winningTeam !== teamOf(p.seat);
         return {
-          seat: d.seat,
-          kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
-          cards: d.projects.map((p) => p.cards.map(cardLabel).join('، ')),
-          faces: d.projects.flatMap((p) => p.cards),
+          seat: p.seat,
+          kinds: [PROJECT_NAMES[p.kind]],
+          cards: [p.cards!.map(cardLabel).join('، ')],
+          faces: p.cards!,
           cancelled: lost ? true : undefined,
         };
       }) : g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
