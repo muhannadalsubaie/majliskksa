@@ -765,8 +765,8 @@ export class TableRoom extends DurableObject<Env> {
         // مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم
         const proSeats = baloot ? (await Promise.all(t.seats.map(async (m, i) => (m && !m.isBot && await this.isPro(m.uid) ? i : -1)))).filter((i) => i >= 0) : [];
         // الخيارات الإضافية (القيد والقطع، وإعلان المشاريع يدوي، وقفل سوا) ما تتفعل إلا لو كل اللاعبين مشتركين
-        // (الأربعة لازم يكونون لاعبين مشتركين: الروبوت أو المقعد الفاضي يمنعها)
-        const allPro = ownerPro && t.seats.every((_, i) => proSeats.includes(i));
+        // (الروبوت ما يمنعها)
+        const allPro = ownerPro && t.seats.every((m, i) => !m || m.isBot || proSeats.includes(i));
         const wanted = msg.manualProjects === true || msg.qaid === true || msg.sawa === false;
         const manualProjects = allPro && msg.manualProjects === true;
         const qaid = allPro && msg.qaid === true;
@@ -790,8 +790,9 @@ export class TableRoom extends DurableObject<Env> {
         if (!isOwner) throw new Error('not-owner');
         const limit = validTurnLimit(msg.turnLimit);
         if (limit === null) throw new Error('bad-request');
-        // ولازم الأربعة لاعبين مشتركين (الروبوت يمنعه)
-        if (!(await this.isPro(uid)) || t.seats.some((m) => !m || m.isBot) || !(await Promise.all(t.seats.map((m) => this.isPro(m!.uid)))).every(Boolean)) throw new TableError('pro-only');
+        // ولازم كل اللاعبين (غير الروبوتات) مشتركين
+        const humans = t.seats.filter((m) => m && !m.isBot);
+        if (!(await this.isPro(uid)) || !(await Promise.all(humans.map((m) => this.isPro(m!.uid)))).every(Boolean)) throw new TableError('pro-only');
         const { clock: _c, ...rest } = t;
         void _c;
         // الوقت الجديد يبدأ من الدور الحالي
