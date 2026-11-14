@@ -21,6 +21,9 @@ const INVITE_TTL_MS = 10 * 60_000;
 /** التطبيق ينبض كل 15 ثانية: من انقطعت نبضته أكثر من هذا يُعتبر غير متصل (انقطع نته بلا إغلاق للاتصال) */
 const ONLINE_STALE_MS = 45_000;
 
+/** سجل اللعب الشامل: كم سطر نحتفظ فيه */
+const GAME_LOG_MAX = 20000;
+
 export class UserHub extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -359,6 +362,27 @@ export class UserHub extends DurableObject<Env> {
   }
 
   async setNote(note: string): Promise<void> { await this.ctx.storage.put('note', note.slice(0, 400)); }
+  // ───── سجل اللعب الشامل (مركز «__game__»): كل سطر في مفتاح، ونحتفظ بآخر GAME_LOG_MAX سطر ─────
+  async logPush(lines: string[]): Promise<void> {
+    let n = (await this.ctx.storage.get<number>('logN')) ?? 0;
+    const put: Record<string, string> = {};
+    for (const l of lines) put[`log:${String(n++).padStart(10, '0')}`] = l.slice(0, 600);
+    await this.ctx.storage.put(put);
+    await this.ctx.storage.put('logN', n);
+    const old = n - GAME_LOG_MAX;
+    if (old > 0 && n % 200 < lines.length) {
+      const stale = await this.ctx.storage.list<string>({ prefix: 'log:', end: `log:${String(old).padStart(10, '0')}`, limit: 1000 });
+      if (stale.size) await this.ctx.storage.delete([...stale.keys()]);
+    }
+  }
+  /** آخر الأسطر (الأحدث آخر)، واختيارياً اللي فيها نص معيّن (رمز الطاولة مثلاً) */
+  async logRead(limit = 500, q = ''): Promise<string[]> {
+    const all = await this.ctx.storage.list<string>({ prefix: 'log:', reverse: true, limit: q ? 20000 : Math.min(limit, 5000) });
+    const out: string[] = [];
+    for (const v of all.values()) { if (!q || v.includes(q)) out.push(v); if (out.length >= limit) break; }
+    return out.reverse();
+  }
+
   async getNote(): Promise<string> { return (await this.ctx.storage.get<string>('note')) ?? ''; }
   /** سجل تشخيص: آخر 80 سطر */
   async appendNote(line: string): Promise<void> {

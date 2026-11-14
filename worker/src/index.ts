@@ -183,6 +183,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     // ───── إدارة (من GitHub Actions فقط): الدخول برمز Google لحساب الخدمة نفسه ─────
+    // سجل اللعب الشامل: limit = عدد الأسطر، q = نص (رمز الطاولة t=xxxx، أو «تعليق»، أو وقت مثل 2026-11-14T11:2)
+    if (pathname === '/admin/gamelog' && request.method === 'POST') {
+      const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
+      const info = token ? (await (await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`)).json().catch(() => ({}))) as { email?: string } : {};
+      const sa = (() => { try { return parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT ?? ''); } catch { return { client_email: '' }; } })();
+      if (!info.email || info.email !== sa.client_email) return json({ error: 'forbidden' }, 403);
+      const b = (await request.json().catch(() => ({}))) as { limit?: number; q?: string };
+      const lines = await env.HUBS.get(env.HUBS.idFromName('__game__')).logRead(Math.min(Number(b.limit) || 500, 5000), String(b.q ?? ''));
+      return json({ lines });
+    }
     if (pathname === '/admin/rename' && request.method === 'POST') {
       const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
       const info = token ? (await (await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`)).json().catch(() => ({}))) as { email?: string } : {};

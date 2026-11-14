@@ -3,7 +3,7 @@ import { usernameKey } from '../../shared/username';
 import { DurableObject } from 'cloudflare:workers';
 import type { Card, Rank, Seat, Suit } from '../../shared/baloot/cards';
 import { RANKS, SUITS } from '../../shared/baloot/cards';
-import { type Action, type Bid, IllegalAction, isQaidKind } from '../../shared/baloot/game';
+import { type Action, type Bid, IllegalAction, isQaidKind, availableBids, availableDouble, handOver, isDoublingTurn, isLockChoiceTurn, needsRedeal, playableCardsFor } from '../../shared/baloot/game';
 import { BOT_REPLACE_AFTER_MS, COINS, LOBBY_LEAVE_AFTER_MS } from '../../shared/economy';
 import {
   type TableData, TableError, addBot, addInvite, applyWithEvents, assignSeat, seatBot, stopGame, kick, setVoiceBlocked, isMember as inTable, lobbyExpired, stampMatchOptions, pinnedPass, emptyPinned, markLobbyAway, markLobbyBack, nextLobbyDeadline, sweepLobbyGhosts, hasHumans, vacateSeat, isFull, join, leave, newTable, nextAutoStep, peopleCount,
@@ -191,7 +191,29 @@ export class TableRoom extends DurableObject<Env> {
     return `t=${this.ctx.id.toString().slice(0, 4)} ${seat === null ? 'مشاهد' : `مقعد${seat + 1}`} ${a.plat ?? '?'}`;
   }
 
+  // ───── سجل اللعب الشامل (/admin/gamelog): كل حركة وإعلان ومهلة وخطأ وتعليق، بوقته ─────
+  private gl(line: string) {
+    const t = this.table;
+    const id = this.ctx.id.toString().slice(0, 4);
+    const out = `${new Date().toISOString()} t=${id} ${line}${t ? ` | ${stateSig(t)}` : ''}`;
+    void this.env.HUBS.get(this.env.HUBS.idFromName('__game__')).logPush([out]).catch(() => {});
+  }
+  private seatTag(uid: string): string {
+    const seat = this.table ? seatOf(this.table, uid) : null;
+    return seat === null ? 'مشاهد' : `م${seat + 1}`;
+  }
+  /** فحص التعليق: الدور عند أحد وما عنده أي حركة، أو دور روبوت وما فيه خطوة تلقائية */
+  private lastStuck = '';
+  private checkStuck(t: TableData) {
+    const why = stuckReason(t, rng);
+    const key = why ? `${why}|${stateSig(t)}` : '';
+    if (why && key !== this.lastStuck) this.gl(`⚠️ تعليق: ${why}`);
+    this.lastStuck = key;
+  }
+
   private noteSlow(line: string) {
+    // سجل اللعب الشامل ياخذ كل سطر تشخيص بعد (اتصال وانقطاع وتأخير)
+    this.gl(line);
     // سجل المتابعة مقفل (انحلت المشكلة). للتشغيل مرة ثانية: DIAG_LOG = true
     if (!DIAG_LOG) return;
     console.log('slow', line);
@@ -678,6 +700,7 @@ export class TableRoom extends DurableObject<Env> {
     } catch (e) {
       const code = (e as Error).message;
       const text = e instanceof IllegalAction || e instanceof DominoError || e instanceof JackarooError || e instanceof LudoError ? code : ERRORS[code] ?? 'تعذّر تنفيذ الطلب';
+      this.gl(`${this.seatTag(uid)} ❌ رفض ${msg.type}${'action' in msg && msg.action && typeof msg.action === 'object' ? `:${String((msg.action as { type?: unknown }).type)}` : ''}: ${code}`);
       ws.send(JSON.stringify({ type: 'error', message: text }));
     }
   }
@@ -718,7 +741,8 @@ export class TableRoom extends DurableObject<Env> {
         if (!action) throw new Error('bad-action');
         // خلال المهلة بين قرار اللاعب السابق وانتقال الدور (أو كشف أوراق «سوا») لا يُقبل قرار جديد
         // (التسجيلة تنقبل في أي وقت، حتى وقت كشف أوراق سوا)
-        if ((holding(t) || t.sawa) && action.type !== 'qaid') break;
+        if ((holding(t) || t.sawa) && action.type !== 'qaid') { this.gl(`${this.seatTag(uid)} حركة متجاهلة (مهلة/سوا): ${actionSig(action)}`); break; }
+        this.gl(`${this.seatTag(uid)} حركة: ${actionSig(action)}`);
         const r = applyWithEvents(t, action, rng);
         await this.save(r.table);
         this.broadcast(r.events, undefined, r.voices);
@@ -1109,6 +1133,7 @@ export class TableRoom extends DurableObject<Env> {
 
   private async schedule() {
     const t = await this.load();
+    if (t) { try { this.checkStuck(t); } catch { /* التشخيص ما يوقف اللعب */ } }
     // لا أحد متصل: لا داعي لتشغيل الروبوتات، ننتظر مهلة الإغلاق فقط
     const emptySince = await this.ctx.storage.get<number>('emptySince');
     if (emptySince) {
@@ -1186,6 +1211,7 @@ export class TableRoom extends DurableObject<Env> {
     }
     // انتهت مهلة القرار: ينتقل الدور لمن بعده
     if (cur.hold && !holding(cur, Date.now() + 50)) {
+      this.gl(`انتهت المهلة (م${cur.hold.seat + 1}${cur.hold.deal ? '، توزيع' : ''})`);
       const { hold: _h, ...rest } = cur;
       void _h;
       cur = rest;
@@ -1197,6 +1223,7 @@ export class TableRoom extends DurableObject<Env> {
     if (timeout) {
       const seat = cur.clock!.seat;
       const name = cur.seats[seat]?.username ?? 'اللاعب';
+      this.gl(`خلص وقت م${seat + 1}: ${actionSig(timeout.action)}`);
       let r: { table: TableData; events: string[]; voices?: string[] };
       try {
         r = timeout.game === 'baloot'
@@ -1220,6 +1247,7 @@ export class TableRoom extends DurableObject<Env> {
       // تشخيص: الروبوت تأخر عن وقته (السجل: /tables/slow)
       const late = botAt ? Date.now() - botAt : 0;
       if (late > 2500) this.noteSlow(`روبوت تأخر ${late}ms t=${cur.id.slice(0, 4)} ${kindOf(cur)}`);
+      this.gl(`آلي ${step.kind}${step.kind === 'bot' ? ` م${step.seat + 1} ${actionSig(step.action)}` : ''}${late > 2500 ? ` (تأخر ${late}ms)` : ''}`);
       const r = runAutoStep(cur, step, rng);
       r.table = await this.rigDeal(r.table);
       await this.save(r.table);
@@ -1238,6 +1266,7 @@ export class TableRoom extends DurableObject<Env> {
   private broadcast(events: string[], except?: string, voices?: string[]) {
     const t = this.table;
     if (!t) return;
+    if (events.length) this.gl(`إعلان: ${events.join(' ؛ ')}`);
     const names = t.seats.map((m, i) => m?.username ?? `المقعد ${i + 1}`);
     for (const ws of this.ctx.getWebSockets()) {
       const { uid } = ws.deserializeAttachment() as { uid: string };
@@ -1258,4 +1287,53 @@ export class TableRoom extends DurableObject<Env> {
       } catch { /* اتصال مغلق */ }
     }
   }
+}
+
+// ───── تشخيص سجل اللعب ─────
+
+/** وصف قصير لحالة الطاولة: اللعبة، المرحلة، رقم الأكلة، الدور، والمهلة */
+function stateSig(t: TableData): string {
+  const g = t.game;
+  const hold = t.hold ? ` مهلة=م${t.hold.seat + 1}${t.hold.deal ? '/توزيع' : ''}:${Math.max(0, t.hold.until - Date.now())}ms` : '';
+  const sawa = t.sawa ? ` سوا=م${t.sawa.seat + 1}` : '';
+  if (g) {
+    const opts = [g.qaid ? 'قيد' : '', g.manualProjects ? 'يدوي' : ''].filter(Boolean).join('+');
+    return `بلوت ${g.phase} لفة=${g.trickNo} أرض=${g.trick.length} دور=م${g.turn + 1}${hold}${sawa}${opts ? ` [${opts}]` : ''} مقاعد=${t.seats.map((m) => (m ? (m.isBot ? 'R' : 'H') : '-')).join('')}`;
+  }
+  if (t.domino || t.jackaroo || t.ludo) return `${kindOf(t)}${hold} مقاعد=${t.seats.map((m) => (m ? (m.isBot ? 'R' : 'H') : '-')).join('')}`;
+  return `لوبي مقاعد=${t.seats.map((m) => (m ? (m.isBot ? 'R' : 'H') : '-')).join('')}`;
+}
+
+/** وصف قصير لحركة */
+function actionSig(a: unknown): string {
+  const o = a as Record<string, unknown>;
+  const c = o.card as { rank?: string; suit?: string } | undefined;
+  const bid = o.bid as { type?: string; suit?: string } | undefined;
+  const parts = [String(o.type ?? '?')];
+  if (c) parts.push(`${c.rank}${c.suit}`);
+  if (bid) parts.push(`${bid.type}${bid.suit ? `-${bid.suit}` : ''}`);
+  for (const k of ['kind', 'target', 'locked', 'call']) if (k in o) parts.push(`${k}=${String(o[k])}`);
+  if (Array.isArray(o.cards)) parts.push((o.cards as { rank: string; suit: string }[]).map((x) => `${x.rank}${x.suit}`).join(','));
+  return parts.join(' ');
+}
+
+/** ليش اللعب واقف؟ (null = ماشي طبيعي) */
+function stuckReason(t: TableData, r: () => number): string | null {
+  const g = t.game;
+  if (!g || g.phase === 'matchOver' || holding(t) || t.sawa) return null;
+  if (nextAutoStep(t, r)) return null;
+  if (handOver(g) || needsRedeal(g)) return 'نهاية صكة أو إعادة توزيع وما فيه خطوة تلقائية';
+  const seats: Seat[] = g.phase === 'doubling'
+    ? ([0, 1, 2, 3] as Seat[]).filter((x) => isDoublingTurn(g, x) || isLockChoiceTurn(g, x))
+    : [g.turn];
+  if (!seats.length) return `مرحلة ${g.phase} وما أحد عليه الدور`;
+  for (const x of seats) {
+    const m = t.seats[x];
+    if (!m) return `الدور عند م${x + 1} والمقعد فاضي`;
+    if (m.isBot) return `الدور عند روبوت م${x + 1} وما عنده حركة`;
+    const can = availableBids(g, x).length > 0 || !!availableDouble(g, x) || isDoublingTurn(g, x) || isLockChoiceTurn(g, x)
+      || playableCardsFor(g, x).length > 0 || (g.phase === 'waraq' && g.turn === x);
+    if (can) return null;
+  }
+  return `الدور عند م${seats.map((x) => x + 1).join('/')} وما عنده أي حركة متاحة`;
 }

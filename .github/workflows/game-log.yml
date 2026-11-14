@@ -1,0 +1,34 @@
+# سجل اللعب الشامل (قراءة فقط): Actions ← Game log ← Run workflow
+name: Game log
+
+on:
+  workflow_dispatch:
+    inputs:
+      q:
+        description: نص للبحث (رمز الطاولة t=xxxx، أو تعليق، أو رفض، أو وقت مثل 2026-11-14T11:2) — فاضي = الكل
+        required: false
+        default: ''
+      limit:
+        description: عدد الأسطر (آخرها)
+        required: false
+        default: '1000'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          Q: ${{ inputs.q }}
+          LIMIT: ${{ inputs.limit }}
+        shell: bash -eo pipefail {0}
+        run: node scripts/game-log.mjs | tee -a $GITHUB_STEP_SUMMARY
