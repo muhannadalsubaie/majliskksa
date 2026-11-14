@@ -114,6 +114,7 @@ function parseAction(raw: unknown, seat: Seat): Action | null {
 }
 
 const ERRORS: Record<string, string> = {
+  'pro-only': 'لازم كل اللاعبين يكونون مشتركين في الباقة',
   'not-enough-coins': 'رصيدك من العملات لا يكفي',
   'owner-not-enough-coins': 'رصيد مالك الطاولة لا يكفي',
   'table-full': 'الطاولة ممتلئة',
@@ -761,18 +762,23 @@ export class TableRoom extends DurableObject<Env> {
         // خيارات الباقة الاحترافية (البلوت): تنضبط قبل البداية بس، ولو المالك مشترك
         const baloot = kindOf(t) === 'baloot';
         const ownerPro = baloot && await this.isPro(t.ownerUid);
-        const manualProjects = ownerPro && msg.manualProjects === true;
-        const qaid = ownerPro && msg.qaid === true;
         // مقاعد المشتركين: زر «ورق» متاح لهم حتى لو مو دورهم
         const proSeats = baloot ? (await Promise.all(t.seats.map(async (m, i) => (m && !m.isBot && await this.isPro(m.uid) ? i : -1)))).filter((i) => i >= 0) : [];
-        // زر سوا: يطلع للكل تلقائياً، والمالك المشترك يقدر يقفله قبل البداية
-        const sawaOff = baloot && ownerPro && msg.sawa === false;
+        // الخيارات الإضافية (القيد والقطع، وإعلان المشاريع يدوي، وقفل سوا) ما تتفعل إلا لو كل اللاعبين مشتركين
+        // (الروبوت ما يمنعها)
+        const allPro = ownerPro && t.seats.every((m, i) => !m || m.isBot || proSeats.includes(i));
+        const wanted = msg.manualProjects === true || msg.qaid === true || msg.sawa === false;
+        const manualProjects = allPro && msg.manualProjects === true;
+        const qaid = allPro && msg.qaid === true;
+        // زر سوا: يطلع للكل تلقائياً، ويتقفل بس لو كل اللاعبين مشتركين
+        const sawaOff = allPro && msg.sawa === false;
         const started = startAny({ ...t, ...(limit === null ? {} : { turnLimit: limit }), manualProjects, qaid, sawaOff, proSeats }, rng);
         const { events, voices } = started;
         if (limit) events.push(`وقت كل دور ${limit} ثانية`);
         if (manualProjects) events.push('إعلان المشاريع يدوي');
         if (qaid) events.push('القيد والقطع مفعّل: اللعب حر، والغلط يتسجّل');
         if (sawaOff) events.push('زر سوا مقفل');
+        if (ownerPro && wanted && !allPro) events.push('الخيارات الإضافية ما تفعّلت: لازم كل اللاعبين يكونون مشتركين في الباقة');
         const next = await this.rigDeal(stampMatchOptions(started.table));
         await this.save(next);
         this.broadcast(events, undefined, voices);
@@ -784,7 +790,9 @@ export class TableRoom extends DurableObject<Env> {
         if (!isOwner) throw new Error('not-owner');
         const limit = validTurnLimit(msg.turnLimit);
         if (limit === null) throw new Error('bad-request');
-        if (!(await this.isPro(uid))) throw new TableError('pro-only');
+        // ولازم كل اللاعبين (غير الروبوتات) مشتركين
+        const humans = t.seats.filter((m) => m && !m.isBot);
+        if (!(await this.isPro(uid)) || !(await Promise.all(humans.map((m) => this.isPro(m!.uid)))).every(Boolean)) throw new TableError('pro-only');
         const { clock: _c, ...rest } = t;
         void _c;
         // الوقت الجديد يبدأ من الدور الحالي
