@@ -1071,8 +1071,8 @@ export function viewFor(t: TableData, uid: string): TableView {
     startCounts: allowedPlayers(t),
     clock: clockView(t),
     manualProjects: t.manualProjects === true, qaid: t.qaid === true, sawaOn: t.sawaOff !== true,
-    // كل اللاعبين (غير الروبوتات) مشتركين في هالمباراة: يطلع للمالك زر تغيير المؤقت أثناء اللعب
-    allPro: t.seats.every((m, i) => !m || m.isBot || (t.proSeats ?? []).includes(i)),
+    // الأربعة لاعبين مشتركين في هالمباراة (بدون روبوت): يطلع للمالك زر تغيير المؤقت أثناء اللعب
+    allPro: t.seats.every((m, i) => !!m && !m.isBot && (t.proSeats ?? []).includes(i)),
     dominoLog: t.domino ? t.dominoLog ?? [] : [],
     // السجل يُكمَّل لكل واحد: أرقام الخانات من خانة بدايته و"أنت" بدل اسمه
     ludoLog: t.ludo ? (t.ludoLog ?? []).map((e) => personalizeLudo(e, seatNames(t), mySeat ?? -1)) : [],
