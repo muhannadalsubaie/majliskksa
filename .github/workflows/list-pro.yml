@@ -1,0 +1,24 @@
+# الحسابات المشتركة (قراءة فقط): Actions ← List pro ← Run workflow
+name: List pro
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix worker
+      - name: Count
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        shell: bash -eo pipefail {0}
+        run: npx -y tsx@4.19.2 scripts/list-pro.ts | tee -a $GITHUB_STEP_SUMMARY
