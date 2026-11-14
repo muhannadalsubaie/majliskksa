@@ -274,11 +274,17 @@ export function isJoinRejected(t: TableData, uid: string, now = Date.now()): boo
 export function join(t: TableData, user: { uid: string; username: string }, invite?: string, now = Date.now()): { table: TableData; charge: boolean; invitedBy?: string } {
   if (isMember(t, user.uid)) return { table: t, charge: false };
   if (t.banned?.includes(user.uid)) throw new TableError('banned');
-  if ((t.kicked?.[user.uid] ?? 0) > now) throw new TableError('kicked');
   if (peopleCount(t) >= MAX_PEOPLE_AT_TABLE) throw new TableError('table-full');
   const invites = (t.invites ?? []).map((i) => (typeof i === 'string' ? { code: i } : i));
   const inv = invite ? invites.find((i) => i.code === invite) : undefined;
   const invited = !!inv;
+  // المطرود: ما يرجع قبل ساعة، إلا لو أرسل له المالك دعوة — يدخل على طول
+  if ((t.kicked?.[user.uid] ?? 0) > now && !invited) throw new TableError('kicked');
+  if (t.kicked?.[user.uid]) {
+    const { [user.uid]: _k, ...rest } = t.kicked;
+    void _k;
+    t = { ...t, kicked: rest };
+  }
   // رفض المالك طلبه: ما يدخل الطاولة الخاصة إلا بدعوة أو بعد نصف ساعة من طلبه (والعامة يدخلها عادي)
   if (t.isPrivate && !invited && isJoinRejected(t, user.uid, now)) throw new TableError('join-rejected');
   // الطاولة الخاصة: بدعوة، أو موافقة المالك على طلب انضمام (مرة وحدة)، أو صاحبها — حتى اللي دخلها قبل يطلب من جديد
