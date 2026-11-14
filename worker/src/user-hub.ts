@@ -94,6 +94,7 @@ export class UserHub extends DurableObject<Env> {
     const uid = await this.ctx.storage.get<string>('uid');
     const presence = this.env.PRESENCE.get(this.env.PRESENCE.idFromName('global'));
     if (!uid) return;
+    await presence.markHidden(uid, until > Date.now()).catch(() => {});
     if (until > Date.now()) await presence.hubOffline(uid).catch(() => {});
     else if (this.ctx.getWebSockets().length) await presence.hubOnline(uid).catch(() => {});
     this.notifyFriends();

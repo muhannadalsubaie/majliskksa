@@ -174,10 +174,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
       let name = '';
       try { name = String((await new Firestore(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT).get('users', me.uid))?.username ?? ''); } catch { /* بدون اسم: ينحسب بس ما يطلع في القائمة */ }
       const inner = new URL('https://presence/ws');
-      // المشترك اللي أخفى ظهوره: يتصل بس ما ينحسب ولا يطلع في القائمة
+      // المشترك اللي أخفى ظهوره: ينحسب في عدد المتصلين، بس ما يطلع في قائمتهم
       const hidden = await env.HUBS.get(env.HUBS.idFromName(me.uid)).isHidden().catch(() => false);
-      inner.searchParams.set('uid', hidden ? '' : me.uid);
-      inner.searchParams.set('name', hidden ? '' : name);
+      inner.searchParams.set('uid', me.uid);
+      inner.searchParams.set('name', name);
+      if (hidden) inner.searchParams.set('hidden', '1');
       return env.PRESENCE.get(env.PRESENCE.idFromName('global')).fetch(new Request(inner, request));
     }
 

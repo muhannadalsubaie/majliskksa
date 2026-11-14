@@ -17,7 +17,8 @@ const MAX_LIST = 1000;
 /** فحص اللي اتصلوا عن طريق مركزهم (كل نسخ التطبيق): هل باقين متصلين؟ */
 const HUB_SWEEP_MS = 120_000;
 
-interface Who { uid: string; name: string; at: number }
+/** hidden: مشترك أخفى ظهوره — ينحسب في العدد، بس ما يطلع في قائمة المتصلين */
+interface Who { uid: string; name: string; at: number; hidden?: boolean }
 
 export class Presence extends DurableObject<Env> {
   private lastSent = -1;
@@ -60,6 +61,14 @@ export class Presence extends DurableObject<Env> {
     await this.soon();
   }
 
+  /** أخفى ظهوره أو رجّعه: اتصالاته الحالية تنحسب في العدد، وتطلع في القائمة أو لا */
+  async markHidden(uid: string, hidden: boolean) {
+    for (const ws of this.ctx.getWebSockets()) {
+      const who = ws.deserializeAttachment() as Who | null;
+      if (who?.uid === uid) ws.serializeAttachment({ ...who, hidden });
+    }
+  }
+
   async hubOffline(uid: string) {
     const m = await this.hubMap();
     if (!(uid in m)) return;
@@ -91,7 +100,7 @@ export class Presence extends DurableObject<Env> {
   /** المتصلون الآن (كل لاعب مرة، واللي بدون اسم ما يطلع) — للقائمة مع طاولة كل واحد */
   async players(): Promise<{ uid: string; username: string }[]> {
     const seen = new Map<string, string>();
-    for (const { who } of this.live()) if (who.name && !seen.has(who.uid)) seen.set(who.uid, who.name);
+    for (const { who } of this.live()) if (who.name && !who.hidden && !seen.has(who.uid)) seen.set(who.uid, who.name);
     // المتصلون بنسخ قديمة: نجيب أسماءهم من ملفاتهم مرة وحدة ونحفظها
     const m = await this.hubMap();
     const missing = Object.keys(m).filter((u) => !seen.has(u) && !m[u]).slice(0, 200);
@@ -130,9 +139,10 @@ export class Presence extends DurableObject<Env> {
     const url = new URL(request.url);
     const uid = url.searchParams.get('uid') ?? '';
     const name = url.searchParams.get('name') ?? '';
+    const hidden = url.searchParams.get('hidden') === '1';
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ uid, name, at: Date.now() } satisfies Who);
+    pair[1].serializeAttachment({ uid, name, at: Date.now(), ...(hidden ? { hidden } : {}) } satisfies Who);
     pair[1].send(JSON.stringify({ type: 'online', count: await this.total() }));
     await this.soon();
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -145,11 +155,12 @@ export class Presence extends DurableObject<Env> {
     if (msg.type === 'list') {
       const me = (ws.deserializeAttachment() as Who | null)?.uid;
       const seen = new Map<string, string>();
-      for (const { who } of this.live()) if (who.name && !seen.has(who.uid)) seen.set(who.uid, who.name);
+      // المخفي ما يطلع في القائمة (حتى لنفسه)، بس العدد يحسبه
+      for (const { who } of this.live()) if (who.name && !who.hidden && !seen.has(who.uid)) seen.set(who.uid, who.name);
       const players = [...seen].map(([uid, username]) => ({ uid, username, me: uid === me }))
         .sort((a, b) => Number(b.me) - Number(a.me) || a.username.localeCompare(b.username, 'ar'))
         .slice(0, MAX_LIST);
-      ws.send(JSON.stringify({ type: 'onlineList', count: seen.size, players }));
+      ws.send(JSON.stringify({ type: 'onlineList', count: await this.total(), players }));
     }
   }
 
