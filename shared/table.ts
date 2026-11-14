@@ -621,9 +621,9 @@ export function withDealHold(t: TableData, now = Date.now()): TableData {
 /** هل الدور ما زال موقوفاً عند صاحب القرار الأخير */
 export const holding = (t: TableData, now = Date.now()) => !!t.hold && now < t.hold.until;
 
-/** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة (مع القيد ١٠ ثواني: الخصم يقدر يسجّل «سوا غلط») */
+/** كشف الأوراق بعد «سوا» قبل ما تنحسب الصكة (مع القيد ٢٠ ثانية: الخصم يقدر يسجّل «سوا غلط») */
 export const SAWA_SHOW_MS = 2000;
-export const SAWA_SHOW_QAID_MS = 10000;
+export const SAWA_SHOW_QAID_MS = 20000;
 
 export function applyWithEvents(t: TableData, action: Action, rng: Rng, now = Date.now()): { table: TableData; events: string[]; voices?: Voice[] } {
   const before = t.game!;
