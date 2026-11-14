@@ -4,7 +4,7 @@ import { botAction } from './baloot/bot';
 import {
   type Action, type Bid, type GameState, type Rng, applyAction, availableBids, availableDouble, canDeclareBaloot, canSawa, isDoublingTurn, isLockChoiceTurn,
   canDeclareProject, canWaraq, handOver, legalCardsFor, needsRedeal, newMatch, nextHand, redeal,
-  QAID_NAMES, canShowProject, declarableKinds, playableCardsFor, qaidTargets, sawaAvailable,
+  QAID_NAMES, canShowProject, kindDeclare, declarableKinds, playableCardsFor, qaidTargets, sawaAvailable,
 } from './baloot/game';
 import { type DeclaredProjects, PROJECT_NAMES, compareProjects } from './baloot/projects';
 import { type GameKind, type GameVariant, dominoViewFor, jackarooViewFor, otherActive, otherAutoDelay, runOtherAuto, startOther } from './games';
@@ -895,6 +895,7 @@ export interface GameView {
   projects: GameState['projects'];
   /** cards: أوراق كل مشروع (بعد الأكلة الأولى فقط) */
   declared: { seat: Seat; kinds: string[]; cards?: string[]; faces?: Card[]; cancelled?: boolean }[];
+  kindDeclared: { seat: Seat; kind: string }[];
   actions: {
     bids: Bid[];
     double: ReturnType<typeof availableDouble>;
@@ -986,7 +987,17 @@ export function viewFor(t: TableData, uid: string): TableView {
       projects: g.trickNo > 0 ? g.projects : null,
       // نوع المشروع يُعلن مع أول ورقة لصاحبه، وأوراقه تُكشف في اللفة الثانية بعد أن يلعب صاحبه
       // مشروع بنفس قوة مشروع أُعلن قبله لا يظهر (يُعلن مشروع الأسبق فقط)
-      declared: g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
+      // القيد مع الإعلان اليدوي: المشروع ينكشف أول ما يفرشه صاحبه (أوراقه قدام الكل)، والإلغاء بعد ما تنحسب المشاريع
+      declared: kindDeclare(g) ? g.declared.map((d) => {
+        const lost = g.projects ? g.projects.winningTeam !== teamOf(d.seat) : false;
+        return {
+          seat: d.seat,
+          kinds: d.projects.map((p) => PROJECT_NAMES[p.kind]),
+          cards: d.projects.map((p) => p.cards.map(cardLabel).join('، ')),
+          faces: d.projects.flatMap((p) => p.cards),
+          cancelled: lost ? true : undefined,
+        };
+      }) : g.declared.filter((d, i) => !equalsEarlier(d, g.declared.slice(0, i))).map((d) => {
         // تنكشف أول ما يجي دور صاحبها في اللفة الثانية (قبل ما يلعب)
         const shown = g.trickNo > 1 || (g.trickNo === 1 && (g.trick.some((p) => p.seat === d.seat) || g.turn === d.seat));
         const won = g.projects?.winningTeam === teamOf(d.seat);
@@ -1016,6 +1027,8 @@ export function viewFor(t: TableData, uid: string): TableView {
         canWaraq: playing && canWaraq(g, mySeat),
         waraqDecision: playing && g.phase === 'waraq' && g.turn === mySeat,
       },
+      // القيد: أنواع المشاريع اللي أعلنها اللاعبين (يشتغل صوت المشروع أول ما ينعلن)
+      kindDeclared: (g.qaidProjects ?? []).map((p) => ({ seat: p.seat, kind: PROJECT_NAMES[p.kind] })),
     };
   }
   return {
