@@ -815,10 +815,17 @@ export class TableRoom extends DurableObject<Env> {
           await this.publish(withBot);
           break;
         }
-        const next = assignSeat(t, msg.seat, msg.uid);
-        await this.save(next);
+        let next = assignSeat(t, msg.seat, msg.uid);
         const incoming = next.seats[msg.seat]!.username;
-        this.broadcast([before ? `${incoming} جلس مكان ${before.username}` : `${incoming} جلس في المقعد ${msg.seat + 1}`]);
+        const events = [before ? `${incoming} جلس مكان ${before.username}` : `${incoming} جلس في المقعد ${msg.seat + 1}`];
+        // دخل لاعب غير مشترك والمباراة شغالة بالخيارات الإضافية: تتوقف الخيارات على طول
+        const extras = next.game && (next.qaid || next.manualProjects || next.sawaOff);
+        if (extras && !(await this.isPro(msg.uid))) {
+          next = stampMatchOptions({ ...next, qaid: false, manualProjects: false, sawaOff: false, proSeats: (next.proSeats ?? []).filter((i) => i !== msg.seat) });
+          events.push('الخيارات الإضافية توقفت: لازم كل اللاعبين يكونون مشتركين في الباقة');
+        }
+        await this.save(next);
+        this.broadcast(events);
         await this.publish(next);
         break;
       }
